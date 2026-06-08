@@ -1,0 +1,32 @@
+// Lead CRUD. (Guide §5: app/api/leads/route.ts)
+// POST creates a lead and fires n8n Agent 1 to place the initial AI call.
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { createLeadSchema } from "@/lib/contracts";
+import { ingestLead } from "@/lib/leadIntake";
+
+export async function GET() {
+  const leads = await prisma.lead.findMany({
+    orderBy: { createdAt: "desc" },
+    include: { calls: { orderBy: { createdAt: "desc" } } },
+  });
+  return NextResponse.json(leads);
+}
+
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => null);
+  const parsed = createLeadSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid payload", issues: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+
+  const { lead, deduped } = await ingestLead({
+    ...parsed.data,
+    source: parsed.data.source ?? "manual",
+  });
+
+  return NextResponse.json(lead, { status: deduped ? 200 : 201 });
+}

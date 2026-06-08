@@ -1,0 +1,75 @@
+{
+  "name": "Cara — Agent 1: Outbound Call",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Agent 1 — Outbound Call\n\nTrigger: webhook from the CRM (lib/n8n.ts → N8N_WEBHOOK_NEW_LEAD).\nAction: place an ElevenLabs outbound AI call.\n\n### Before activating\n1. In the **Call ElevenLabs** node, replace `REPLACE_WITH_AGENT_ID`,\n   `REPLACE_WITH_AGENT_PHONE_NUMBER_ID`, and the `xi-api-key` header value\n   `REPLACE_WITH_ELEVENLABS_API_KEY` (move to a credential for production).\n2. Copy this node's Production webhook URL into the CRM env\n   `N8N_WEBHOOK_NEW_LEAD`.\n3. `lead_id` and `call_type` are sent as ElevenLabs dynamic_variables so they\n   round-trip in the post-call webhook (Agent 2).",
+        "height": 320,
+        "width": 420
+      },
+      "id": "note1",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-80, -40]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "new-lead",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook1",
+      "name": "Webhook — New Lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [400, 100],
+      "webhookId": "cara-new-lead"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.elevenlabs.io/v1/convai/twilio/outbound-call",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "xi-api-key", "value": "REPLACE_WITH_ELEVENLABS_API_KEY" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"agent_id\": \"REPLACE_WITH_AGENT_ID\",\n  \"agent_phone_number_id\": \"REPLACE_WITH_AGENT_PHONE_NUMBER_ID\",\n  \"to_number\": \"{{ $json.body.phone }}\",\n  \"conversation_initiation_client_data\": {\n    \"dynamic_variables\": {\n      \"lead_id\": \"{{ $json.body.leadId }}\",\n      \"call_type\": \"{{ $json.body.callType }}\",\n      \"lead_name\": \"{{ $json.body.name }}\",\n      \"interest\": \"{{ $json.body.interest }}\",\n      \"prior_context\": \"{{ $json.body.context }}\"\n    }\n  }\n}",
+        "options": {}
+      },
+      "id": "http1",
+      "name": "Call ElevenLabs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"calling\", \"leadId\": $('Webhook — New Lead').item.json.body.leadId } }}",
+        "options": {}
+      },
+      "id": "respond1",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [880, 100]
+    }
+  ],
+  "connections": {
+    "Webhook — New Lead": {
+      "main": [[{ "node": "Call ElevenLabs", "type": "main", "index": 0 }]]
+    },
+    "Call ElevenLabs": {
+      "main": [[{ "node": "Respond", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

@@ -1,0 +1,89 @@
+{
+  "name": "Cara — Agent 2: Data Write",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Agent 2 — Data Write\n\nTrigger: ElevenLabs **post-call** webhook.\nAction: map transcript/outcome → POST to the CRM `/api/calls`.\n\n### Before activating\n1. Copy this node's Production webhook URL into your ElevenLabs agent's\n   **post-call webhook** setting.\n2. In **POST to CRM**, set the URL to `https://<your-crm>/api/calls` and the\n   `x-webhook-secret` header to your CRM `WEBHOOK_SECRET`.\n3. For richer outcomes, configure the ElevenLabs agent to **collect** data\n   points named `outcome` (confirmed|no_answer|rescheduled|not_interested)\n   and `sentiment` (positive|neutral|negative); the Map node reads them.\n\n(Alternatively skip Agent 2 and point ElevenLabs straight at\n`/api/webhooks/call-completed`, which verifies the ElevenLabs signature.)",
+        "height": 360,
+        "width": 440
+      },
+      "id": "note2",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-100, -60]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "call-completed",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook2",
+      "name": "Webhook — Post-Call",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [400, 120],
+      "webhookId": "cara-call-completed"
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json.body || {};\nconst data = p.data || {};\nconst dyn = (data.conversation_initiation_client_data && data.conversation_initiation_client_data.dynamic_variables) || {};\nconst collected = (data.analysis && data.analysis.data_collection_results) || {};\nconst turns = Array.isArray(data.transcript) ? data.transcript : [];\nconst transcript = turns.length\n  ? turns.map(t => `${t.role}: ${t.message || ''}`).join('\\n')\n  : ((data.analysis && data.analysis.transcript_summary) || '');\nfunction outcomeFromSuccess(s) {\n  if (s === 'success') return 'confirmed';\n  if (s === 'failure') return 'no_answer';\n  return undefined;\n}\nconst out = {\n  leadId: dyn.lead_id,\n  callType: dyn.call_type === 'reconfirmation' ? 'reconfirmation' : 'initial',\n  elevenlabsId: data.conversation_id,\n  transcript,\n  outcome: (collected.outcome && collected.outcome.value) || outcomeFromSuccess(data.analysis && data.analysis.call_successful),\n  sentiment: collected.sentiment && collected.sentiment.value,\n  duration: data.metadata && data.metadata.call_duration_secs,\n};\nObject.keys(out).forEach(k => out[k] === undefined && delete out[k]);\nreturn [{ json: out }];",
+        "options": {}
+      },
+      "id": "code2",
+      "name": "Map Call Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 120]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://your-crm.example.com/api/calls",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-webhook-secret", "value": "REPLACE_WITH_WEBHOOK_SECRET" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "http2",
+      "name": "POST to CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true } }}",
+        "options": {}
+      },
+      "id": "respond2",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 120]
+    }
+  ],
+  "connections": {
+    "Webhook — Post-Call": {
+      "main": [[{ "node": "Map Call Data", "type": "main", "index": 0 }]]
+    },
+    "Map Call Data": {
+      "main": [[{ "node": "POST to CRM", "type": "main", "index": 0 }]]
+    },
+    "POST to CRM": {
+      "main": [[{ "node": "Respond", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

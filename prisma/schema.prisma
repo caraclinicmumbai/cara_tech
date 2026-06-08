@@ -1,0 +1,108 @@
+// Cara Clinic — Sales Automation Platform
+// Database schema. See Tech Stack & Build Guide §6 (Key Tables).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// A captured sales lead — the central source of truth (§6.1).
+model Lead {
+  id            String   @id @default(cuid())
+  name          String
+  phone         String // E.164 format for ElevenLabs to dial, e.g. +919876543210
+  email         String?
+  interest      String? // free-text clinic interest, e.g. "Hair treatment"
+  source        String? // web_form | referral | manual | facebook | instagram | google
+  status        String   @default("new") // new | called | confirmed | rescheduled | lost
+  interestLevel String? // high | medium | low — set by call outcome
+
+  // ── Attribution (set by ad / form intake adapters) ──
+  externalId String? // provider's lead id (Meta leadgen_id, Google lead_id) — dedup key
+  campaign   String? // campaign id/name
+  adId       String? // ad / adgroup / creative id
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  calls Call[]
+
+  @@index([status])
+  @@index([phone])
+  @@index([source])
+  @@index([externalId])
+}
+
+/// A single AI voice call placed against a Lead (§6.2).
+model Call {
+  id           String   @id @default(cuid())
+  leadId       String
+  lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  callType     String // initial | reconfirmation
+  transcript   String?
+  outcome      String? // confirmed | no_answer | rescheduled | not_interested
+  sentiment    String? // positive | neutral | negative
+  duration     Int? // seconds
+  elevenlabsId String? // ElevenLabs call ID for reference
+  createdAt    DateTime @default(now())
+
+  @@index([leadId])
+  @@index([callType])
+}
+
+// ── Auth (NextAuth.js / Auth.js — §2.5) ──────────────────────────────
+
+/// Application user. `role` gates sales-rep vs. admin access.
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          String    @default("sales") // sales | admin
+  passwordHash  String? // for credentials login (optional)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
