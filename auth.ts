@@ -40,7 +40,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const isLoggedIn = !!session?.user;
       const isOnLogin = nextUrl.pathname === "/login";
       if (isOnLogin) {
-        if (isLoggedIn) return Response.redirect(new URL("/leads", nextUrl));
+        if (isLoggedIn) return Response.redirect(new URL("/dashboard", nextUrl));
         return true;
       }
       return isLoggedIn;

@@ -14,6 +14,9 @@ export default async function DashboardLayout({
       <header className="border-b border-black/10 dark:border-white/15">
         <nav className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-4">
           <span className="font-semibold">Cara Clinic</span>
+          <Link href="/dashboard" className="text-sm hover:underline">
+            Dashboard
+          </Link>
           <Link href="/leads" className="text-sm hover:underline">
             Leads
           </Link>

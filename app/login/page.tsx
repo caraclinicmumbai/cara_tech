@@ -9,7 +9,7 @@ export default async function LoginPage({
 }) {
   // Already signed in → skip the form.
   const session = await auth();
-  if (session?.user) redirect("/leads");
+  if (session?.user) redirect("/dashboard");
 
   const { callbackUrl } = await searchParams;
 
@@ -22,7 +22,7 @@ export default async function LoginPage({
             Sign in to continue.
           </p>
         </div>
-        <LoginForm callbackUrl={callbackUrl ?? "/leads"} />
+        <LoginForm callbackUrl={callbackUrl ?? "/dashboard"} />
       </div>
     </div>
   );
