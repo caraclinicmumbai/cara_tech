@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,11 @@ export default async function CallsPage() {
           <tbody>
             {calls.map((call) => (
               <tr key={call.id} className="border-t border-black/5 dark:border-white/10">
-                <td className="px-3 py-2">{call.lead.name}</td>
+                <td className="px-3 py-2">
+                  <Link href={`/leads/${call.leadId}`} className="font-medium hover:underline">
+                    {call.lead.name}
+                  </Link>
+                </td>
                 <td className="px-3 py-2">{call.callType}</td>
                 <td className="px-3 py-2">{call.outcome ?? "—"}</td>
                 <td className="px-3 py-2">{call.sentiment ?? "—"}</td>

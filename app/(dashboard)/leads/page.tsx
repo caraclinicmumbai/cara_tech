@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { LeadForm } from "@/components/LeadForm";
 
@@ -51,7 +52,11 @@ export default async function LeadsPage() {
             <tbody>
               {leads.map((lead) => (
                 <tr key={lead.id} className="border-t border-black/5 dark:border-white/10">
-                  <td className="px-3 py-2">{lead.name}</td>
+                  <td className="px-3 py-2">
+                    <Link href={`/leads/${lead.id}`} className="font-medium hover:underline">
+                      {lead.name}
+                    </Link>
+                  </td>
                   <td className="px-3 py-2">{lead.phone}</td>
                   <td className="px-3 py-2">
                     <SourceBadge source={lead.source} />
