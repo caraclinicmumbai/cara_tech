@@ -6,8 +6,12 @@ import { prisma } from "@/lib/prisma";
 import { writeCallSchema } from "@/lib/contracts";
 import { recordCall } from "@/lib/callIntake";
 import { verifyWebhookSecret } from "@/lib/verify";
+import { requireSession } from "@/lib/apiAuth";
 
 export async function GET() {
+  const denied = await requireSession();
+  if (denied) return denied;
+
   const calls = await prisma.call.findMany({
     orderBy: { createdAt: "desc" },
     include: { lead: true },

@@ -32,6 +32,17 @@ function isCallablePhone(phone: string): boolean {
   return (phone.match(/\d/g)?.length ?? 0) >= 7;
 }
 
+/// Sources whose automated outbound calls are paused: leads are still captured
+/// and stored, but no initial AI call is fired. Reversible via env without code
+/// changes. Set PAUSE_AUTO_CALL_SOURCES to a comma list, e.g. "facebook,instagram".
+function isAutoCallPaused(source: LeadSource): boolean {
+  return (process.env.PAUSE_AUTO_CALL_SOURCES ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(source);
+}
+
 export type IngestResult = {
   lead: Lead;
   /// True when an existing lead was returned instead of creating a duplicate.
@@ -68,6 +79,12 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
   });
 
   logger.info(`Lead created ${lead.id} via ${input.source}`);
+
+  // Auto-calling paused for this source (e.g. Meta, pending App Review) — capture only.
+  if (isAutoCallPaused(input.source)) {
+    logger.info(`Auto-call paused for source=${input.source}; lead ${lead.id} saved without calling`);
+    return { lead, deduped: false };
+  }
 
   // Only place a call when we have a usable phone number — ad forms can omit it.
   if (!isCallablePhone(lead.phone)) {
