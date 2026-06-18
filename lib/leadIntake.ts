@@ -11,6 +11,7 @@ export type LeadSource =
   | "web_form"
   | "referral"
   | "manual"
+  | "walk_in"
   | "facebook"
   | "instagram"
   | "google";
@@ -25,7 +26,20 @@ export type NormalizedLead = {
   externalId?: string;
   campaign?: string;
   adId?: string;
+  /// Consent capture (§3.1.13) — set for walk-in/front-desk entries.
+  consentMethod?: "ipad" | "written";
+  consentAt?: Date;
+  consentBy?: string;
 };
+
+/// Sources that must NEVER trigger an automated AI call (§3.1.2 exceptions):
+/// the lead is physically present or just spoken to, so we route to manual
+/// follow-up instead. Distinct from the env-configurable PAUSE_AUTO_CALL_SOURCES.
+const NEVER_AUTO_CALL: readonly LeadSource[] = ["walk_in"];
+
+function isNeverAutoCall(source: LeadSource): boolean {
+  return NEVER_AUTO_CALL.includes(source);
+}
 
 /// At least 7 digits → treat as a dialable number.
 function isCallablePhone(phone: string): boolean {
@@ -65,6 +79,10 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
     }
   }
 
+  // Walk-in/front-desk leads go straight to the manual follow-up queue —
+  // a human is already with the patient, so there's no AI cold-call (§3.1.2).
+  const neverCall = isNeverAutoCall(input.source);
+
   const lead = await prisma.lead.create({
     data: {
       name: input.name,
@@ -72,13 +90,23 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
       email: input.email,
       interest: input.interest,
       source: input.source,
+      status: neverCall ? "manual_followup" : "new",
       externalId: input.externalId,
       campaign: input.campaign,
       adId: input.adId,
+      consentMethod: input.consentMethod,
+      consentAt: input.consentAt,
+      consentBy: input.consentBy,
     },
   });
 
   logger.info(`Lead created ${lead.id} via ${input.source}`);
+
+  // Hard no-call source (walk-in/front-desk) — captured, never auto-dialed.
+  if (neverCall) {
+    logger.info(`No auto-call for source=${input.source}; lead ${lead.id} routed to manual follow-up`);
+    return { lead, deduped: false };
+  }
 
   // Auto-calling paused for this source (e.g. Meta, pending App Review) — capture only.
   if (isAutoCallPaused(input.source)) {
