@@ -1,18 +1,18 @@
-// BullMQ worker — processes delayed re-confirmation jobs. (Guide §2.4, §5)
-// Run standalone (PM2 in prod): `npm run worker`.
+// BullMQ worker — processes delayed call-attempt jobs. (Guide §2.4, §5)
+// Run standalone (PM2 / Railway service): `npm run worker`.
 // On a fired job it re-triggers n8n Agent 1 with the prior-call context so
-// ElevenLabs places a personalised second call.
+// ElevenLabs places the next personalised retry call.
 import "dotenv/config";
 import { Worker } from "bullmq";
-import { RECONFIRMATION_QUEUE, bullConnection, type ReconfirmationJob } from "@/lib/queue";
+import { CALL_ATTEMPT_QUEUE, bullConnection, type CallAttemptJob } from "@/lib/queue";
 import { triggerOutboundCall } from "@/lib/n8n";
 import { logger } from "@/lib/logger";
 
-const worker = new Worker<ReconfirmationJob>(
-  RECONFIRMATION_QUEUE,
+const worker = new Worker<CallAttemptJob>(
+  CALL_ATTEMPT_QUEUE,
   async (job) => {
-    const { leadId, phone, context } = job.data;
-    logger.info(`Re-confirmation job firing for lead ${leadId}`);
+    const { leadId, phone, context, attempt } = job.data;
+    logger.info(`Call attempt ${attempt} firing for lead ${leadId}`);
 
     await triggerOutboundCall({
       leadId,
@@ -22,16 +22,16 @@ const worker = new Worker<ReconfirmationJob>(
       context,
     });
 
-    return { triggered: true, leadId };
+    return { triggered: true, leadId, attempt };
   },
   { connection: bullConnection, concurrency: 5 },
 );
 
 worker.on("completed", (job) =>
-  logger.info(`Job ${job.id} completed (lead ${job.data.leadId})`),
+  logger.info(`Job ${job.id} completed (lead ${job.data.leadId}, attempt ${job.data.attempt})`),
 );
 worker.on("failed", (job, err) =>
   logger.error(`Job ${job?.id} failed: ${err.message}`),
 );
 
-logger.info(`Re-confirmation worker started on queue "${RECONFIRMATION_QUEUE}"`);
+logger.info(`Call-attempt worker started on queue "${CALL_ATTEMPT_QUEUE}"`);

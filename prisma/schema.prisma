@@ -18,7 +18,7 @@ model Lead {
   email         String?
   interest      String? // free-text clinic interest, e.g. "Hair treatment"
   source        String? // web_form | referral | manual | walk_in | facebook | instagram | google
-  status        String   @default("new") // new | manual_followup | called | confirmed | rescheduled | lost
+  status        String   @default("new") // new | manual_followup | called | confirmed | rescheduled | unreachable | lost
   interestLevel String? // high | medium | low — set by call outcome
 
   // ── Consent capture (§3.1.13) — for walk-in/front-desk, the iPad/written
