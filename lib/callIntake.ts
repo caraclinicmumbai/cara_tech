@@ -6,7 +6,7 @@
 import type { Call } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { statusFromOutcome } from "@/lib/contracts";
-import { scheduleCallAttempt, retryDelaysDays } from "@/lib/queue";
+import { scheduleCallAttempt, retryDelaysDays, DAY_MS } from "@/lib/queue";
 import { logger } from "@/lib/logger";
 
 // Outcomes that END the attempt ladder — the lead was reached and a decision
@@ -61,9 +61,10 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
             leadId: lead.id,
             phone: lead.phone,
             attempt: nextAttempt,
+            callType: "reconfirmation",
             context: input.transcript?.slice(0, 1000),
           },
-          delayDays,
+          delayDays * DAY_MS,
         );
         logger.info(
           `Lead ${lead.id} unanswered (attempt ${attemptNumber}) — scheduled attempt ${nextAttempt} in ${delayDays}d`,

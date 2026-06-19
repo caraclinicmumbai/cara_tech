@@ -5,6 +5,8 @@
 import type { Lead } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { triggerOutboundCall } from "@/lib/n8n";
+import { scheduleCallAttempt } from "@/lib/queue";
+import { isWithinDnd } from "@/lib/callWindow";
 import { logger } from "@/lib/logger";
 
 export type LeadSource =
@@ -117,6 +119,24 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
   // Only place a call when we have a usable phone number — ad forms can omit it.
   if (!isCallablePhone(lead.phone)) {
     logger.warn(`Lead ${lead.id} has no callable phone — saved without triggering a call`);
+    return { lead, deduped: false };
+  }
+
+  // Do-not-call window (§3.1.2): leads arriving 22:00–10:00 IST are held and
+  // released — FIFO, concurrency-capped — at the next permitted window via the
+  // call queue (the worker fires the held attempt). Daytime leads call instantly.
+  if (isWithinDnd()) {
+    try {
+      await scheduleCallAttempt({
+        leadId: lead.id,
+        phone: lead.phone,
+        attempt: 1,
+        callType: "initial",
+      });
+      logger.info(`Lead ${lead.id} created in do-not-call window — held for next permitted window`);
+    } catch (err) {
+      logger.error(`Failed to queue held call for lead ${lead.id}: ${String(err)}`);
+    }
     return { lead, deduped: false };
   }
 

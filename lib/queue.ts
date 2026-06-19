@@ -5,6 +5,7 @@
 // etc., capped at maxCallAttempts(). The worker consumes these and re-fires the call.
 import { Queue, type ConnectionOptions } from "bullmq";
 import { redis } from "@/lib/redis";
+import { permittedDelayMs } from "@/lib/callWindow";
 
 // BullMQ bundles its own nested ioredis, so a top-level ioredis instance is
 // structurally compatible at runtime but not by type. Cast once, here.
@@ -20,6 +21,9 @@ export type CallAttemptJob = {
   phone: string;
   /// 1-based attempt number this job will place (e.g. 2 = first retry).
   attempt: number;
+  /// "initial" when this is a held first call (created during the DND window),
+  /// "reconfirmation" for a follow-up retry attempt.
+  callType: "initial" | "reconfirmation";
   /// Summary/context from the prior call, passed to ElevenLabs for personalisation.
   context?: string;
 };
@@ -43,7 +47,7 @@ export function getCallQueue(): Queue<CallAttemptJob> {
   return _callQueue;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+export const DAY_MS = 24 * 60 * 60 * 1000;
 
 /// Days to wait before each follow-up attempt, from RETRY_DELAYS_DAYS (default
 /// "1,5"): attempt 2 after 1 day, attempt 3 after 5 days. The number of retries
@@ -60,11 +64,24 @@ export function maxCallAttempts(): number {
   return retryDelaysDays().length + 1;
 }
 
-/// Schedule a follow-up call attempt `delayDays` from now. Idempotent per
-/// (lead, attempt) so a duplicate webhook can't double-book the same attempt.
-export async function scheduleCallAttempt(job: CallAttemptJob, delayDays: number) {
+/// Enqueue a call attempt to fire `baseDelayMs` from now — but NEVER inside the
+/// do-not-call window. If the target lands in DND it's pushed to the next
+/// permitted opening (10:00 IST), where held leads drain in FIFO order capped by
+/// the worker's concurrency. Idempotent per (lead, attempt): a duplicate webhook
+/// can't double-book the same attempt.
+export async function scheduleCallAttempt(job: CallAttemptJob, baseDelayMs = 0) {
   return getCallQueue().add("callAttempt", job, {
-    delay: delayDays * DAY_MS,
+    delay: permittedDelayMs(new Date(), baseDelayMs),
     jobId: `attempt-${job.leadId}-${job.attempt}`,
+  });
+}
+
+/// Defer a job that fired inside the DND window (e.g. worker was down past the
+/// window) to the next permitted opening. Uniquely-suffixed jobId so it doesn't
+/// collide with the still-completing original.
+export async function deferCallToWindow(job: CallAttemptJob, nowMs: number) {
+  return getCallQueue().add("callAttempt", job, {
+    delay: permittedDelayMs(new Date(nowMs), 0),
+    jobId: `attempt-${job.leadId}-${job.attempt}-dnd-${nowMs}`,
   });
 }
