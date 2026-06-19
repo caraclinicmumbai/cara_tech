@@ -142,5 +142,7 @@ export function mapElevenLabsPostCall(payload: PostCall): RecordCallInput | null
       collected.outcome?.value ?? outcomeFromSuccess(data.analysis?.call_successful),
     sentiment: collected.sentiment?.value,
     duration: data.metadata?.call_duration_secs,
+    // ISO datetime the agent captured when the lead requested a callback (§3.1.2).
+    callbackAt: collected.callback_time?.value,
   };
 }

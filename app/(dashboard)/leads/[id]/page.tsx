@@ -11,6 +11,7 @@ const SOURCE_LABELS: Record<string, string> = {
   google: "Google",
   referral: "Referral",
   manual: "Manual",
+  walk_in: "Walk-in",
 };
 
 function Pill({ children }: { children: React.ReactNode }) {
@@ -60,6 +61,13 @@ export default async function LeadDetailPage({
           <Pill>{lead.status}</Pill>
         </div>
 
+        {lead.callbackAt && (
+          <div className="rounded border border-blue-500/40 bg-blue-500/5 px-3 py-2 text-sm">
+            📞 <span className="font-medium">Callback requested</span> for{" "}
+            {lead.callbackAt.toLocaleString()} — auto-retries cancelled, a call is scheduled for this time.
+          </div>
+        )}
+
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           <Field label="Phone" value={lead.phone} />
           <Field label="Email" value={lead.email} />
@@ -71,6 +79,10 @@ export default async function LeadDetailPage({
           <Field label="Interest level" value={lead.interestLevel} />
           <Field label="Campaign" value={lead.campaign} />
           <Field label="Ad ID" value={lead.adId} />
+          <Field
+            label="Callback at"
+            value={lead.callbackAt ? lead.callbackAt.toLocaleString() : null}
+          />
           <Field label="Created" value={lead.createdAt.toLocaleString()} />
           <Field label="Updated" value={lead.updatedAt.toLocaleString()} />
         </dl>

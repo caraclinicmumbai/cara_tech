@@ -148,6 +148,9 @@ export const writeCallSchema = z.object({
   outcome: z.enum(["confirmed", "no_answer", "rescheduled", "not_interested"]).optional(),
   sentiment: z.enum(["positive", "neutral", "negative"]).optional(),
   duration: z.number().int().nonnegative().optional(),
+  /// ISO datetime the lead asked to be called back (§3.1.2). When present we
+  /// cancel remaining auto-retries and schedule a call at this time.
+  callbackAt: z.string().optional(),
 });
 export type WriteCallInput = z.infer<typeof writeCallSchema>;
 

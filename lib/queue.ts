@@ -76,6 +76,22 @@ export async function scheduleCallAttempt(job: CallAttemptJob, baseDelayMs = 0) 
   });
 }
 
+/// Cancel all pending (delayed/waiting) call attempts for a lead — used when the
+/// lead requests a specific callback time, which replaces the auto-retry ladder
+/// (§3.1.2). Returns how many jobs were removed.
+export async function cancelScheduledCalls(leadId: string): Promise<number> {
+  const q = getCallQueue();
+  const jobs = [...(await q.getDelayed()), ...(await q.getWaiting())];
+  let removed = 0;
+  for (const j of jobs) {
+    if (j.data?.leadId === leadId) {
+      await j.remove();
+      removed++;
+    }
+  }
+  return removed;
+}
+
 /// Defer a job that fired inside the DND window (e.g. worker was down past the
 /// window) to the next permitted opening. Uniquely-suffixed jobId so it doesn't
 /// collide with the still-completing original.

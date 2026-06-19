@@ -27,6 +27,9 @@ model Lead {
   consentAt     DateTime? // when consent was captured
   consentBy     String? // staff member (email) who captured the consent
 
+  // ── Callback requested by the lead during a call (§3.1.2) ──
+  callbackAt DateTime? // specific time the lead asked to be called back
+
   // ── Attribution (set by ad / form intake adapters) ──
   externalId String? // provider's lead id (Meta leadgen_id, Google lead_id) — dedup key
   campaign   String? // campaign id/name
