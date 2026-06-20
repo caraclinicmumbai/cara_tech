@@ -42,7 +42,11 @@ export default async function LeadDetailPage({
 
   const lead = await prisma.lead.findUnique({
     where: { id },
-    include: { calls: { orderBy: { createdAt: "desc" } } },
+    include: {
+      calls: { orderBy: { createdAt: "desc" } },
+      duplicateOf: true,
+      duplicates: { orderBy: { createdAt: "desc" } },
+    },
   });
 
   if (!lead) notFound();
@@ -60,6 +64,30 @@ export default async function LeadDetailPage({
           <h1 className="text-xl font-semibold">{lead.name}</h1>
           <Pill>{lead.status}</Pill>
         </div>
+
+        {lead.duplicateOf && (
+          <div className="rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm">
+            ⚠️ <span className="font-medium">Possible duplicate</span> of an existing lead —{" "}
+            <Link href={`/leads/${lead.duplicateOf.id}`} className="font-medium underline">
+              {lead.duplicateOf.name} ({lead.duplicateOf.phone})
+            </Link>
+            . No AI call was placed; review/merge before contacting.
+          </div>
+        )}
+
+        {lead.duplicates.length > 0 && (
+          <div className="rounded border border-black/15 bg-black/5 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/5">
+            {lead.duplicates.length} later enquir{lead.duplicates.length === 1 ? "y" : "ies"} matched this record:{" "}
+            {lead.duplicates.map((d, i) => (
+              <span key={d.id}>
+                {i > 0 && ", "}
+                <Link href={`/leads/${d.id}`} className="underline">
+                  {d.name}
+                </Link>
+              </span>
+            ))}
+          </div>
+        )}
 
         {lead.callbackAt && (
           <div className="rounded border border-blue-500/40 bg-blue-500/5 px-3 py-2 text-sm">

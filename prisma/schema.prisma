@@ -30,6 +30,13 @@ model Lead {
   // ── Callback requested by the lead during a call (§3.1.2) ──
   callbackAt DateTime? // specific time the lead asked to be called back
 
+  // ── Duplicate detection (§3.1.1) — points to the pre-existing lead this one
+  //    duplicates (matched on phone/email). Duplicates are not auto-called;
+  //    they go to the manual queue for counsellor review/merge. ──
+  duplicateOfId String?
+  duplicateOf   Lead?   @relation("LeadDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates    Lead[]  @relation("LeadDuplicates")
+
   // ── Attribution (set by ad / form intake adapters) ──
   externalId String? // provider's lead id (Meta leadgen_id, Google lead_id) — dedup key
   campaign   String? // campaign id/name
@@ -44,6 +51,7 @@ model Lead {
   @@index([phone])
   @@index([source])
   @@index([externalId])
+  @@index([duplicateOfId])
 }
 
 /// A single AI voice call placed against a Lead (§6.2).
