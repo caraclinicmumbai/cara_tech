@@ -5,12 +5,15 @@
 import type { Lead } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { triggerOutboundCall } from "@/lib/n8n";
+import { scheduleCallAttempt } from "@/lib/queue";
+import { isWithinDnd } from "@/lib/callWindow";
 import { logger } from "@/lib/logger";
 
 export type LeadSource =
   | "web_form"
   | "referral"
   | "manual"
+  | "walk_in"
   | "facebook"
   | "instagram"
   | "google";
@@ -25,11 +28,35 @@ export type NormalizedLead = {
   externalId?: string;
   campaign?: string;
   adId?: string;
+  /// Consent capture (§3.1.13) — set for walk-in/front-desk entries.
+  consentMethod?: "ipad" | "written";
+  consentAt?: Date;
+  consentBy?: string;
 };
+
+/// Sources that must NEVER trigger an automated AI call (§3.1.2 exceptions):
+/// the lead is physically present or just spoken to, so we route to manual
+/// follow-up instead. Distinct from the env-configurable PAUSE_AUTO_CALL_SOURCES.
+const NEVER_AUTO_CALL: readonly LeadSource[] = ["walk_in"];
+
+function isNeverAutoCall(source: LeadSource): boolean {
+  return NEVER_AUTO_CALL.includes(source);
+}
 
 /// At least 7 digits → treat as a dialable number.
 function isCallablePhone(phone: string): boolean {
   return (phone.match(/\d/g)?.length ?? 0) >= 7;
+}
+
+/// Sources whose automated outbound calls are paused: leads are still captured
+/// and stored, but no initial AI call is fired. Reversible via env without code
+/// changes. Set PAUSE_AUTO_CALL_SOURCES to a comma list, e.g. "facebook,instagram".
+function isAutoCallPaused(source: LeadSource): boolean {
+  return (process.env.PAUSE_AUTO_CALL_SOURCES ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(source);
 }
 
 export type IngestResult = {
@@ -54,6 +81,10 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
     }
   }
 
+  // Walk-in/front-desk leads go straight to the manual follow-up queue —
+  // a human is already with the patient, so there's no AI cold-call (§3.1.2).
+  const neverCall = isNeverAutoCall(input.source);
+
   const lead = await prisma.lead.create({
     data: {
       name: input.name,
@@ -61,17 +92,51 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
       email: input.email,
       interest: input.interest,
       source: input.source,
+      status: neverCall ? "manual_followup" : "new",
       externalId: input.externalId,
       campaign: input.campaign,
       adId: input.adId,
+      consentMethod: input.consentMethod,
+      consentAt: input.consentAt,
+      consentBy: input.consentBy,
     },
   });
 
   logger.info(`Lead created ${lead.id} via ${input.source}`);
 
+  // Hard no-call source (walk-in/front-desk) — captured, never auto-dialed.
+  if (neverCall) {
+    logger.info(`No auto-call for source=${input.source}; lead ${lead.id} routed to manual follow-up`);
+    return { lead, deduped: false };
+  }
+
+  // Auto-calling paused for this source (e.g. Meta, pending App Review) — capture only.
+  if (isAutoCallPaused(input.source)) {
+    logger.info(`Auto-call paused for source=${input.source}; lead ${lead.id} saved without calling`);
+    return { lead, deduped: false };
+  }
+
   // Only place a call when we have a usable phone number — ad forms can omit it.
   if (!isCallablePhone(lead.phone)) {
     logger.warn(`Lead ${lead.id} has no callable phone — saved without triggering a call`);
+    return { lead, deduped: false };
+  }
+
+  // Do-not-call window (§3.1.2): leads arriving 22:00–10:00 IST are held and
+  // released — FIFO, concurrency-capped — at the next permitted window via the
+  // call queue (the worker fires the held attempt). Daytime leads call instantly.
+  if (isWithinDnd()) {
+    try {
+      await scheduleCallAttempt({
+        leadId: lead.id,
+        phone: lead.phone,
+        attempt: 1,
+        callType: "initial",
+      });
+      logger.info(`Lead ${lead.id} created in do-not-call window — held for next permitted window`);
+    } catch (err) {
+      logger.error(`Failed to queue held call for lead ${lead.id}: ${String(err)}`);
+    }
     return { lead, deduped: false };
   }
 

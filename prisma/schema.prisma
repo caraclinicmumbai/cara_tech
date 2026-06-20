@@ -17,9 +17,18 @@ model Lead {
   phone         String // E.164 format for ElevenLabs to dial, e.g. +919876543210
   email         String?
   interest      String? // free-text clinic interest, e.g. "Hair treatment"
-  source        String? // web_form | referral | manual | facebook | instagram | google
-  status        String   @default("new") // new | called | confirmed | rescheduled | lost
+  source        String? // web_form | referral | manual | walk_in | facebook | instagram | google
+  status        String   @default("new") // new | manual_followup | called | confirmed | rescheduled | unreachable | lost
   interestLevel String? // high | medium | low — set by call outcome
+
+  // ── Consent capture (§3.1.13) — for walk-in/front-desk, the iPad/written
+  //    consent form is collected at the clinic BEFORE the record is created. ──
+  consentMethod String? // ipad | written (null for digital sources that consent differently)
+  consentAt     DateTime? // when consent was captured
+  consentBy     String? // staff member (email) who captured the consent
+
+  // ── Callback requested by the lead during a call (§3.1.2) ──
+  callbackAt DateTime? // specific time the lead asked to be called back
 
   // ── Attribution (set by ad / form intake adapters) ──
   externalId String? // provider's lead id (Meta leadgen_id, Google lead_id) — dedup key

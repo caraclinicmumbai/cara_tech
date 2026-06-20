@@ -6,10 +6,23 @@ export const leadSourceEnum = z.enum([
   "web_form",
   "referral",
   "manual",
+  "walk_in",
   "facebook",
   "instagram",
   "google",
 ]);
+
+/// Walk-in / front-desk entry (§3.1.1, §3.1.13). Consent (iPad or written) is
+/// collected at the clinic and is MANDATORY — per spec the record is not created
+/// without it. No AI call is ever triggered for walk-ins (§3.1.2 exceptions).
+export const walkInSchema = z.object({
+  name: z.string().min(1),
+  phone: z.string().min(5),
+  email: z.string().email().optional(),
+  interest: z.string().optional(),
+  consentMethod: z.enum(["ipad", "written"]),
+});
+export type WalkInInput = z.infer<typeof walkInSchema>;
 
 /// POST /api/leads  — create a lead (also used by the lead-created webhook body).
 export const createLeadSchema = z.object({
@@ -135,6 +148,9 @@ export const writeCallSchema = z.object({
   outcome: z.enum(["confirmed", "no_answer", "rescheduled", "not_interested"]).optional(),
   sentiment: z.enum(["positive", "neutral", "negative"]).optional(),
   duration: z.number().int().nonnegative().optional(),
+  /// ISO datetime the lead asked to be called back (§3.1.2). When present we
+  /// cancel remaining auto-retries and schedule a call at this time.
+  callbackAt: z.string().optional(),
 });
 export type WriteCallInput = z.infer<typeof writeCallSchema>;
 
