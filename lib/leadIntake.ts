@@ -59,10 +59,25 @@ function isAutoCallPaused(source: LeadSource): boolean {
     .includes(source);
 }
 
+/// Find a pre-existing lead matching this one on phone (last 10 digits, to span
+/// +91/bare formats) or email (§3.1.1 duplicate detection). Returns the OLDEST
+/// match (the "original") so duplicates chain to one canonical record.
+async function findDuplicateLead(phone: string, email?: string): Promise<Lead | null> {
+  const last10 = (phone.match(/\d/g)?.join("") ?? "").slice(-10);
+  const or: Array<Record<string, unknown>> = [];
+  if (last10.length >= 7) or.push({ phone: { contains: last10 } });
+  if (email) or.push({ email: { equals: email, mode: "insensitive" } });
+  if (or.length === 0) return null;
+  return prisma.lead.findFirst({ where: { OR: or }, orderBy: { createdAt: "asc" } });
+}
+
 export type IngestResult = {
   lead: Lead;
   /// True when an existing lead was returned instead of creating a duplicate.
   deduped: boolean;
+  /// Set when this new lead matches an existing one (phone/email) — the caller
+  /// surfaces a merge prompt; the lead is queued for manual review, not called.
+  duplicateOfId?: string;
 };
 
 /// Persist a normalised lead and trigger the initial AI call.
@@ -81,9 +96,15 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
     }
   }
 
+  // Duplicate detection (§3.1.1): a matching phone/email means a prior record
+  // exists — capture the new enquiry but link it, route to manual review, and
+  // never AI-call it (the counsellor reviews/merges first).
+  const dup = await findDuplicateLead(input.phone, input.email);
+
   // Walk-in/front-desk leads go straight to the manual follow-up queue —
   // a human is already with the patient, so there's no AI cold-call (§3.1.2).
   const neverCall = isNeverAutoCall(input.source);
+  const manualQueue = neverCall || !!dup;
 
   const lead = await prisma.lead.create({
     data: {
@@ -92,7 +113,8 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
       email: input.email,
       interest: input.interest,
       source: input.source,
-      status: neverCall ? "manual_followup" : "new",
+      status: manualQueue ? "manual_followup" : "new",
+      duplicateOfId: dup?.id,
       externalId: input.externalId,
       campaign: input.campaign,
       adId: input.adId,
@@ -101,6 +123,12 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
       consentBy: input.consentBy,
     },
   });
+
+  // Duplicate → manual queue, no AI call, merge prompt surfaced via the result.
+  if (dup) {
+    logger.info(`Lead ${lead.id} is a possible duplicate of ${dup.id} (phone/email) — manual review, no call`);
+    return { lead, deduped: false, duplicateOfId: dup.id };
+  }
 
   logger.info(`Lead created ${lead.id} via ${input.source}`);
 

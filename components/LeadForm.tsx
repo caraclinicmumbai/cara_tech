@@ -8,11 +8,13 @@ export function LeadForm() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dupOfId, setDupOfId] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+    setDupOfId(null);
     const form = new FormData(e.currentTarget);
     const payload = {
       name: String(form.get("name") ?? ""),
@@ -35,6 +37,11 @@ export function LeadForm() {
     if (!res.ok) {
       setError("Failed to create lead");
       return;
+    }
+    const lead = await res.json().catch(() => null);
+    // Merge prompt (§3.1.1): the new lead matched an existing phone/email.
+    if (lead?.duplicateOfId) {
+      setDupOfId(lead.duplicateOfId as string);
     }
     (e.target as HTMLFormElement).reset();
     router.refresh();
@@ -62,6 +69,15 @@ export function LeadForm() {
         {submitting ? "Creating…" : "Create lead & call"}
       </button>
       {error && <p className="text-sm text-red-600 sm:col-span-2">{error}</p>}
+      {dupOfId && (
+        <p className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm sm:col-span-2">
+          ⚠️ This phone/email matches an existing lead — saved to manual review, <strong>no AI call placed</strong>.{" "}
+          <a href={`/leads/${dupOfId}`} className="font-medium underline">
+            Review the existing record
+          </a>{" "}
+          before contacting.
+        </p>
+      )}
     </form>
   );
 }

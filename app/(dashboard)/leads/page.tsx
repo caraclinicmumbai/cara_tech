@@ -56,6 +56,14 @@ export default async function LeadsPage() {
                     <Link href={`/leads/${lead.id}`} className="font-medium hover:underline">
                       {lead.name}
                     </Link>
+                    {lead.duplicateOfId && (
+                      <span
+                        title="Possible duplicate — no AI call"
+                        className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-400"
+                      >
+                        dup
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2">{lead.phone}</td>
                   <td className="px-3 py-2">
