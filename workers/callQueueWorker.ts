@@ -12,11 +12,15 @@ import {
 } from "@/lib/queue";
 import { isWithinDnd } from "@/lib/callWindow";
 import { triggerOutboundCall } from "@/lib/n8n";
+import { monitorElevenLabs } from "@/lib/providers/elevenlabsHealth";
 import { logger } from "@/lib/logger";
 
 // Caps how many calls we initiate in parallel — the morning backlog of held
 // leads drains FIFO at this rate (§3.1.2 concurrent capacity). Default 10.
 const CONCURRENCY = Number(process.env.AI_MAX_CONCURRENT_CALLS ?? 10);
+
+// How often to probe ElevenLabs health/credits and alert Slack on problems.
+const MONITOR_INTERVAL_MS = Number(process.env.ELEVENLABS_MONITOR_MINUTES ?? 15) * 60_000;
 
 const worker = new Worker<CallAttemptJob>(
   CALL_ATTEMPT_QUEUE,
@@ -55,3 +59,11 @@ worker.on("failed", (job, err) =>
 logger.info(
   `Call-attempt worker started on queue "${CALL_ATTEMPT_QUEUE}" (concurrency ${CONCURRENCY})`,
 );
+
+// ElevenLabs health/credit monitor — probe now, then on an interval. Alerts the
+// sales team on Slack if the API is down, the key is dead, or credits run low.
+const runMonitor = () =>
+  monitorElevenLabs().catch((err) => logger.error(`ElevenLabs monitor error: ${String(err)}`));
+runMonitor();
+setInterval(runMonitor, MONITOR_INTERVAL_MS);
+logger.info(`ElevenLabs monitor active (every ${MONITOR_INTERVAL_MS / 60_000} min)`);
