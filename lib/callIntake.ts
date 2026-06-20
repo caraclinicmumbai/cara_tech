@@ -7,6 +7,7 @@ import type { Call } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { statusFromOutcome } from "@/lib/contracts";
 import { scheduleCallAttempt, cancelScheduledCalls, retryDelaysDays, DAY_MS } from "@/lib/queue";
+import { nextEveningCallback } from "@/lib/callWindow";
 import { logger } from "@/lib/logger";
 
 // Outcomes that END the attempt ladder — the lead was reached and a decision
@@ -57,15 +58,33 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
   const unanswered = !RESOLVED_OUTCOMES.includes(input.outcome ?? "");
 
   let status = statusFromOutcome(input.outcome);
-  const leadData: { status: string; callbackAt?: Date } = { status };
+  const leadData: {
+    status: string;
+    callbackAt?: Date;
+    optedOut?: boolean;
+    optedOutAt?: Date;
+    optedOutReason?: string;
+  } = { status };
 
-  if (callbackAt) {
-    // Lead asked to be called back at a specific time (§3.1.2): cancel the
-    // remaining auto-retry ladder and schedule a single call at that time. The
-    // scheduler DND-adjusts it, so an out-of-hours request still respects TRAI.
+  if (input.outcome === "not_interested") {
+    // Hard opt-out (§3.1.10): the lead said they're not interested. Mark them,
+    // suppress ALL further outreach, and cancel any pending retries/callbacks.
+    status = "not_interested";
+    leadData.status = "not_interested";
+    leadData.optedOut = true;
+    leadData.optedOutAt = new Date();
+    leadData.optedOutReason = "Said not interested on AI call";
+    const canceled = await cancelScheduledCalls(lead.id);
+    logger.info(`Lead ${lead.id} opted out (not interested) — suppressed all outreach, canceled ${canceled} pending`);
+  } else if (input.outcome === "rescheduled" || callbackAt) {
+    // Lead asked to be called back (§3.1.2). If they named a time, honour it;
+    // a vague "call me back" with no time defaults to the evening callback hour
+    // (7 PM IST). Either way: cancel the auto-retry ladder and queue a single
+    // call at the target — DND-adjusted, so out-of-hours requests still comply.
+    const target = callbackAt ?? nextEveningCallback();
     status = "rescheduled";
     leadData.status = "rescheduled";
-    leadData.callbackAt = callbackAt;
+    leadData.callbackAt = target;
     const canceled = await cancelScheduledCalls(lead.id);
     try {
       await scheduleCallAttempt(
@@ -76,10 +95,10 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
           callType: "reconfirmation",
           context: input.transcript?.slice(0, 1000),
         },
-        callbackAt.getTime() - Date.now(),
+        target.getTime() - Date.now(),
       );
       logger.info(
-        `Lead ${lead.id} requested callback at ${callbackAt.toISOString()} — canceled ${canceled} pending attempt(s), scheduled (DND-adjusted)`,
+        `Lead ${lead.id} callback ${callbackAt ? "at requested time" : "(no time → evening 7 PM default)"} ${target.toISOString()} — canceled ${canceled} pending`,
       );
     } catch (err) {
       logger.error(`Failed to schedule callback for lead ${lead.id}: ${String(err)}`);

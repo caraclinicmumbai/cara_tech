@@ -18,8 +18,14 @@ model Lead {
   email         String?
   interest      String? // free-text clinic interest, e.g. "Hair treatment"
   source        String? // web_form | referral | manual | walk_in | facebook | instagram | google
-  status        String   @default("new") // new | manual_followup | called | confirmed | rescheduled | unreachable | lost
+  status        String   @default("new") // new | manual_followup | called | confirmed | rescheduled | unreachable | not_interested | lost
   interestLevel String? // high | medium | low — set by call outcome
+
+  // ── Opt-out / suppression (§3.1.10) — hard flag: once true, NO outreach (calls,
+  //    retries, callbacks) is allowed. Set on "not interested" or WhatsApp STOP. ──
+  optedOut       Boolean   @default(false)
+  optedOutAt     DateTime?
+  optedOutReason String?
 
   // ── Consent capture (§3.1.13) — for walk-in/front-desk, the iPad/written
   //    consent form is collected at the clinic BEFORE the record is created. ──

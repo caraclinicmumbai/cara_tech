@@ -65,6 +65,14 @@ export default async function LeadDetailPage({
           <Pill>{lead.status}</Pill>
         </div>
 
+        {lead.optedOut && (
+          <div className="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm">
+            🚫 <span className="font-medium">Opted out — all outreach suppressed.</span>
+            {lead.optedOutReason ? ` ${lead.optedOutReason}.` : ""}
+            {lead.optedOutAt ? ` (${lead.optedOutAt.toLocaleString()})` : ""}
+          </div>
+        )}
+
         {lead.duplicateOf && (
           <div className="rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm">
             ⚠️ <span className="font-medium">Possible duplicate</span> of an existing lead —{" "}

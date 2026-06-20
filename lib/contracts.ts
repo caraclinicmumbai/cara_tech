@@ -162,7 +162,7 @@ export function statusFromOutcome(outcome?: string): string {
     case "rescheduled":
       return "rescheduled";
     case "not_interested":
-      return "lost";
+      return "not_interested";
     default:
       return "called";
   }

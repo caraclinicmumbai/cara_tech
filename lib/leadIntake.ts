@@ -5,7 +5,7 @@
 import type { Lead } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { triggerOutboundCall } from "@/lib/n8n";
-import { scheduleCallAttempt } from "@/lib/queue";
+import { scheduleCallAttempt, cancelScheduledCalls } from "@/lib/queue";
 import { isWithinDnd } from "@/lib/callWindow";
 import { logger } from "@/lib/logger";
 
@@ -69,6 +69,27 @@ async function findDuplicateLead(phone: string, email?: string): Promise<Lead | 
   if (email) or.push({ email: { equals: email, mode: "insensitive" } });
   if (or.length === 0) return null;
   return prisma.lead.findFirst({ where: { OR: or }, orderBy: { createdAt: "asc" } });
+}
+
+/// Opt out every lead matching a phone (last 10 digits) and cancel their pending
+/// calls (§3.1.10). Used by the WhatsApp "STOP" handler and any opt-out trigger.
+/// Returns how many leads were suppressed.
+export async function optOutLeadsByPhone(phone: string, reason: string): Promise<number> {
+  const last10 = (phone.match(/\d/g)?.join("") ?? "").slice(-10);
+  if (last10.length < 7) return 0;
+  const leads = await prisma.lead.findMany({
+    where: { phone: { contains: last10 } },
+    select: { id: true },
+  });
+  for (const l of leads) {
+    await prisma.lead.update({
+      where: { id: l.id },
+      data: { optedOut: true, optedOutAt: new Date(), optedOutReason: reason },
+    });
+    await cancelScheduledCalls(l.id);
+  }
+  if (leads.length) logger.info(`Opted out ${leads.length} lead(s) by phone (${reason})`);
+  return leads.length;
 }
 
 export type IngestResult = {
