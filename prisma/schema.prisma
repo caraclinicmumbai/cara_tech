@@ -27,6 +27,13 @@ model Lead {
   optedOutAt     DateTime?
   optedOutReason String?
 
+  // ── Held for review (§3.1) — anti-spam: a burst of submissions from one IP
+  //    (>5 in 10 min) captures the lead but flags it for a human to vet before
+  //    any AI call fires. Held leads sit in the manual_followup queue. ──
+  heldForReview Boolean   @default(false)
+  heldAt        DateTime?
+  heldReason    String?
+
   // ── Consent capture (§3.1.13) — for walk-in/front-desk, the iPad/written
   //    consent form is collected at the clinic BEFORE the record is created. ──
   consentMethod String? // ipad | written (null for digital sources that consent differently)
@@ -58,6 +65,7 @@ model Lead {
   @@index([source])
   @@index([externalId])
   @@index([duplicateOfId])
+  @@index([heldForReview])
 }
 
 /// A single AI voice call placed against a Lead (§6.2).

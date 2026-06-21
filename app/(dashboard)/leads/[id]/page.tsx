@@ -73,6 +73,14 @@ export default async function LeadDetailPage({
           </div>
         )}
 
+        {lead.heldForReview && (
+          <div className="rounded border border-orange-500/50 bg-orange-500/10 px-3 py-2 text-sm">
+            🛑 <span className="font-medium">Held for review</span> — no AI call was placed.
+            {lead.heldReason ? ` ${lead.heldReason}.` : ""}
+            {lead.heldAt ? ` (${lead.heldAt.toLocaleString()})` : ""} Vet this lead before contacting.
+          </div>
+        )}
+
         {lead.duplicateOf && (
           <div className="rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm">
             ⚠️ <span className="font-medium">Possible duplicate</span> of an existing lead —{" "}

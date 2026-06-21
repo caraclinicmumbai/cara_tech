@@ -72,6 +72,14 @@ export default async function LeadsPage() {
                         opted out
                       </span>
                     )}
+                    {lead.heldForReview && (
+                      <span
+                        title="Held for review — submission burst from one IP, no AI call"
+                        className="ml-2 rounded-full bg-orange-500/15 px-2 py-0.5 text-xs text-orange-700 dark:text-orange-400"
+                      >
+                        review
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2">{lead.phone}</td>
                   <td className="px-3 py-2">

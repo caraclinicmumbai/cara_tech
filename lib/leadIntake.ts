@@ -32,6 +32,10 @@ export type NormalizedLead = {
   consentMethod?: "ipad" | "written";
   consentAt?: Date;
   consentBy?: string;
+  /// Anti-spam hold (§3.1): a burst of submissions from one IP. The lead is
+  /// still captured but routed to manual review and never auto-called.
+  heldForReview?: boolean;
+  heldReason?: string;
 };
 
 /// Sources that must NEVER trigger an automated AI call (§3.1.2 exceptions):
@@ -125,7 +129,8 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
   // Walk-in/front-desk leads go straight to the manual follow-up queue —
   // a human is already with the patient, so there's no AI cold-call (§3.1.2).
   const neverCall = isNeverAutoCall(input.source);
-  const manualQueue = neverCall || !!dup;
+  const held = !!input.heldForReview;
+  const manualQueue = neverCall || !!dup || held;
 
   const lead = await prisma.lead.create({
     data: {
@@ -136,6 +141,9 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
       source: input.source,
       status: manualQueue ? "manual_followup" : "new",
       duplicateOfId: dup?.id,
+      heldForReview: held,
+      heldAt: held ? new Date() : undefined,
+      heldReason: held ? input.heldReason : undefined,
       externalId: input.externalId,
       campaign: input.campaign,
       adId: input.adId,
@@ -152,6 +160,13 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
   }
 
   logger.info(`Lead created ${lead.id} via ${input.source}`);
+
+  // Held for review (§3.1) — submission burst from one IP. Captured, flagged for
+  // a human to vet, and never auto-called until they clear it.
+  if (held) {
+    logger.warn(`Lead ${lead.id} held for review (${input.heldReason ?? "flagged"}) — no AI call`);
+    return { lead, deduped: false };
+  }
 
   // Hard no-call source (walk-in/front-desk) — captured, never auto-dialed.
   if (neverCall) {
