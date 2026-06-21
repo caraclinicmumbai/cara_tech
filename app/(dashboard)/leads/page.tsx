@@ -44,6 +44,7 @@ export default async function LeadsPage() {
                 <th className="px-3 py-2">Name</th>
                 <th className="px-3 py-2">Phone</th>
                 <th className="px-3 py-2">Source</th>
+                <th className="px-3 py-2">Campaign</th>
                 <th className="px-3 py-2">Interest</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Calls</th>
@@ -85,6 +86,13 @@ export default async function LeadsPage() {
                   <td className="px-3 py-2">
                     <SourceBadge source={lead.source} />
                   </td>
+                  <td className="px-3 py-2">
+                    {lead.campaign ? (
+                      <span title={lead.adId ? `Ad: ${lead.adId}` : undefined}>{lead.campaign}</span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="px-3 py-2">{lead.interest ?? "—"}</td>
                   <td className="px-3 py-2">{lead.status}</td>
                   <td className="px-3 py-2">{lead._count.calls}</td>
@@ -92,7 +100,7 @@ export default async function LeadsPage() {
               ))}
               {leads.length === 0 && (
                 <tr>
-                  <td className="px-3 py-6 text-center text-black/50" colSpan={6}>
+                  <td className="px-3 py-6 text-center text-black/50" colSpan={7}>
                     No leads yet.
                   </td>
                 </tr>
