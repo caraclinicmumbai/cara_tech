@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { StageSelect } from "@/components/StageSelect";
+import { TagField } from "@/components/TagField";
 
 export const dynamic = "force-dynamic";
 
@@ -60,10 +62,27 @@ export default async function LeadDetailPage({
       </div>
 
       <section className="space-y-4">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-xl font-semibold">{lead.name}</h1>
           <Pill>{lead.status}</Pill>
+          <StageSelect leadId={lead.id} stage={lead.stage} />
         </div>
+
+        {lead.optedOut && (
+          <div className="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm">
+            🚫 <span className="font-medium">Opted out — all outreach suppressed.</span>
+            {lead.optedOutReason ? ` ${lead.optedOutReason}.` : ""}
+            {lead.optedOutAt ? ` (${lead.optedOutAt.toLocaleString()})` : ""}
+          </div>
+        )}
+
+        {lead.heldForReview && (
+          <div className="rounded border border-orange-500/50 bg-orange-500/10 px-3 py-2 text-sm">
+            🛑 <span className="font-medium">Held for review</span> — no AI call was placed.
+            {lead.heldReason ? ` ${lead.heldReason}.` : ""}
+            {lead.heldAt ? ` (${lead.heldAt.toLocaleString()})` : ""} Vet this lead before contacting.
+          </div>
+        )}
 
         {lead.duplicateOf && (
           <div className="rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm">
@@ -105,6 +124,10 @@ export default async function LeadDetailPage({
           />
           <Field label="Interest" value={lead.interest} />
           <Field label="Interest level" value={lead.interestLevel} />
+          <Field
+            label="Tag (asked for)"
+            value={<TagField leadId={lead.id} tag={lead.tag} className="px-0" />}
+          />
           <Field label="Campaign" value={lead.campaign} />
           <Field label="Ad ID" value={lead.adId} />
           <Field

@@ -18,8 +18,29 @@ model Lead {
   email         String?
   interest      String? // free-text clinic interest, e.g. "Hair treatment"
   source        String? // web_form | referral | manual | walk_in | facebook | instagram | google
-  status        String   @default("new") // new | manual_followup | called | confirmed | rescheduled | unreachable | lost
+  status        String   @default("new") // new | manual_followup | called | confirmed | rescheduled | unreachable | not_interested | lost
   interestLevel String? // high | medium | low — set by call outcome
+
+  // ── Sales pipeline stage (human-facing, §3.1) — distinct from `status` (the
+  //    internal automation state). Auto-advanced FORWARD-ONLY by call outcomes
+  //    and editable by staff. Keys in lib/leadStages.ts. ──
+  stage String @default("fresh_inquiry") // fresh_inquiry | communication_not_established | in_consideration | appointment_scheduled | consultation_done | existing_followup
+  // What the lead asked for in the call (e.g. "Hair transplant") — AI-filled from
+  // the post-call write-back, staff-editable. Free text.
+  tag   String?
+
+  // ── Opt-out / suppression (§3.1.10) — hard flag: once true, NO outreach (calls,
+  //    retries, callbacks) is allowed. Set on "not interested" or WhatsApp STOP. ──
+  optedOut       Boolean   @default(false)
+  optedOutAt     DateTime?
+  optedOutReason String?
+
+  // ── Held for review (§3.1) — anti-spam: a burst of submissions from one IP
+  //    (>5 in 10 min) captures the lead but flags it for a human to vet before
+  //    any AI call fires. Held leads sit in the manual_followup queue. ──
+  heldForReview Boolean   @default(false)
+  heldAt        DateTime?
+  heldReason    String?
 
   // ── Consent capture (§3.1.13) — for walk-in/front-desk, the iPad/written
   //    consent form is collected at the clinic BEFORE the record is created. ──
@@ -52,6 +73,8 @@ model Lead {
   @@index([source])
   @@index([externalId])
   @@index([duplicateOfId])
+  @@index([heldForReview])
+  @@index([stage])
 }
 
 /// A single AI voice call placed against a Lead (§6.2).

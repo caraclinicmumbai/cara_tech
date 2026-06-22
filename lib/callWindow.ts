@@ -63,3 +63,26 @@ export function permittedDelayMs(now: Date, baseDelayMs: number): number {
   const target = nextPermittedTime(new Date(now.getTime() + baseDelayMs));
   return Math.max(0, target.getTime() - now.getTime());
 }
+
+// Default hour (IST) for a generic "call me back" with no specific time given.
+const CALLBACK_HOUR = Number(process.env.CALLBACK_HOUR ?? 19); // 7 PM
+
+/// When a lead asks for a callback without naming a time, schedule it for the
+/// next CALLBACK_HOUR (default 19:00 IST) — today if it's still upcoming, else
+/// tomorrow. These batch into the call queue and release FIFO at that hour, just
+/// like DND-held leads release at 10:00.
+export function nextEveningCallback(d: Date = new Date()): Date {
+  const { year, month, day, hour } = istParts(d);
+  let y = year,
+    m = month,
+    dd = day;
+  if (hour >= CALLBACK_HOUR) {
+    const t = new Date(Date.UTC(year, month - 1, day));
+    t.setUTCDate(t.getUTCDate() + 1);
+    y = t.getUTCFullYear();
+    m = t.getUTCMonth() + 1;
+    dd = t.getUTCDate();
+  }
+  const utcMs = Date.UTC(y, m - 1, dd, CALLBACK_HOUR, 0) - IST_OFFSET_MIN * 60_000;
+  return new Date(utcMs);
+}

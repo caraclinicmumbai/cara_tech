@@ -7,10 +7,14 @@ import { ingestLead } from "@/lib/leadIntake";
 import { logger } from "@/lib/logger";
 import { rateLimit, getClientIp } from "@/lib/rateLimit";
 
-// Public form → each accepted submission can trigger a paid outbound call, so
-// cap how often one IP can submit. Generous for humans, throttling for bots.
-const RL_MAX = 5;
-const RL_WINDOW_SECONDS = 600; // 5 submissions / 10 minutes / IP
+// Public form → each accepted submission can trigger a paid outbound call.
+// Two thresholds over one rolling per-IP window (§3.1):
+//  • >5 submissions / 10 min → still captured, but HELD FOR REVIEW (no AI call)
+//    so a human vets the burst instead of us dropping a possibly-real lead.
+//  • >ABUSE_MAX → a genuine flood; reject outright to stop DB write-spam.
+const RL_HOLD_THRESHOLD = 5; // hold the 6th+ submission for review
+const RL_ABUSE_MAX = 50; // hard reject beyond this — clearly not a human
+const RL_WINDOW_SECONDS = 600; // 10 minutes / IP
 
 function originAllowed(req: Request): boolean {
   const allow = process.env.WEB_FORM_ALLOWED_ORIGINS;
@@ -29,13 +33,20 @@ export async function POST(req: Request) {
   }
 
   const ip = getClientIp(req);
-  const rl = await rateLimit(`web-form:${ip}`, RL_MAX, RL_WINDOW_SECONDS);
+  const rl = await rateLimit(`web-form:${ip}`, RL_ABUSE_MAX, RL_WINDOW_SECONDS);
+  // Reject only a genuine flood; otherwise capture and (maybe) hold for review.
   if (!rl.ok) {
-    logger.warn(`Web form rate limit hit for ip=${ip}`);
+    logger.warn(`Web form abuse ceiling hit for ip=${ip} — rejecting`);
     return NextResponse.json(
       { error: "Too many requests" },
       { status: 429, headers: { "Retry-After": String(rl.resetSeconds) } },
     );
+  }
+  // count so far in this window = limit − remaining (exact while remaining > 0).
+  const count = rl.limit - rl.remaining;
+  const heldForReview = count > RL_HOLD_THRESHOLD;
+  if (heldForReview) {
+    logger.warn(`Web form burst from ip=${ip} (${count}/${RL_WINDOW_SECONDS}s) — holding lead for review`);
   }
 
   const body = await req.json().catch(() => null);
@@ -59,6 +70,10 @@ export async function POST(req: Request) {
     email: parsed.data.email,
     interest: parsed.data.interest,
     source: "web_form",
+    heldForReview,
+    heldReason: heldForReview
+      ? `IP throttle: >${RL_HOLD_THRESHOLD} submissions in 10 min from ${ip}`
+      : undefined,
   });
 
   return NextResponse.json({ leadId: lead.id, deduped }, { status: deduped ? 200 : 201 });

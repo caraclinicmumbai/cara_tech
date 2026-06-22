@@ -13,6 +13,7 @@ import {
 import { isWithinDnd } from "@/lib/callWindow";
 import { triggerOutboundCall } from "@/lib/n8n";
 import { monitorElevenLabs } from "@/lib/providers/elevenlabsHealth";
+import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
 // Caps how many calls we initiate in parallel — the morning backlog of held
@@ -26,6 +27,13 @@ const worker = new Worker<CallAttemptJob>(
   CALL_ATTEMPT_QUEUE,
   async (job) => {
     const { leadId, phone, context, attempt, callType } = job.data;
+
+    // Opt-out gate (§3.1.10): never call a lead who opted out / said not interested.
+    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { optedOut: true } });
+    if (lead?.optedOut) {
+      logger.info(`Lead ${leadId} opted out — suppressing scheduled call (attempt ${attempt})`);
+      return { suppressed: true, leadId, attempt };
+    }
 
     // Safety net: if this fires inside the DND window (e.g. worker was down past
     // the window opening), defer to the next permitted time instead of calling.

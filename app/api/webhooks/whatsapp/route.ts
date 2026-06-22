@@ -8,6 +8,7 @@
 // flows is the next step.
 import { NextResponse } from "next/server";
 import { verifyMetaSignature } from "@/lib/providers/meta";
+import { optOutLeadsByPhone } from "@/lib/leadIntake";
 import { logger } from "@/lib/logger";
 
 const OPT_OUT_KEYWORDS = ["stop", "stop messages", "unsubscribe"];
@@ -49,7 +50,9 @@ export async function POST(req: Request) {
           const text = (msg.text?.body ?? msg.button?.text ?? "").trim();
           const norm = text.toLowerCase();
           if (OPT_OUT_KEYWORDS.includes(norm)) {
-            logger.warn(`WhatsApp OPT-OUT from ${from}: "${text}" (TODO: persist opt-out flag)`);
+            // Hard opt-out (§3.1.10): suppress all outreach for this number.
+            const n = await optOutLeadsByPhone(from, `WhatsApp opt-out ("${text}")`);
+            logger.warn(`WhatsApp OPT-OUT from ${from}: "${text}" — suppressed ${n} lead(s)`);
           } else if (CONSENT_KEYWORDS.includes(norm)) {
             logger.info(`WhatsApp CONSENT "YES" from ${from} (TODO: confirm + trigger call)`);
           } else {
