@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { StageSelect } from "@/components/StageSelect";
+import { TagField } from "@/components/TagField";
 
 export const dynamic = "force-dynamic";
 
@@ -60,9 +62,10 @@ export default async function LeadDetailPage({
       </div>
 
       <section className="space-y-4">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-xl font-semibold">{lead.name}</h1>
           <Pill>{lead.status}</Pill>
+          <StageSelect leadId={lead.id} stage={lead.stage} />
         </div>
 
         {lead.optedOut && (
@@ -121,6 +124,10 @@ export default async function LeadDetailPage({
           />
           <Field label="Interest" value={lead.interest} />
           <Field label="Interest level" value={lead.interestLevel} />
+          <Field
+            label="Tag (asked for)"
+            value={<TagField leadId={lead.id} tag={lead.tag} className="px-0" />}
+          />
           <Field label="Campaign" value={lead.campaign} />
           <Field label="Ad ID" value={lead.adId} />
           <Field

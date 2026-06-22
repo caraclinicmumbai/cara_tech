@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { statusFromOutcome } from "@/lib/contracts";
 import { scheduleCallAttempt, cancelScheduledCalls, retryDelaysDays, DAY_MS } from "@/lib/queue";
 import { nextEveningCallback } from "@/lib/callWindow";
+import { stageFromOutcome, advanceStage } from "@/lib/leadStages";
 import { logger } from "@/lib/logger";
 
 // Outcomes that END the attempt ladder — the lead was reached and a decision
@@ -30,6 +31,8 @@ export type RecordCallInput = {
   duration?: number;
   /// ISO datetime the lead asked to be called back (§3.1.2).
   callbackAt?: string;
+  /// What the lead asked for in the call → stored as the lead's tag (§3.1).
+  tag?: string;
 };
 
 export type RecordCallResult =
@@ -64,7 +67,19 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     optedOut?: boolean;
     optedOutAt?: Date;
     optedOutReason?: string;
+    stage?: string;
+    tag?: string;
   } = { status };
+
+  // Pipeline stage: auto-advance FORWARD-ONLY from the call outcome so we never
+  // regress a stage staff (or an earlier, further-along call) already set (§3.1).
+  const nextStage = advanceStage(lead.stage, stageFromOutcome(input.outcome));
+  if (nextStage) leadData.stage = nextStage;
+
+  // Tag: what the lead asked for, as captured by the AI. Only overwrite when the
+  // call actually carried one — an empty extraction shouldn't wipe a manual tag.
+  const tag = input.tag?.trim();
+  if (tag) leadData.tag = tag;
 
   if (input.outcome === "not_interested") {
     // Hard opt-out (§3.1.10): the lead said they're not interested. Mark them,

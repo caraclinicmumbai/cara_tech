@@ -151,6 +151,9 @@ export const writeCallSchema = z.object({
   /// ISO datetime the lead asked to be called back (§3.1.2). When present we
   /// cancel remaining auto-retries and schedule a call at this time.
   callbackAt: z.string().optional(),
+  /// What the lead asked for in the call (e.g. "Hair transplant") — stored as
+  /// the lead's tag. Staff can override it in the dashboard afterwards.
+  tag: z.string().optional(),
 });
 export type WriteCallInput = z.infer<typeof writeCallSchema>;
 

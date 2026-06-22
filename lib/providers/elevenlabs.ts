@@ -144,5 +144,12 @@ export function mapElevenLabsPostCall(payload: PostCall): RecordCallInput | null
     duration: data.metadata?.call_duration_secs,
     // ISO datetime the agent captured when the lead requested a callback (§3.1.2).
     callbackAt: collected.callback_time?.value,
+    // What the lead asked for (e.g. "Hair transplant") → the lead's tag (§3.1).
+    // Accept whichever data-collection key the agent uses for the service/ask.
+    tag:
+      collected.tag?.value ??
+      collected.requested_service?.value ??
+      collected.service?.value ??
+      collected.interest?.value,
   };
 }

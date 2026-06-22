@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { LeadForm } from "@/components/LeadForm";
+import { StageSelect } from "@/components/StageSelect";
+import { TagField } from "@/components/TagField";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +47,8 @@ export default async function LeadsPage() {
                 <th className="px-3 py-2">Phone</th>
                 <th className="px-3 py-2">Source</th>
                 <th className="px-3 py-2">Campaign</th>
+                <th className="px-3 py-2">Stage</th>
+                <th className="px-3 py-2">Tag</th>
                 <th className="px-3 py-2">Interest</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Calls</th>
@@ -93,6 +97,12 @@ export default async function LeadsPage() {
                       "—"
                     )}
                   </td>
+                  <td className="px-3 py-2">
+                    <StageSelect leadId={lead.id} stage={lead.stage} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <TagField leadId={lead.id} tag={lead.tag} />
+                  </td>
                   <td className="px-3 py-2">{lead.interest ?? "—"}</td>
                   <td className="px-3 py-2">{lead.status}</td>
                   <td className="px-3 py-2">{lead._count.calls}</td>
@@ -100,7 +110,7 @@ export default async function LeadsPage() {
               ))}
               {leads.length === 0 && (
                 <tr>
-                  <td className="px-3 py-6 text-center text-black/50" colSpan={7}>
+                  <td className="px-3 py-6 text-center text-black/50" colSpan={9}>
                     No leads yet.
                   </td>
                 </tr>
