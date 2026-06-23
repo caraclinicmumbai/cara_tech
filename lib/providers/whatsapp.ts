@@ -28,12 +28,16 @@ function normalizeNumber(phone: string): string {
   return phone.replace(/[^\d]/g, "");
 }
 
-async function postMessage(payload: Record<string, unknown>): Promise<boolean> {
+export type WhatsAppSendResult =
+  | { ok: true; waId: string }
+  | { ok: false; error: string };
+
+async function postMessage(payload: Record<string, unknown>): Promise<WhatsAppSendResult> {
   const token = process.env.WHATSAPP_TOKEN;
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   if (!token || !phoneId) {
     logger.warn("WhatsApp not configured (WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID) — skipping send");
-    return false;
+    return { ok: false, error: "WhatsApp not configured" };
   }
 
   try {
@@ -45,15 +49,15 @@ async function postMessage(payload: Record<string, unknown>): Promise<boolean> {
     const id = res.data?.messages?.[0]?.id;
     if (!id) {
       logger.error(`WhatsApp send returned no message id: ${JSON.stringify(res.data)}`);
-      return false;
+      return { ok: false, error: "No message id returned" };
     }
-    return true;
+    return { ok: true, waId: id };
   } catch (err) {
     const detail = axios.isAxiosError(err)
       ? JSON.stringify(err.response?.data ?? err.message)
       : String(err);
     logger.error(`WhatsApp send failed: ${detail}`);
-    return false;
+    return { ok: false, error: detail };
   }
 }
 
@@ -65,7 +69,7 @@ export async function sendWhatsAppTemplate(
   templateName: string,
   languageCode = "en_US",
   components?: unknown[],
-): Promise<boolean> {
+): Promise<WhatsAppSendResult> {
   return postMessage({
     to: normalizeNumber(to),
     type: "template",
@@ -79,6 +83,6 @@ export async function sendWhatsAppTemplate(
 
 /// Send free-form text — ONLY valid inside the 24h customer-service window
 /// (i.e. the lead messaged us within the last 24h). Otherwise Meta rejects it.
-export async function sendWhatsAppText(to: string, body: string): Promise<boolean> {
+export async function sendWhatsAppText(to: string, body: string): Promise<WhatsAppSendResult> {
   return postMessage({ to: normalizeNumber(to), type: "text", text: { preview_url: false, body } });
 }

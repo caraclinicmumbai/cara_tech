@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
-import { LEAD_STAGES, STAGE_LABELS } from "@/lib/leadStages";
+import { LEAD_STAGES, STAGE_LABELS, LOST_STAGE } from "@/lib/leadStages";
 import { setLeadStage } from "@/app/(dashboard)/leads/actions";
 
 // Inline pipeline-stage dropdown. Saves on change via the setLeadStage action;
@@ -24,6 +24,17 @@ export function StageSelect({
       disabled={pending}
       onChange={(e) => {
         const next = e.target.value;
+        if (next === stage) return;
+        // Marking a lead lost requires a reason. Cancelling/empty leaves the
+        // stage unchanged — the controlled <select> snaps back to `stage`.
+        if (next === LOST_STAGE) {
+          const reason = window.prompt("Why was this lead lost? (required)")?.trim();
+          if (!reason) return;
+          startTransition(() => {
+            void setLeadStage(leadId, next, reason);
+          });
+          return;
+        }
         startTransition(() => {
           void setLeadStage(leadId, next);
         });

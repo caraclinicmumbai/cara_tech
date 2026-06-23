@@ -24,10 +24,15 @@ model Lead {
   // ── Sales pipeline stage (human-facing, §3.1) — distinct from `status` (the
   //    internal automation state). Auto-advanced FORWARD-ONLY by call outcomes
   //    and editable by staff. Keys in lib/leadStages.ts. ──
-  stage String @default("fresh_inquiry") // fresh_inquiry | communication_not_established | in_consideration | appointment_scheduled | consultation_done | existing_followup
+  stage String @default("fresh_inquiry") // fresh_inquiry | communication_not_established | in_consideration | appointment_scheduled | consultation_done | existing_followup | converted_followup | converted | lost
   // What the lead asked for in the call (e.g. "Hair transplant") — AI-filled from
   // the post-call write-back, staff-editable. Free text.
   tag   String?
+
+  // ── Lost (§3.1) — when staff manually move the stage to "lost" they MUST give a
+  //    reason; captured here for win/loss analysis. Cleared if reactivated. ──
+  lostReason String?
+  lostAt     DateTime?
 
   // ── Opt-out / suppression (§3.1.10) — hard flag: once true, NO outreach (calls,
   //    retries, callbacks) is allowed. Set on "not interested" or WhatsApp STOP. ──
@@ -66,7 +71,8 @@ model Lead {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  calls Call[]
+  calls    Call[]
+  messages Message[]
 
   @@index([status])
   @@index([phone])
@@ -75,6 +81,32 @@ model Lead {
   @@index([duplicateOfId])
   @@index([heldForReview])
   @@index([stage])
+}
+
+/// A single WhatsApp message exchanged with a lead (§3.1.3). Both automated
+/// (system/AI-sent) and manual (agent-sent) messages, plus every inbound reply,
+/// are stored here so the lead profile shows ONE continuous thread on ONE number
+/// — any agent can pick up where the last left off (continuity across turnover).
+model Message {
+  id           String   @id @default(cuid())
+  leadId       String
+  lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  channel      String   @default("whatsapp") // whatsapp (room for sms/etc. later)
+  direction    String // inbound | outbound
+  waId         String?  @unique // Meta wamid — dedups inbound retries + links status updates
+  type         String   @default("text") // text | template | image | document | audio | video | button | interactive
+  body         String? // text/caption, or a short summary for non-text types
+  mediaId      String? // Meta media id (download via Graph API — Phase 2)
+  mediaUrl     String? // stored/resolved media URL once downloaded
+  templateName String? // outbound template name (type=template)
+  status       String? // outbound: queued|sent|delivered|read|failed ; inbound: received
+  error        String? // failure detail (status=failed)
+  automated    Boolean  @default(false) // true = system/AI-sent; false = manual agent / inbound
+  sentBy       String? // agent email for manual outbound; null for inbound/automated
+  createdAt    DateTime @default(now())
+
+  @@index([leadId, createdAt])
+  @@index([status])
 }
 
 /// A single AI voice call placed against a Lead (§6.2).

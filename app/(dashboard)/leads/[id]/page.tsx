@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { StageSelect } from "@/components/StageSelect";
 import { TagField } from "@/components/TagField";
+import { WhatsAppChat } from "@/components/WhatsAppChat";
+import { isServiceWindowOpen } from "@/lib/messages";
 
 export const dynamic = "force-dynamic";
 
@@ -48,10 +50,13 @@ export default async function LeadDetailPage({
       calls: { orderBy: { createdAt: "desc" } },
       duplicateOf: true,
       duplicates: { orderBy: { createdAt: "desc" } },
+      messages: { orderBy: { createdAt: "asc" } },
     },
   });
 
   if (!lead) notFound();
+
+  const windowOpen = await isServiceWindowOpen(lead.id);
 
   return (
     <div className="space-y-8">
@@ -73,6 +78,14 @@ export default async function LeadDetailPage({
             🚫 <span className="font-medium">Opted out — all outreach suppressed.</span>
             {lead.optedOutReason ? ` ${lead.optedOutReason}.` : ""}
             {lead.optedOutAt ? ` (${lead.optedOutAt.toLocaleString()})` : ""}
+          </div>
+        )}
+
+        {lead.stage === "lost" && (
+          <div className="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm">
+            ❌ <span className="font-medium">Marked lost.</span>
+            {lead.lostReason ? ` Reason: ${lead.lostReason}.` : ""}
+            {lead.lostAt ? ` (${lead.lostAt.toLocaleString()})` : ""}
           </div>
         )}
 
@@ -137,6 +150,36 @@ export default async function LeadDetailPage({
           <Field label="Created" value={lead.createdAt.toLocaleString()} />
           <Field label="Updated" value={lead.updatedAt.toLocaleString()} />
         </dl>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold">WhatsApp</h2>
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs ${
+              windowOpen
+                ? "bg-green-600/15 text-green-700 dark:text-green-400"
+                : "bg-black/5 text-black/50 dark:bg-white/10 dark:text-white/50"
+            }`}
+          >
+            {windowOpen ? "24h window open" : "window closed"}
+          </span>
+        </div>
+        <WhatsAppChat
+          leadId={lead.id}
+          windowOpen={windowOpen}
+          optedOut={lead.optedOut}
+          messages={lead.messages.map((m) => ({
+            id: m.id,
+            direction: m.direction,
+            type: m.type,
+            body: m.body,
+            status: m.status,
+            sentBy: m.sentBy,
+            automated: m.automated,
+            createdAt: m.createdAt.toISOString(),
+          }))}
+        />
       </section>
 
       <section className="space-y-4">
