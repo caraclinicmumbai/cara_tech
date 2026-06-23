@@ -11,6 +11,9 @@ export const LEAD_STAGES = [
   "appointment_scheduled",
   "consultation_done",
   "existing_followup",
+  "converted_followup",
+  "converted",
+  "lost",
 ] as const;
 
 export type LeadStage = (typeof LEAD_STAGES)[number];
@@ -22,7 +25,13 @@ export const STAGE_LABELS: Record<LeadStage, string> = {
   appointment_scheduled: "Appointment scheduled",
   consultation_done: "Consultation done",
   existing_followup: "Existing + follow up",
+  converted_followup: "Converted + follow up",
+  converted: "Converted",
+  lost: "Lost",
 };
+
+/// "Lost" requires staff to record why. Auto-advance never reaches it.
+export const LOST_STAGE: LeadStage = "lost";
 
 export const DEFAULT_STAGE: LeadStage = "fresh_inquiry";
 

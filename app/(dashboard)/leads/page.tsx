@@ -40,24 +40,26 @@ export default async function LeadsPage() {
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">Leads ({leads.length})</h2>
         <div className="overflow-x-auto rounded border border-black/10 dark:border-white/15">
-          <table className="w-full text-sm">
+          <table className="min-w-full text-sm">
             <thead className="bg-black/5 dark:bg-white/10 text-left">
               <tr>
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2">Phone</th>
-                <th className="px-3 py-2">Source</th>
-                <th className="px-3 py-2">Campaign</th>
-                <th className="px-3 py-2">Stage</th>
-                <th className="px-3 py-2">Tag</th>
-                <th className="px-3 py-2">Interest</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Calls</th>
+                <th className="sticky left-0 z-20 whitespace-nowrap border-r border-black/10 bg-background px-4 py-2 dark:border-white/15">
+                  Name
+                </th>
+                <th className="whitespace-nowrap px-4 py-2">Phone</th>
+                <th className="whitespace-nowrap px-4 py-2">Source</th>
+                <th className="whitespace-nowrap px-4 py-2">Campaign</th>
+                <th className="whitespace-nowrap px-4 py-2">Stage</th>
+                <th className="whitespace-nowrap px-4 py-2">Tag</th>
+                <th className="whitespace-nowrap px-4 py-2">Interest</th>
+                <th className="whitespace-nowrap px-4 py-2">Status</th>
+                <th className="whitespace-nowrap px-4 py-2">Calls</th>
               </tr>
             </thead>
             <tbody>
               {leads.map((lead) => (
                 <tr key={lead.id} className="border-t border-black/5 dark:border-white/10">
-                  <td className="px-3 py-2">
+                  <td className="sticky left-0 z-10 whitespace-nowrap border-r border-black/5 bg-background px-4 py-2 dark:border-white/10">
                     <Link href={`/leads/${lead.id}`} className="font-medium hover:underline">
                       {lead.name}
                     </Link>
@@ -86,26 +88,26 @@ export default async function LeadsPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2">{lead.phone}</td>
-                  <td className="px-3 py-2">
+                  <td className="whitespace-nowrap px-4 py-2">{lead.phone}</td>
+                  <td className="whitespace-nowrap px-4 py-2">
                     <SourceBadge source={lead.source} />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="whitespace-nowrap px-4 py-2">
                     {lead.campaign ? (
                       <span title={lead.adId ? `Ad: ${lead.adId}` : undefined}>{lead.campaign}</span>
                     ) : (
                       "—"
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="whitespace-nowrap px-4 py-2">
                     <StageSelect leadId={lead.id} stage={lead.stage} />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="whitespace-nowrap px-4 py-2">
                     <TagField leadId={lead.id} tag={lead.tag} />
                   </td>
-                  <td className="px-3 py-2">{lead.interest ?? "—"}</td>
-                  <td className="px-3 py-2">{lead.status}</td>
-                  <td className="px-3 py-2">{lead._count.calls}</td>
+                  <td className="whitespace-nowrap px-4 py-2">{lead.interest ?? "—"}</td>
+                  <td className="whitespace-nowrap px-4 py-2">{lead.status}</td>
+                  <td className="whitespace-nowrap px-4 py-2">{lead._count.calls}</td>
                 </tr>
               ))}
               {leads.length === 0 && (
