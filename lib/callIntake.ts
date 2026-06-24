@@ -10,6 +10,7 @@ import { scheduleCallAttempt, cancelScheduledCalls, retryDelaysDays, DAY_MS } fr
 import { nextEveningCallback } from "@/lib/callWindow";
 import { stageFromOutcome, advanceStage } from "@/lib/leadStages";
 import { evaluateHandover, notifyHandover } from "@/lib/handover";
+import { sendAutomatedTemplate, outreachTemplate, firstName, istTime } from "@/lib/outreach";
 import { logger } from "@/lib/logger";
 
 // Outcomes that END the attempt ladder — the lead was reached and a decision
@@ -99,6 +100,11 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
   const tag = input.tag?.trim();
   if (tag) leadData.tag = tag;
 
+  // Automated WhatsApp outreach (§3.1.3) — set during the branch below, fired
+  // after the lead is persisted. Each is OFF unless its template env is set.
+  let becameUnreachable = false;
+  let callbackTimeStr: string | null = null;
+
   if (input.outcome === "not_interested") {
     // Hard opt-out (§3.1.10): the lead said they're not interested. Mark them,
     // suppress ALL further outreach, and cancel any pending retries/callbacks.
@@ -133,6 +139,7 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     status = "rescheduled";
     leadData.status = "rescheduled";
     leadData.callbackAt = target;
+    callbackTimeStr = istTime(target);
     const canceled = await cancelScheduledCalls(lead.id);
     try {
       await scheduleCallAttempt(
@@ -178,11 +185,25 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
       // Exhausted all attempts with no answer — mark unreachable (fallback queue).
       status = "unreachable";
       leadData.status = "unreachable";
+      becameUnreachable = true;
       logger.info(`Lead ${lead.id} unreachable after ${attemptNumber} attempts`);
     }
   }
 
   await prisma.lead.update({ where: { id: lead.id }, data: leadData });
+
+  // Automated WhatsApp outreach (§3.1.3) — best-effort, each gated by its env
+  // template (unset = off). Skipped automatically when the lead has opted out.
+  const fn = firstName(lead.name);
+  if (input.outcome === "confirmed") {
+    await sendAutomatedTemplate(lead.id, outreachTemplate.confirmed(), [fn]);
+  }
+  if (becameUnreachable) {
+    await sendAutomatedTemplate(lead.id, outreachTemplate.unreachable(), [fn]);
+  }
+  if (callbackTimeStr) {
+    await sendAutomatedTemplate(lead.id, outreachTemplate.callback(), [fn, callbackTimeStr]);
+  }
 
   logger.info(
     `Recorded ${input.callType} call ${call.id} for lead ${lead.id} (attempt ${attemptNumber}, status=${status})`,
