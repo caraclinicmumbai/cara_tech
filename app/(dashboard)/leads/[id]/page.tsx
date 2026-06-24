@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { StageSelect } from "@/components/StageSelect";
 import { TagField } from "@/components/TagField";
 import { WhatsAppChat } from "@/components/WhatsAppChat";
+import { CallButton } from "@/components/CallButton";
 import { isServiceWindowOpen } from "@/lib/messages";
 
 export const dynamic = "force-dynamic";
@@ -90,6 +91,10 @@ export default async function LeadDetailPage({
             {lead.assignedRep ? ` Assigned to ${lead.assignedRep.name}.` : ""}
             {lead.handoverAt ? ` (${lead.handoverAt.toLocaleString()})` : ""}
           </div>
+        )}
+
+        {lead.assignedRep && (
+          <CallButton leadId={lead.id} repName={lead.assignedRep.name} />
         )}
 
         {lead.stage === "lost" && (
@@ -217,6 +222,15 @@ export default async function LeadDetailPage({
                     {call.createdAt.toLocaleString()}
                   </span>
                 </div>
+
+                {call.recordingUrl && (
+                  <audio
+                    controls
+                    preload="none"
+                    className="mt-3 w-full"
+                    src={`/api/twilio/recording/${call.id}`}
+                  />
+                )}
 
                 {call.transcript ? (
                   <details className="mt-3 group">
