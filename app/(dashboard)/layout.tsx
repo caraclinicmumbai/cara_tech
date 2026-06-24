@@ -26,6 +26,9 @@ export default async function DashboardLayout({
           <Link href="/calls" className="text-sm hover:underline">
             Calls
           </Link>
+          <Link href="/cqs" className="text-sm hover:underline">
+            CQS
+          </Link>
           <Link href="/templates" className="text-sm hover:underline">
             Templates
           </Link>
