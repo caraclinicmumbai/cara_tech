@@ -52,6 +52,7 @@ export default async function LeadDetailPage({
       duplicateOf: true,
       duplicates: { orderBy: { createdAt: "desc" } },
       messages: { orderBy: { createdAt: "asc" } },
+      assignedRep: true,
     },
   });
 
@@ -86,6 +87,7 @@ export default async function LeadDetailPage({
           <div className="rounded border border-purple-500/50 bg-purple-500/10 px-3 py-2 text-sm">
             🤝 <span className="font-medium">Handover to sales.</span>
             {lead.handoverReason ? ` ${lead.handoverReason}.` : ""}
+            {lead.assignedRep ? ` Assigned to ${lead.assignedRep.name}.` : ""}
             {lead.handoverAt ? ` (${lead.handoverAt.toLocaleString()})` : ""}
           </div>
         )}

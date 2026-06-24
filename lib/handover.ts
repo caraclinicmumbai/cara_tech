@@ -10,7 +10,12 @@
 //  • thresholds we own here — CQS ≥ 75 (fast-track) and unsupported language.
 import type { Lead } from "@prisma/client";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
+import { pickNextRep, assignLeadToRep } from "@/lib/salesReps";
 import { logger } from "@/lib/logger";
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max)}…` : s;
+}
 
 /// Every handover trigger → the human-readable reason shown to the counsellor.
 export const HANDOVER_TRIGGERS = {
@@ -82,18 +87,57 @@ export function evaluateHandover(input: HandoverInput): FiredTrigger[] {
   return [...keys].map((key) => ({ key, label: HANDOVER_TRIGGERS[key] }));
 }
 
-/// Alert the sales team on Slack that a lead needs a human, with the reasons and
-/// a deep link to the profile. Best-effort (never throws).
+/// Route a handover to a sales rep (round-robin) and DM them individually on Slack
+/// with the reason(s), the call transcript, and a tap-to-call link. Falls back to
+/// the default channel if no rep (or no Slack id). Best-effort (never throws).
 export async function notifyHandover(
   lead: Pick<Lead, "id" | "name" | "phone">,
   fired: FiredTrigger[],
+  transcript?: string,
 ): Promise<void> {
-  if (!isSlackConfigured() || fired.length === 0) return;
+  if (fired.length === 0) return;
+
+  // Round-robin assignment (no-op if no reps configured yet) — happens even when
+  // Slack isn't set up, so the lead still gets an owner.
+  const rep = await pickNextRep();
+  if (rep) await assignLeadToRep(lead.id, rep.id);
+
+  if (!isSlackConfigured()) return;
+
   const base = process.env.NEXTAUTH_URL;
-  const link = base ? ` <${base}/leads/${lead.id}|Open lead>` : "";
   const reasons = fired.map((f) => `• ${f.label}`).join("\n");
-  await sendSlack({
-    text: `🤝 *Handover to sales* — *${lead.name}* (${lead.phone})\n${reasons}${link}`,
-  });
-  logger.info(`Handover alert sent for lead ${lead.id}: ${fired.map((f) => f.key).join(",")}`);
+  const telPhone = lead.phone.replace(/[^\d+]/g, "");
+  const phoneLink = `<tel:${telPhone}|📞 ${lead.phone}>`;
+  const assignee = rep?.slackUserId ? `<@${rep.slackUserId}>` : (rep?.name ?? "the team");
+
+  const blocks: unknown[] = [
+    { type: "header", text: { type: "plain_text", text: "🤝 Handover to sales", emoji: true } },
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: `*${lead.name}* — ${phoneLink}\nAssigned to ${assignee}` },
+    },
+    { type: "section", text: { type: "mrkdwn", text: `*Why handed over:*\n${reasons}` } },
+  ];
+  if (transcript?.trim()) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: `*Call transcript:*\n${truncate(transcript.trim(), 2600)}` },
+    });
+  }
+  if (base) {
+    blocks.push({
+      type: "actions",
+      elements: [
+        { type: "button", text: { type: "plain_text", text: "Open lead" }, url: `${base}/leads/${lead.id}` },
+      ],
+    });
+  }
+
+  // Fallback plain text (shown in notifications / if blocks unsupported).
+  const text = `🤝 Handover to sales — ${lead.name} (${lead.phone}): ${fired.map((f) => f.label).join("; ")}`;
+  // DM the assigned rep if we have their Slack id; otherwise the default channel.
+  await sendSlack({ text, blocks, channel: rep?.slackUserId ?? undefined });
+  logger.info(
+    `Handover alert for lead ${lead.id} → ${rep?.name ?? "channel"}: ${fired.map((f) => f.key).join(",")}`,
+  );
 }
