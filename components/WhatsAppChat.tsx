@@ -2,13 +2,19 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { sendLeadWhatsApp } from "@/app/(dashboard)/leads/actions";
+import {
+  sendLeadWhatsApp,
+  listWhatsAppTemplates,
+  sendLeadWhatsAppTemplate,
+} from "@/app/(dashboard)/leads/actions";
+import type { WhatsAppTemplate } from "@/lib/whatsappTemplates";
 
 export type ChatMessage = {
   id: string;
   direction: string; // inbound | outbound
   type: string;
   body: string | null;
+  mediaId: string | null;
   status: string | null;
   sentBy: string | null;
   automated: boolean;
@@ -38,8 +44,6 @@ export function WhatsAppChat({
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-
-  const canSend = windowOpen && !optedOut;
 
   function send() {
     const body = text.trim();
@@ -78,7 +82,30 @@ export function WhatsAppChat({
                   <div className="mb-0.5 text-[10px] uppercase tracking-wide text-black/40 dark:text-white/40">
                     {senderLabel(m)}
                   </div>
-                  <div className="whitespace-pre-wrap break-words">{m.body ?? `[${m.type}]`}</div>
+                  {m.mediaId && m.type === "image" ? (
+                    <a href={`/api/whatsapp/media/${m.mediaId}`} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`/api/whatsapp/media/${m.mediaId}`}
+                        alt={m.body ?? "image"}
+                        className="max-h-48 rounded"
+                      />
+                      {m.body && m.body !== "[image]" ? (
+                        <div className="mt-1 whitespace-pre-wrap break-words">{m.body}</div>
+                      ) : null}
+                    </a>
+                  ) : m.mediaId ? (
+                    <a
+                      href={`/api/whatsapp/media/${m.mediaId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      📎 {m.body ?? `[${m.type}]`}
+                    </a>
+                  ) : (
+                    <div className="whitespace-pre-wrap break-words">{m.body ?? `[${m.type}]`}</div>
+                  )}
                   <div
                     suppressHydrationWarning
                     className="mt-0.5 text-right text-[10px] text-black/40 dark:text-white/40"
@@ -99,9 +126,7 @@ export function WhatsAppChat({
             🚫 This lead opted out — messaging is disabled.
           </p>
         ) : !windowOpen ? (
-          <p className="text-sm text-black/50 dark:text-white/50">
-            ⏳ Outside the 24h reply window. Send an approved template to re-open the chat (coming next).
-          </p>
+          <TemplatePicker leadId={leadId} />
         ) : (
           <div className="space-y-2">
             <div className="flex gap-2">
@@ -128,6 +153,140 @@ export function WhatsAppChat({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Re-open a closed 24h window by sending an APPROVED template. Templates are
+// fetched lazily (only when the agent opens the picker); body variables get a
+// text input each.
+function TemplatePicker({ leadId }: { leadId: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [templates, setTemplates] = useState<WhatsAppTemplate[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState("");
+  const [params, setParams] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const current = templates?.find((t) => t.name === selected);
+
+  async function openPicker() {
+    setOpen(true);
+    if (templates) return;
+    setLoading(true);
+    try {
+      setTemplates(await listWhatsAppTemplates());
+    } catch {
+      setTemplates([]);
+      setError("Couldn't load templates");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function pick(name: string) {
+    setSelected(name);
+    const t = templates?.find((x) => x.name === name);
+    setParams(Array(t?.paramCount ?? 0).fill(""));
+  }
+
+  function sendTemplate() {
+    if (!current) return;
+    setError(null);
+    startTransition(async () => {
+      const res = await sendLeadWhatsAppTemplate(leadId, current.name, current.language, params);
+      if (res.ok) {
+        setOpen(false);
+        setSelected("");
+        setParams([]);
+        router.refresh();
+      } else {
+        setError(res.error ?? "Failed to send template");
+      }
+    });
+  }
+
+  if (!open) {
+    return (
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-black/50 dark:text-white/50">
+          ⏳ Outside the 24h reply window — send an approved template to re-open the chat.
+        </p>
+        <button
+          onClick={openPicker}
+          className="shrink-0 rounded border border-black/15 px-3 py-1.5 text-sm dark:border-white/20"
+        >
+          Send template
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {loading ? (
+        <p className="text-sm text-black/50 dark:text-white/50">Loading templates…</p>
+      ) : templates && templates.length > 0 ? (
+        <>
+          <select
+            value={selected}
+            onChange={(e) => pick(e.target.value)}
+            className="w-full rounded border border-black/15 bg-transparent px-3 py-2 text-sm dark:border-white/20"
+          >
+            <option value="">Select a template…</option>
+            {templates.map((t) => (
+              <option key={`${t.name}:${t.language}`} value={t.name}>
+                {t.name} ({t.language})
+              </option>
+            ))}
+          </select>
+          {current && (
+            <>
+              <p className="rounded bg-black/5 px-2 py-1 text-xs text-black/60 dark:bg-white/10 dark:text-white/60">
+                {current.bodyText}
+              </p>
+              {params.map((p, i) => (
+                <input
+                  key={i}
+                  value={p}
+                  placeholder={`Variable {{${i + 1}}}`}
+                  onChange={(e) => {
+                    const next = [...params];
+                    next[i] = e.target.value;
+                    setParams(next);
+                  }}
+                  className="w-full rounded border border-black/15 bg-transparent px-3 py-2 text-sm dark:border-white/20"
+                />
+              ))}
+            </>
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={sendTemplate}
+              disabled={pending || !current}
+              className="rounded bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
+            >
+              {pending ? "Sending…" : "Send template"}
+            </button>
+            <button
+              onClick={() => setOpen(false)}
+              className="rounded border border-black/15 px-3 py-2 text-sm dark:border-white/20"
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-black/50 dark:text-white/50">
+          No approved templates found — set WHATSAPP_WABA_ID and get a template approved in Meta.
+          <button onClick={() => setOpen(false)} className="ml-2 underline">
+            Close
+          </button>
+        </p>
+      )}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );
 }

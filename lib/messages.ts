@@ -25,6 +25,30 @@ export async function findLeadByPhone(phone: string) {
   });
 }
 
+/// Find the lead for an inbound WhatsApp number, or create one when an unknown
+/// number messages cold (Phase 2). New leads come in as source "whatsapp",
+/// manual_followup, and are NEVER auto-called (a human triages the chat first).
+/// `waName` is the sender's WhatsApp profile name, if the webhook provided it.
+export async function findOrCreateLeadByPhone(
+  phone: string,
+  waName?: string,
+): Promise<{ lead: NonNullable<Awaited<ReturnType<typeof findLeadByPhone>>>; created: boolean }> {
+  const existing = await findLeadByPhone(phone);
+  if (existing) return { lead: existing, created: false };
+
+  const digits = phone.match(/\d/g)?.join("") ?? "";
+  const lead = await prisma.lead.create({
+    data: {
+      name: waName?.trim() || "WhatsApp lead",
+      phone: digits ? `+${digits}` : phone,
+      source: "whatsapp",
+      status: "manual_followup",
+    },
+  });
+  logger.info(`Created lead ${lead.id} from inbound WhatsApp ${phone} (${waName ?? "no name"})`);
+  return { lead, created: true };
+}
+
 /// Is the 24h free-form window currently open for this lead? True iff the lead's
 /// most recent INBOUND message arrived within the last 24h.
 export async function isServiceWindowOpen(leadId: string, now = new Date()): Promise<boolean> {

@@ -86,3 +86,44 @@ export async function sendWhatsAppTemplate(
 export async function sendWhatsAppText(to: string, body: string): Promise<WhatsAppSendResult> {
   return postMessage({ to: normalizeNumber(to), type: "text", text: { preview_url: false, body } });
 }
+
+// ── Inbound media (Phase 2) ──────────────────────────────────────────
+// WhatsApp media arrives as an id; fetching it is two hops, both bearer-authed:
+// 1) GET /{media_id} → a short-lived download URL + mime type.
+// 2) GET that URL → the raw bytes.
+// Meta expires media after ~30 days, so we proxy on demand rather than store.
+
+export type WhatsAppMedia = { buffer: Buffer; mime: string };
+
+/// Download an inbound media object by its Meta media id. Null on misconfig/error.
+export async function fetchWhatsAppMedia(mediaId: string): Promise<WhatsAppMedia | null> {
+  const token = process.env.WHATSAPP_TOKEN;
+  if (!token) {
+    logger.warn("WhatsApp media: WHATSAPP_TOKEN not set — cannot fetch");
+    return null;
+  }
+  try {
+    const meta = await axios.get(`${GRAPH}/${graphVersion()}/${mediaId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15_000,
+    });
+    const url: string | undefined = meta.data?.url;
+    const mime: string = meta.data?.mime_type ?? "application/octet-stream";
+    if (!url) {
+      logger.error(`WhatsApp media ${mediaId}: no url in metadata`);
+      return null;
+    }
+    const bin = await axios.get<ArrayBuffer>(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      responseType: "arraybuffer",
+      timeout: 20_000,
+    });
+    return { buffer: Buffer.from(bin.data), mime };
+  } catch (err) {
+    const detail = axios.isAxiosError(err)
+      ? JSON.stringify(err.response?.data ?? err.message)
+      : String(err);
+    logger.error(`WhatsApp media ${mediaId} fetch failed: ${detail}`);
+    return null;
+  }
+}

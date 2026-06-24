@@ -13,6 +13,8 @@ const SOURCE_LABELS: Record<string, string> = {
   google: "Google",
   referral: "Referral",
   manual: "Manual",
+  walk_in: "Walk-in",
+  whatsapp: "WhatsApp",
 };
 
 function SourceBadge({ source }: { source: string | null }) {
@@ -85,6 +87,14 @@ export default async function LeadsPage() {
                         className="ml-2 rounded-full bg-orange-500/15 px-2 py-0.5 text-xs text-orange-700 dark:text-orange-400"
                       >
                         review
+                      </span>
+                    )}
+                    {lead.needsHandover && (
+                      <span
+                        title={lead.handoverReason ?? "Handover to sales"}
+                        className="ml-2 rounded-full bg-purple-500/15 px-2 py-0.5 text-xs text-purple-700 dark:text-purple-400"
+                      >
+                        handover
                       </span>
                     )}
                   </td>

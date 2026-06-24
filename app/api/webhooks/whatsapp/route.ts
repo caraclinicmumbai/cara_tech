@@ -9,7 +9,7 @@
 import { NextResponse } from "next/server";
 import { verifyMetaSignature } from "@/lib/providers/meta";
 import { optOutLeadsByPhone } from "@/lib/leadIntake";
-import { findLeadByPhone, recordInbound, updateMessageStatus } from "@/lib/messages";
+import { findLeadByPhone, findOrCreateLeadByPhone, recordInbound, updateMessageStatus } from "@/lib/messages";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
 import { logger } from "@/lib/logger";
 
@@ -40,6 +40,13 @@ function parseInbound(msg: any): { type: string; body: string; mediaId?: string 
     default:
       return { type, body: `[${type}]` };
   }
+}
+
+// The sender's WhatsApp profile name, matched by wa_id from the webhook's
+// `contacts` array (used to name an auto-created lead).
+function contactName(value: any, waId: string): string | undefined {
+  const c = (value?.contacts ?? []).find((x: any) => x?.wa_id === waId);
+  return c?.profile?.name;
 }
 
 // Best-effort Slack ping when a patient replies, so an agent can pick it up.
@@ -94,16 +101,20 @@ export async function POST(req: Request) {
             logger.info(`WhatsApp CONSENT "YES" from ${from} (TODO: confirm + trigger call)`);
           }
 
-          // Persist the reply on the lead's thread (the primary flow: we reached
-          // out → they reply → they match an existing lead). Unknown numbers are
-          // logged for now; auto-creating a lead from a cold inbound is Phase 2.
-          const lead = await findLeadByPhone(from);
+          // Persist the reply on the lead's thread. Primary flow: we reached out
+          // → they reply → match an existing lead. A cold inbound from an unknown
+          // number auto-creates a lead (manual_followup, no AI call) — except a
+          // bare "STOP", which we only apply to existing leads, never create one.
+          const isOptOut = OPT_OUT_KEYWORDS.includes(norm);
+          const lead = isOptOut
+            ? await findLeadByPhone(from)
+            : (await findOrCreateLeadByPhone(from, contactName(value, from))).lead;
           if (lead) {
             await recordInbound({ leadId: lead.id, waId: msg.id, type, body, mediaId });
             await notifyInbound(lead.id, lead.name, body);
             logger.info(`WhatsApp inbound stored for lead ${lead.id} (${type})`);
           } else {
-            logger.warn(`WhatsApp inbound from unknown number ${from} (${type}) — no lead matched`);
+            logger.warn(`WhatsApp opt-out from unknown number ${from} — nothing to suppress`);
           }
         }
 
