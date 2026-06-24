@@ -16,6 +16,7 @@ const SOURCE_LABELS: Record<string, string> = {
   referral: "Referral",
   manual: "Manual",
   walk_in: "Walk-in",
+  whatsapp: "WhatsApp",
 };
 
 function Pill({ children }: { children: React.ReactNode }) {
@@ -78,6 +79,14 @@ export default async function LeadDetailPage({
             🚫 <span className="font-medium">Opted out — all outreach suppressed.</span>
             {lead.optedOutReason ? ` ${lead.optedOutReason}.` : ""}
             {lead.optedOutAt ? ` (${lead.optedOutAt.toLocaleString()})` : ""}
+          </div>
+        )}
+
+        {lead.needsHandover && (
+          <div className="rounded border border-purple-500/50 bg-purple-500/10 px-3 py-2 text-sm">
+            🤝 <span className="font-medium">Handover to sales.</span>
+            {lead.handoverReason ? ` ${lead.handoverReason}.` : ""}
+            {lead.handoverAt ? ` (${lead.handoverAt.toLocaleString()})` : ""}
           </div>
         )}
 
@@ -174,6 +183,7 @@ export default async function LeadDetailPage({
             direction: m.direction,
             type: m.type,
             body: m.body,
+            mediaId: m.mediaId,
             status: m.status,
             sentBy: m.sentBy,
             automated: m.automated,

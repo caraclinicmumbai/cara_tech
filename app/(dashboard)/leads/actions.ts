@@ -7,7 +7,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isLeadStage, LOST_STAGE } from "@/lib/leadStages";
-import { sendLeadText } from "@/lib/messages";
+import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
+import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
 import { logger } from "@/lib/logger";
 
 const TAG_MAX = 120;
@@ -57,6 +58,35 @@ export async function sendLeadWhatsApp(
   if (!text) return { ok: false, error: "Message is empty" };
 
   const res = await sendLeadText(leadId, text, { sentBy: session.user.email ?? undefined });
+  revalidatePath(`/leads/${leadId}`);
+  return res.ok ? { ok: true } : { ok: false, error: res.error };
+}
+
+/// List APPROVED templates for the re-engagement picker (used when the 24h
+/// window is closed). Session-checked since it hits the WABA via our token.
+export async function listWhatsAppTemplates(): Promise<WhatsAppTemplate[]> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+  return listApprovedTemplates();
+}
+
+/// Send an approved template to re-open the chat (works outside the 24h window).
+/// `params` fills the template's {{1}}, {{2}}… body variables, in order.
+export async function sendLeadWhatsAppTemplate(
+  leadId: string,
+  templateName: string,
+  languageCode: string,
+  params: string[] = [],
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+  if (!templateName) return { ok: false, error: "No template selected" };
+
+  const components = buildTemplateComponents(params);
+  const res = await sendLeadTemplate(leadId, templateName, languageCode, components, {
+    automated: false,
+    sentBy: session.user.email ?? undefined,
+  });
   revalidatePath(`/leads/${leadId}`);
   return res.ok ? { ok: true } : { ok: false, error: res.error };
 }

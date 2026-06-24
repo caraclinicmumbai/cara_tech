@@ -122,6 +122,37 @@ function flattenTranscript(turns?: PostCall["data"]["transcript"]): string | und
     .join("\n");
 }
 
+// Data-collection keys the agent may set as booleans → handover trigger keys.
+const HANDOVER_BOOLEAN_FIELDS: Record<string, string> = {
+  asked_price: "price_request",
+  price_request: "price_request",
+  clinical_question: "clinical_question",
+  emotional_distress: "emotional_distress",
+  wants_human: "wants_human",
+  competitor_mention: "competitor_mention",
+  unresolved_objection: "unresolved_objection",
+  hearing_impaired: "hearing_impaired",
+  abusive: "abusive",
+  wrong_person_landline: "wrong_person_landline",
+};
+
+function isTruthy(v?: string): boolean {
+  const s = (v ?? "").trim().toLowerCase();
+  return s === "true" || s === "yes" || s === "1" || s === "y";
+}
+
+/// Build the handover trigger keys the agent flagged: an explicit comma-separated
+/// `handover_reasons`/`handover_reason` data point, plus any known boolean fields.
+function collectHandoverReasons(collected: Record<string, { value?: string }>): string[] {
+  const out = new Set<string>();
+  const explicit = `${collected.handover_reasons?.value ?? ""},${collected.handover_reason?.value ?? ""}`;
+  for (const r of explicit.split(",").map((s) => s.trim()).filter(Boolean)) out.add(r);
+  for (const [field, key] of Object.entries(HANDOVER_BOOLEAN_FIELDS)) {
+    if (isTruthy(collected[field]?.value)) out.add(key);
+  }
+  return [...out];
+}
+
 /// Map an ElevenLabs post-call payload to our recordCall input.
 /// Returns null when leadId can't be recovered (so the caller can 400/ignore).
 export function mapElevenLabsPostCall(payload: PostCall): RecordCallInput | null {
@@ -132,6 +163,8 @@ export function mapElevenLabsPostCall(payload: PostCall): RecordCallInput | null
 
   const callType = dyn.call_type === "reconfirmation" ? "reconfirmation" : "initial";
   const collected = data.analysis?.data_collection_results ?? {};
+  const cqsRaw = collected.cqs?.value;
+  const cqs = cqsRaw != null && cqsRaw !== "" ? Number(cqsRaw) : undefined;
 
   return {
     leadId,
@@ -151,5 +184,9 @@ export function mapElevenLabsPostCall(payload: PostCall): RecordCallInput | null
       collected.requested_service?.value ??
       collected.service?.value ??
       collected.interest?.value,
+    // AI→human handover signals (§3.1).
+    handoverReasons: collectHandoverReasons(collected),
+    cqs: cqs != null && !Number.isNaN(cqs) ? cqs : undefined,
+    language: collected.language?.value,
   };
 }

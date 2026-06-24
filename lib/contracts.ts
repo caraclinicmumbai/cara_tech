@@ -10,6 +10,7 @@ export const leadSourceEnum = z.enum([
   "facebook",
   "instagram",
   "google",
+  "whatsapp",
 ]);
 
 /// Walk-in / front-desk entry (§3.1.1, §3.1.13). Consent (iPad or written) is
@@ -154,6 +155,12 @@ export const writeCallSchema = z.object({
   /// What the lead asked for in the call (e.g. "Hair transplant") — stored as
   /// the lead's tag. Staff can override it in the dashboard afterwards.
   tag: z.string().optional(),
+  /// AI→human handover signals (§3.1). `handoverReasons` are trigger keys the
+  /// agent/scoring model flagged; `cqs` (0–100) and `language` drive the
+  /// threshold-based triggers we evaluate server-side.
+  handoverReasons: z.array(z.string()).optional(),
+  cqs: z.number().min(0).max(100).optional(),
+  language: z.string().optional(),
 });
 export type WriteCallInput = z.infer<typeof writeCallSchema>;
 

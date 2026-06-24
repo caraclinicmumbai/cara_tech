@@ -34,6 +34,15 @@ model Lead {
   lostReason String?
   lostAt     DateTime?
 
+  // ── AI→human handover (§3.1) — when an AI call hits a trigger (pricing/clinical
+  //    question, distress, wants-human, competitor, unresolved objection, CQS≥75,
+  //    unsupported language, hearing-impaired, abusive, wrong-person), the lead is
+  //    routed to the sales team: AI drip stops, Slack alert fires, reason logged. ──
+  needsHandover    Boolean   @default(false)
+  handoverReason   String? // human-readable reason(s), shown to the counsellor
+  handoverAt       DateTime?
+  handoverTriggers String[] // machine keys of the triggers that fired
+
   // ── Opt-out / suppression (§3.1.10) — hard flag: once true, NO outreach (calls,
   //    retries, callbacks) is allowed. Set on "not interested" or WhatsApp STOP. ──
   optedOut       Boolean   @default(false)
@@ -81,6 +90,7 @@ model Lead {
   @@index([duplicateOfId])
   @@index([heldForReview])
   @@index([stage])
+  @@index([needsHandover])
 }
 
 /// A single WhatsApp message exchanged with a lead (§3.1.3). Both automated

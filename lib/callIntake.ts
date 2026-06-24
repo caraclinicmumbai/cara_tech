@@ -9,6 +9,7 @@ import { statusFromOutcome } from "@/lib/contracts";
 import { scheduleCallAttempt, cancelScheduledCalls, retryDelaysDays, DAY_MS } from "@/lib/queue";
 import { nextEveningCallback } from "@/lib/callWindow";
 import { stageFromOutcome, advanceStage } from "@/lib/leadStages";
+import { evaluateHandover, notifyHandover } from "@/lib/handover";
 import { logger } from "@/lib/logger";
 
 // Outcomes that END the attempt ladder — the lead was reached and a decision
@@ -33,6 +34,10 @@ export type RecordCallInput = {
   callbackAt?: string;
   /// What the lead asked for in the call → stored as the lead's tag (§3.1).
   tag?: string;
+  /// AI→human handover signals (§3.1): explicit trigger keys + CQS + language.
+  handoverReasons?: string[];
+  cqs?: number;
+  language?: string;
 };
 
 export type RecordCallResult =
@@ -69,7 +74,20 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     optedOutReason?: string;
     stage?: string;
     tag?: string;
+    needsHandover?: boolean;
+    handoverReason?: string;
+    handoverAt?: Date;
+    handoverTriggers?: string[];
   } = { status };
+
+  // AI→human handover (§3.1): did this call hit any trigger? Evaluated up front;
+  // when it fires it takes over the routing (stop AI drip, alert sales) — except
+  // an explicit opt-out ("not interested"), which still wins (nothing to hand off).
+  const handover = evaluateHandover({
+    reasons: input.handoverReasons,
+    cqs: input.cqs,
+    language: input.language,
+  });
 
   // Pipeline stage: auto-advance FORWARD-ONLY from the call outcome so we never
   // regress a stage staff (or an earlier, further-along call) already set (§3.1).
@@ -91,6 +109,21 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     leadData.optedOutReason = "Said not interested on AI call";
     const canceled = await cancelScheduledCalls(lead.id);
     logger.info(`Lead ${lead.id} opted out (not interested) — suppressed all outreach, canceled ${canceled} pending`);
+  } else if (handover.length > 0) {
+    // Route to the sales team (§3.1): stop the AI drip, flag + log the reason,
+    // and alert Slack. Preserve a "confirmed" status; otherwise the lead goes to
+    // the manual queue for a counsellor instead of back into automated retries.
+    leadData.status = status === "confirmed" ? "confirmed" : "manual_followup";
+    leadData.needsHandover = true;
+    leadData.handoverReason = handover.map((h) => h.label).join("; ");
+    leadData.handoverAt = new Date();
+    leadData.handoverTriggers = handover.map((h) => h.key);
+    status = leadData.status;
+    const canceled = await cancelScheduledCalls(lead.id);
+    await notifyHandover(lead, handover);
+    logger.info(
+      `Lead ${lead.id} handed to sales (${leadData.handoverTriggers.join(",")}) — canceled ${canceled} pending`,
+    );
   } else if (input.outcome === "rescheduled" || callbackAt) {
     // Lead asked to be called back (§3.1.2). If they named a time, honour it;
     // a vague "call me back" with no time defaults to the evening callback hour

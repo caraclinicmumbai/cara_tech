@@ -16,7 +16,8 @@ export type LeadSource =
   | "walk_in"
   | "facebook"
   | "instagram"
-  | "google";
+  | "google"
+  | "whatsapp";
 
 export type NormalizedLead = {
   name: string;
