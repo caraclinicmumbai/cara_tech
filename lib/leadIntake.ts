@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { triggerOutboundCall } from "@/lib/n8n";
 import { scheduleCallAttempt, cancelScheduledCalls } from "@/lib/queue";
 import { isWithinDnd } from "@/lib/callWindow";
+import { sendAutomatedTemplate, outreachTemplate, firstName } from "@/lib/outreach";
 import { logger } from "@/lib/logger";
 
 export type LeadSource =
@@ -174,6 +175,11 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
     logger.info(`No auto-call for source=${input.source}; lead ${lead.id} routed to manual follow-up`);
     return { lead, deduped: false };
   }
+
+  // Welcome WhatsApp (§3.1.3) — best-effort, OFF unless WHATSAPP_TEMPLATE_NEW_LEAD
+  // is set. Fires for real new leads (not duplicates/walk-ins/held), even for
+  // call-paused sources. If they reply, it opens the 24h window for follow-up.
+  await sendAutomatedTemplate(lead.id, outreachTemplate.newLead(), [firstName(lead.name)]);
 
   // Auto-calling paused for this source (e.g. Meta, pending App Review) — capture only.
   if (isAutoCallPaused(input.source)) {
