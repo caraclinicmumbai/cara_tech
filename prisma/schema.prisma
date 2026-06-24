@@ -155,6 +155,8 @@ model Call {
   elevenlabsId String? // ElevenLabs call ID for reference
   recordingUrl String? // Twilio recording URL for human-handover calls (§3.1)
   providerSid  String? // Twilio CallSid (correlation)
+  cqs          Int? // Conversation Quality Score 0–100, judged by Claude (§3.1)
+  cqsBreakdown Json? // per-dimension scores + objection type + summary
   createdAt    DateTime @default(now())
 
   @@index([leadId])

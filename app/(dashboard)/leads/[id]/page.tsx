@@ -218,6 +218,20 @@ export default async function LeadDetailPage({
                   <span>Outcome: {call.outcome ?? "—"}</span>
                   <span>Sentiment: {call.sentiment ?? "—"}</span>
                   <span>Duration: {call.duration ? `${call.duration}s` : "—"}</span>
+                  {typeof call.cqs === "number" && (
+                    <span
+                      title="Conversation Quality Score"
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        call.cqs >= 75
+                          ? "bg-green-600/15 text-green-700 dark:text-green-400"
+                          : call.cqs >= 50
+                            ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                            : "bg-red-500/15 text-red-700 dark:text-red-400"
+                      }`}
+                    >
+                      CQS {call.cqs}
+                    </span>
+                  )}
                   <span className="ml-auto text-black/50 dark:text-white/50">
                     {call.createdAt.toLocaleString()}
                   </span>

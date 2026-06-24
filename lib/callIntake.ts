@@ -11,6 +11,7 @@ import { nextEveningCallback } from "@/lib/callWindow";
 import { stageFromOutcome, advanceStage } from "@/lib/leadStages";
 import { evaluateHandover, notifyHandover } from "@/lib/handover";
 import { sendAutomatedTemplate, outreachTemplate, firstName, istTime } from "@/lib/outreach";
+import { scoreCQS } from "@/lib/cqs";
 import { logger } from "@/lib/logger";
 
 // Outcomes that END the attempt ladder — the lead was reached and a decision
@@ -49,6 +50,11 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
   const lead = await prisma.lead.findUnique({ where: { id: input.leadId } });
   if (!lead) return { ok: false, reason: "lead_not_found" };
 
+  // Conversation Quality Score (§3.1) — Claude scores the transcript against the
+  // rubric. Best-effort: null when unconfigured/empty/failed. The computed score
+  // also drives the high-CQS handover trigger below.
+  const scored = await scoreCQS(input.transcript);
+
   const call = await prisma.call.create({
     data: {
       leadId: input.leadId,
@@ -58,6 +64,8 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
       outcome: input.outcome,
       sentiment: input.sentiment,
       duration: input.duration,
+      cqs: scored?.cqs,
+      cqsBreakdown: scored?.breakdown,
     },
   });
 
@@ -86,7 +94,7 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
   // an explicit opt-out ("not interested"), which still wins (nothing to hand off).
   const handover = evaluateHandover({
     reasons: input.handoverReasons,
-    cqs: input.cqs,
+    cqs: scored?.cqs ?? input.cqs, // prefer our computed CQS over any agent-provided value
     language: input.language,
   });
 
