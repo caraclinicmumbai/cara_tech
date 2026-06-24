@@ -43,6 +43,11 @@ model Lead {
   handoverAt       DateTime?
   handoverTriggers String[] // machine keys of the triggers that fired
 
+  // ── Assignment (§3.1) — the sales rep a handover was routed to (round-robin). ──
+  assignedRepId String?
+  assignedRep   SalesRep? @relation("LeadAssignee", fields: [assignedRepId], references: [id], onDelete: SetNull)
+  assignedAt    DateTime?
+
   // ── Opt-out / suppression (§3.1.10) — hard flag: once true, NO outreach (calls,
   //    retries, callbacks) is allowed. Set on "not interested" or WhatsApp STOP. ──
   optedOut       Boolean   @default(false)
@@ -91,6 +96,24 @@ model Lead {
   @@index([heldForReview])
   @@index([stage])
   @@index([needsHandover])
+  @@index([assignedRepId])
+}
+
+/// A sales rep / telecaller who receives AI→human handovers (§3.1). Handovers are
+/// distributed round-robin (least-recently-assigned first). `slackUserId` enables
+/// an individual Slack DM; `phone` is the click-to-call number.
+model SalesRep {
+  id             String    @id @default(cuid())
+  name           String
+  slackUserId    String? // Slack member id (e.g. U0123ABCD) for the individual DM
+  phone          String // E.164, for click-to-call
+  active         Boolean   @default(true)
+  lastAssignedAt DateTime? // round-robin cursor
+  createdAt      DateTime  @default(now())
+
+  leads Lead[] @relation("LeadAssignee")
+
+  @@index([active, lastAssignedAt])
 }
 
 /// A single WhatsApp message exchanged with a lead (§3.1.3). Both automated
