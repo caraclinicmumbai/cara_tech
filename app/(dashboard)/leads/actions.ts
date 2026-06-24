@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { isLeadStage, LOST_STAGE } from "@/lib/leadStages";
 import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
 import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
+import { clickToCall, isTwilioConfigured } from "@/lib/providers/twilio";
 import { logger } from "@/lib/logger";
 
 const TAG_MAX = 120;
@@ -60,6 +61,30 @@ export async function sendLeadWhatsApp(
   const res = await sendLeadText(leadId, text, { sentBy: session.user.email ?? undefined });
   revalidatePath(`/leads/${leadId}`);
   return res.ok ? { ok: true } : { ok: false, error: res.error };
+}
+
+/// Start a recorded click-to-call for a handed-over lead (§3.1). Twilio rings the
+/// assigned rep's phone; when they answer it dials the lead, records, and the
+/// recording is stored on the lead. Session-checked.
+export async function callLeadAndRecord(
+  leadId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+  if (!isTwilioConfigured()) return { ok: false, error: "Calling is not configured yet" };
+
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    include: { assignedRep: true },
+  });
+  if (!lead) return { ok: false, error: "Lead not found" };
+  const repPhone = lead.assignedRep?.phone;
+  if (!repPhone) return { ok: false, error: "No assigned rep with a phone to call from" };
+
+  const res = await clickToCall(repPhone, leadId);
+  if (!res.ok) return { ok: false, error: res.error };
+  logger.info(`Click-to-call started for lead ${leadId} (rep ${lead.assignedRep?.name}) by ${session.user.email}`);
+  return { ok: true };
 }
 
 /// List APPROVED templates for the re-engagement picker (used when the 24h

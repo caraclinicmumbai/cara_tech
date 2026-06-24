@@ -147,12 +147,14 @@ model Call {
   id           String   @id @default(cuid())
   leadId       String
   lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  callType     String // initial | reconfirmation
+  callType     String // initial | reconfirmation | human_handover
   transcript   String?
   outcome      String? // confirmed | no_answer | rescheduled | not_interested
   sentiment    String? // positive | neutral | negative
   duration     Int? // seconds
   elevenlabsId String? // ElevenLabs call ID for reference
+  recordingUrl String? // Twilio recording URL for human-handover calls (§3.1)
+  providerSid  String? // Twilio CallSid (correlation)
   createdAt    DateTime @default(now())
 
   @@index([leadId])
