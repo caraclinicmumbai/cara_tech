@@ -10,6 +10,7 @@ import { scheduleCallAttempt, cancelScheduledCalls, retryDelaysDays, DAY_MS } fr
 import { nextEveningCallback } from "@/lib/callWindow";
 import { stageFromOutcome, advanceStage } from "@/lib/leadStages";
 import { evaluateHandover, notifyHandover } from "@/lib/handover";
+import { scheduleHandoverSla } from "@/lib/handoverSla";
 import { sendAutomatedTemplate, outreachTemplate, firstName, istTime } from "@/lib/outreach";
 import { scoreCQS } from "@/lib/cqs";
 import { logger } from "@/lib/logger";
@@ -135,6 +136,13 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     status = leadData.status;
     const canceled = await cancelScheduledCalls(lead.id);
     await notifyHandover(lead, handover, input.transcript, scored?.cqs ?? input.cqs);
+    // Start the SLA timer: if no rep attends this lead within HANDOVER_SLA_HOURS,
+    // it escalates to the counsellor (§3.1). `since` = this handover's timestamp.
+    await scheduleHandoverSla({
+      leadId: lead.id,
+      since: leadData.handoverAt.getTime(),
+      reason: leadData.handoverReason,
+    });
     logger.info(
       `Lead ${lead.id} handed to sales (${leadData.handoverTriggers.join(",")}) — canceled ${canceled} pending`,
     );

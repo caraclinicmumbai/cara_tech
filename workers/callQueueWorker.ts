@@ -13,6 +13,11 @@ import {
 import { isWithinDnd } from "@/lib/callWindow";
 import { triggerOutboundCall } from "@/lib/n8n";
 import { monitorElevenLabs } from "@/lib/providers/elevenlabsHealth";
+import {
+  HANDOVER_SLA_QUEUE,
+  runHandoverSlaCheck,
+  type HandoverSlaJob,
+} from "@/lib/handoverSla";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -67,6 +72,19 @@ worker.on("failed", (job, err) =>
 logger.info(
   `Call-attempt worker started on queue "${CALL_ATTEMPT_QUEUE}" (concurrency ${CONCURRENCY})`,
 );
+
+// Handover SLA worker — fires HANDOVER_SLA_HOURS after a lead is handed to a rep.
+// If the lead is still unattended, it escalates to the counsellor on Slack (§3.1).
+const slaWorker = new Worker<HandoverSlaJob>(
+  HANDOVER_SLA_QUEUE,
+  async (job) => runHandoverSlaCheck(job.data),
+  { connection: bullConnection, concurrency: CONCURRENCY },
+);
+slaWorker.on("completed", (job, result) =>
+  logger.info(`SLA check ${job.id} (lead ${job.data.leadId}): ${JSON.stringify(result)}`),
+);
+slaWorker.on("failed", (job, err) => logger.error(`SLA check ${job?.id} failed: ${err.message}`));
+logger.info(`Handover SLA worker started on queue "${HANDOVER_SLA_QUEUE}"`);
 
 // ElevenLabs health/credit monitor — probe now, then on an interval. Alerts the
 // sales team on Slack if the API is down, the key is dead, or credits run low.
