@@ -4,6 +4,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyTwilioSignature, publicBase } from "@/lib/providers/twilio";
+import { transcribeAndScoreCall } from "@/lib/callTranscription";
 import { logger } from "@/lib/logger";
 
 export async function POST(req: Request) {
@@ -39,6 +40,13 @@ export async function POST(req: Request) {
     },
   });
   logger.info(`Stored human-handover recording for lead ${leadId} (call ${call.id}, ${duration ?? "?"}s)`);
+
+  // Transcribe (ElevenLabs Scribe) + CQS-score in the background so this webhook
+  // returns within Twilio's callback timeout — a long call's transcript+score can
+  // take 30–90s. The persistent Node server keeps the promise alive.
+  if (recordingUrl) {
+    void transcribeAndScoreCall(call.id, recordingUrl);
+  }
 
   return NextResponse.json({ ok: true }, { status: 200 });
 }

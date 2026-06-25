@@ -14,8 +14,54 @@ import axios from "axios";
 import type { RecordCallInput } from "@/lib/callIntake";
 import type { z } from "zod";
 import type { elevenLabsPostCallSchema } from "@/lib/contracts";
+import { logger } from "@/lib/logger";
 
 const API_BASE = "https://api.elevenlabs.io";
+
+// ── Speech-to-text (Scribe) ──────────────────────────────────────────
+//
+// Human-handover calls are recorded on Twilio but have no transcript, so they
+// can't be CQS-scored. Scribe turns the recording audio into text; auto-detects
+// language (handles the Hindi / English / Hinglish mix common in Mumbai calls).
+// Best-effort: returns null on any failure so call intake never blocks.
+
+function sttModel(): string {
+  return process.env.ELEVENLABS_STT_MODEL ?? "scribe_v1";
+}
+
+/// Transcribe a recording's audio buffer with ElevenLabs Scribe. Returns the
+/// plain transcript text, or null if not configured / empty / failed.
+export async function transcribeAudio(
+  audio: Buffer,
+  filename = "call.mp3",
+  mime = "audio/mpeg",
+): Promise<string | null> {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) {
+    logger.warn("Scribe transcription skipped — ELEVENLABS_API_KEY not set");
+    return null;
+  }
+  try {
+    const form = new FormData();
+    form.append("model_id", sttModel());
+    form.append("file", new Blob([new Uint8Array(audio)], { type: mime }), filename);
+    const res = await fetch(`${API_BASE}/v1/speech-to-text`, {
+      method: "POST",
+      headers: { "xi-api-key": apiKey },
+      body: form,
+    });
+    if (!res.ok) {
+      logger.error(`Scribe transcription failed (${res.status}): ${await res.text()}`);
+      return null;
+    }
+    const json = (await res.json()) as { text?: string };
+    const text = (json.text ?? "").trim();
+    return text || null;
+  } catch (err) {
+    logger.error(`Scribe transcription error: ${String(err)}`);
+    return null;
+  }
+}
 
 // "twilio" (default) or "sip_trunk" — the outbound call transport.
 function outboundEndpoint(): string {
