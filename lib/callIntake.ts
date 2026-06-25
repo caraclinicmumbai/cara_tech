@@ -134,7 +134,7 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     leadData.handoverTriggers = handover.map((h) => h.key);
     status = leadData.status;
     const canceled = await cancelScheduledCalls(lead.id);
-    await notifyHandover(lead, handover, input.transcript);
+    await notifyHandover(lead, handover, input.transcript, scored?.cqs ?? input.cqs);
     logger.info(
       `Lead ${lead.id} handed to sales (${leadData.handoverTriggers.join(",")}) — canceled ${canceled} pending`,
     );

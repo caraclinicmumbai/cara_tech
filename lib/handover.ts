@@ -9,6 +9,7 @@
 //    (it understands the conversation) — passed through as `reasons`;
 //  • thresholds we own here — CQS ≥ 75 (fast-track) and unsupported language.
 import type { Lead } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
 import { pickNextRep, assignLeadToRep } from "@/lib/salesReps";
 import { logger } from "@/lib/logger";
@@ -40,6 +41,11 @@ export function isHandoverTrigger(k: string): k is HandoverTrigger {
 
 function cqsThreshold(): number {
   return Number(process.env.HANDOVER_CQS_THRESHOLD ?? 75);
+}
+
+/// Is this score high enough to escalate as a hot lead (CQS ≥ threshold)?
+export function isEscalationScore(cqs?: number | null): boolean {
+  return typeof cqs === "number" && !Number.isNaN(cqs) && cqs >= cqsThreshold();
 }
 
 /// Languages the AI agent can handle. Anything else → manual handover. Codes are
@@ -87,37 +93,48 @@ export function evaluateHandover(input: HandoverInput): FiredTrigger[] {
   return [...keys].map((key) => ({ key, label: HANDOVER_TRIGGERS[key] }));
 }
 
-/// Route a handover to a sales rep (round-robin) and DM them individually on Slack
-/// with the reason(s), the call transcript, and a tap-to-call link. Falls back to
-/// the default channel if no rep (or no Slack id). Best-effort (never throws).
-export async function notifyHandover(
-  lead: Pick<Lead, "id" | "name" | "phone">,
-  fired: FiredTrigger[],
-  transcript?: string,
-): Promise<void> {
-  if (fired.length === 0) return;
-
-  // Round-robin assignment (no-op if no reps configured yet) — happens even when
-  // Slack isn't set up, so the lead still gets an owner.
-  const rep = await pickNextRep();
-  if (rep) await assignLeadToRep(lead.id, rep.id);
-
-  if (!isSlackConfigured()) return;
-
+/// Build the Slack message (text + blocks) for an escalation. A HOT lead (CQS ≥
+/// threshold) gets a distinct 🔥 "close now" treatment — leading with the score —
+/// so a counsellor can tell a ready-to-buy lead from a problem-handover at a
+/// glance. Everything else keeps the 🤝 "handover to sales" framing.
+export function buildEscalationMessage(opts: {
+  lead: Pick<Lead, "id" | "name" | "phone">;
+  fired: FiredTrigger[];
+  assignee: string;
+  transcript?: string;
+  cqs?: number;
+  hot: boolean;
+}): { text: string; blocks: unknown[] } {
+  const { lead, fired, assignee, transcript, cqs, hot } = opts;
   const base = process.env.NEXTAUTH_URL;
-  const reasons = fired.map((f) => `• ${f.label}`).join("\n");
   const telPhone = lead.phone.replace(/[^\d+]/g, "");
   const phoneLink = `<tel:${telPhone}|📞 ${lead.phone}>`;
-  const assignee = rep?.slackUserId ? `<@${rep.slackUserId}>` : (rep?.name ?? "the team");
+  const cqsTag = typeof cqs === "number" ? ` — CQS ${cqs}` : "";
+  const header = hot ? `🔥 Hot lead — close now${cqsTag}` : "🤝 Handover to sales";
 
   const blocks: unknown[] = [
-    { type: "header", text: { type: "plain_text", text: "🤝 Handover to sales", emoji: true } },
+    { type: "header", text: { type: "plain_text", text: header, emoji: true } },
     {
       type: "section",
       text: { type: "mrkdwn", text: `*${lead.name}* — ${phoneLink}\nAssigned to ${assignee}` },
     },
-    { type: "section", text: { type: "mrkdwn", text: `*Why handed over:*\n${reasons}` } },
   ];
+  if (hot) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `:fire: *High-intent lead (CQS ${cqs ?? "≥ threshold"})* — prioritise the close.`,
+      },
+    });
+  }
+  if (fired.length) {
+    const reasons = fired.map((f) => `• ${f.label}`).join("\n");
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: `*${hot ? "Signals" : "Why handed over"}:*\n${reasons}` },
+    });
+  }
   if (transcript?.trim()) {
     blocks.push({
       type: "section",
@@ -134,10 +151,73 @@ export async function notifyHandover(
   }
 
   // Fallback plain text (shown in notifications / if blocks unsupported).
-  const text = `🤝 Handover to sales — ${lead.name} (${lead.phone}): ${fired.map((f) => f.label).join("; ")}`;
+  const text = hot
+    ? `🔥 Hot lead${cqsTag} — ${lead.name} (${lead.phone}) — prioritise the close`
+    : `🤝 Handover to sales — ${lead.name} (${lead.phone}): ${fired.map((f) => f.label).join("; ")}`;
+  return { text, blocks };
+}
+
+/// Route a handover to a sales rep (round-robin) and DM them individually on Slack
+/// with the reason(s), the call transcript, and a tap-to-call link. A CQS-driven
+/// escalation (high_cqs fired) renders as a distinct 🔥 hot-lead alert. Falls back
+/// to the default channel if no rep (or no Slack id). Best-effort (never throws).
+export async function notifyHandover(
+  lead: Pick<Lead, "id" | "name" | "phone">,
+  fired: FiredTrigger[],
+  transcript?: string,
+  cqs?: number,
+): Promise<void> {
+  if (fired.length === 0) return;
+
+  // Round-robin assignment (no-op if no reps configured yet) — happens even when
+  // Slack isn't set up, so the lead still gets an owner.
+  const rep = await pickNextRep();
+  if (rep) await assignLeadToRep(lead.id, rep.id);
+
+  if (!isSlackConfigured()) return;
+
+  const assignee = rep?.slackUserId ? `<@${rep.slackUserId}>` : (rep?.name ?? "the team");
+  const hot = fired.some((f) => f.key === "high_cqs");
+  const { text, blocks } = buildEscalationMessage({ lead, fired, assignee, transcript, cqs, hot });
+
   // DM the assigned rep if we have their Slack id; otherwise the default channel.
   await sendSlack({ text, blocks, channel: rep?.slackUserId ?? undefined });
   logger.info(
-    `Handover alert for lead ${lead.id} → ${rep?.name ?? "channel"}: ${fired.map((f) => f.key).join(",")}`,
+    `${hot ? "Hot-lead escalation" : "Handover alert"} for lead ${lead.id} → ${rep?.name ?? "channel"}: ${fired.map((f) => f.key).join(",")}`,
   );
+}
+
+/// Escalate a recorded HUMAN call that scored hot (CQS ≥ threshold). Unlike the AI
+/// path, the lead is already owned (it was a handover), so this RAISES the
+/// escalation flag (idempotently merging high_cqs into the triggers) and pings the
+/// owning rep — or the channel — that the lead is high-intent and worth
+/// prioritising. Non-destructive to any existing handover reason. Best-effort.
+export async function escalateHotCall(
+  lead: Pick<Lead, "id" | "name" | "phone" | "assignedRepId" | "handoverTriggers" | "handoverReason">,
+  cqs: number,
+  transcript?: string,
+): Promise<void> {
+  const triggers = new Set([...(lead.handoverTriggers ?? []), "high_cqs"]);
+  await prisma.lead.update({
+    where: { id: lead.id },
+    data: {
+      needsHandover: true,
+      handoverAt: new Date(),
+      handoverTriggers: [...triggers],
+      // Keep the original handover reason if there was one; only fill if empty.
+      handoverReason: lead.handoverReason ?? HANDOVER_TRIGGERS.high_cqs,
+    },
+  });
+
+  if (!isSlackConfigured()) return;
+
+  const rep = lead.assignedRepId
+    ? await prisma.salesRep.findUnique({ where: { id: lead.assignedRepId } })
+    : null;
+  const assignee = rep?.slackUserId ? `<@${rep.slackUserId}>` : (rep?.name ?? "the team");
+  const fired: FiredTrigger[] = [{ key: "high_cqs", label: HANDOVER_TRIGGERS.high_cqs }];
+  const { text, blocks } = buildEscalationMessage({ lead, fired, assignee, transcript, cqs, hot: true });
+
+  await sendSlack({ text, blocks, channel: rep?.slackUserId ?? undefined });
+  logger.info(`Hot-call escalation for lead ${lead.id} (CQS ${cqs}) → ${rep?.name ?? "channel"}`);
 }

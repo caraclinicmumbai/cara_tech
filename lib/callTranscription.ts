@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { fetchTwilioRecording } from "@/lib/providers/twilio";
 import { transcribeAudio } from "@/lib/providers/elevenlabs";
 import { scoreCQS } from "@/lib/cqs";
+import { isEscalationScore, escalateHotCall } from "@/lib/handover";
 import { logger } from "@/lib/logger";
 
 /// Download the recording, transcribe it, score it, and persist transcript + CQS
@@ -34,17 +35,36 @@ export async function transcribeAndScoreCall(
     }
 
     const scored = await scoreCQS(transcript);
-    await prisma.call.update({
+    const updated = await prisma.call.update({
       where: { id: callId },
       data: {
         transcript,
         cqs: scored?.cqs,
         cqsBreakdown: scored?.breakdown,
       },
+      select: { leadId: true },
     });
     logger.info(
       `Transcribed + scored handover call ${callId} (CQS ${scored?.cqs ?? "n/a"}, ${transcript.length} chars)`,
     );
+
+    // Hot-lead escalation (§3.1): a human call that scored ≥ threshold is
+    // high-intent — raise the escalation flag and ping the owning rep so it gets
+    // prioritised, mirroring the AI path's high_cqs handover.
+    if (scored && isEscalationScore(scored.cqs)) {
+      const lead = await prisma.lead.findUnique({
+        where: { id: updated.leadId },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          assignedRepId: true,
+          handoverTriggers: true,
+          handoverReason: true,
+        },
+      });
+      if (lead) await escalateHotCall(lead, scored.cqs, transcript);
+    }
   } catch (err) {
     logger.error(`transcribeAndScoreCall failed for ${callId}: ${String(err)}`);
   }
