@@ -40,6 +40,9 @@ model Lead {
   //    reason; captured here for win/loss analysis. Cleared if reactivated. ──
   lostReason String?
   lostAt     DateTime?
+  // True when the lead was marked Lost BEFORE completing a consultation (a
+  //    premature loss the counsellor was alerted to). Counted in the daily digest.
+  prematureLost Boolean @default(false)
 
   // ── AI→human handover (§3.1) — when an AI call hits a trigger (pricing/clinical
   //    question, distress, wants-human, competitor, unresolved objection, CQS≥75,

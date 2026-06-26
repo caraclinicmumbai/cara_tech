@@ -19,6 +19,7 @@ import {
   type HandoverSlaJob,
 } from "@/lib/handoverSla";
 import { runStageSlaScan } from "@/lib/stageSla";
+import { DIGEST_QUEUE, scheduleDailyDigest, sendDailyDigest } from "@/lib/digest";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -103,3 +104,13 @@ const runStageScan = () =>
 runStageScan();
 setInterval(runStageScan, STAGE_SLA_SCAN_MS);
 logger.info(`Stage-SLA scan active (every ${STAGE_SLA_SCAN_MS / 3_600_000} h)`);
+
+// Branch Manager daily digest — a repeatable (cron) job fires once a day at
+// DIGEST_HOUR_IST; this worker registers it and processes it (§3.1).
+const digestWorker = new Worker(
+  DIGEST_QUEUE,
+  async () => sendDailyDigest(),
+  { connection: bullConnection, concurrency: 1 },
+);
+digestWorker.on("failed", (job, err) => logger.error(`Digest job ${job?.id} failed: ${err.message}`));
+scheduleDailyDigest().catch((err) => logger.error(`Failed to schedule daily digest: ${String(err)}`));

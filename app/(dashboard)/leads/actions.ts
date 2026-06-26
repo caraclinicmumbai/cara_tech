@@ -37,6 +37,7 @@ export async function setLeadStage(
   });
   if (!lead) throw new Error("Lead not found");
   const stageChanged = lead.stage !== stage;
+  const isPremature = isLost && isPreConsultation(lead.stage);
 
   await prisma.lead.update({
     where: { id: leadId },
@@ -44,6 +45,8 @@ export async function setLeadStage(
       stage,
       lostReason: isLost ? lostReason : null,
       lostAt: isLost ? new Date() : null,
+      // Flag premature losses for the daily digest; clear it when un-lost.
+      prematureLost: isLost ? isPremature : false,
       // Reset the stage-age clock + stuck-alert dedup whenever the stage moves.
       ...(stageChanged ? { stageChangedAt: new Date(), stageStuckNotifiedAt: null } : {}),
     },
@@ -54,7 +57,7 @@ export async function setLeadStage(
 
   // Premature lost (§3.1): the lead was marked Lost before ever completing a
   // consultation — alert the counsellor for a possible save.
-  if (isLost && isPreConsultation(lead.stage)) {
+  if (isPremature) {
     await notifyCounsellor({
       kind: "premature_lost",
       lead: { id: leadId, name: lead.name, phone: lead.phone },
