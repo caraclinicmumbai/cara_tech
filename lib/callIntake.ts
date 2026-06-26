@@ -11,6 +11,7 @@ import { nextEveningCallback } from "@/lib/callWindow";
 import { stageFromOutcome, advanceStage } from "@/lib/leadStages";
 import { evaluateHandover, notifyHandover } from "@/lib/handover";
 import { scheduleHandoverSla } from "@/lib/handoverSla";
+import { notifyCounsellor, type CounsellorAlertKind } from "@/lib/counsellor";
 import { sendAutomatedTemplate, outreachTemplate, firstName, istTime } from "@/lib/outreach";
 import { scoreCQS } from "@/lib/cqs";
 import { logger } from "@/lib/logger";
@@ -83,6 +84,8 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     optedOutAt?: Date;
     optedOutReason?: string;
     stage?: string;
+    stageChangedAt?: Date;
+    stageStuckNotifiedAt?: Date | null;
     tag?: string;
     needsHandover?: boolean;
     handoverReason?: string;
@@ -102,7 +105,13 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
   // Pipeline stage: auto-advance FORWARD-ONLY from the call outcome so we never
   // regress a stage staff (or an earlier, further-along call) already set (§3.1).
   const nextStage = advanceStage(lead.stage, stageFromOutcome(input.outcome));
-  if (nextStage) leadData.stage = nextStage;
+  if (nextStage) {
+    leadData.stage = nextStage;
+    // Reset the stage-age clock (and clear any stuck alert) so the stuck-in-stage
+    // SLA measures time in the NEW stage (§3.1).
+    leadData.stageChangedAt = new Date();
+    leadData.stageStuckNotifiedAt = null;
+  }
 
   // Tag: what the lead asked for, as captured by the AI. Only overwrite when the
   // call actually carried one — an empty extraction shouldn't wipe a manual tag.
@@ -136,6 +145,21 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     status = leadData.status;
     const canceled = await cancelScheduledCalls(lead.id);
     await notifyHandover(lead, handover, input.transcript, scored?.cqs ?? input.cqs);
+    // Counsellor oversight copy (§3.1): one alert per handover, framed by the most
+    // significant trigger — a threat (abusive) and a fast-track (high CQS) each
+    // get distinct treatment; everything else is a generic AI handoff.
+    const keys = leadData.handoverTriggers;
+    const kind: CounsellorAlertKind = keys.includes("abusive")
+      ? "threat"
+      : keys.includes("high_cqs")
+        ? "fast_track"
+        : "ai_handoff";
+    await notifyCounsellor({
+      kind,
+      lead,
+      reason: leadData.handoverReason,
+      cqs: scored?.cqs ?? input.cqs,
+    });
     // Start the SLA timer: if no rep attends this lead within HANDOVER_SLA_HOURS,
     // it escalates to the counsellor (§3.1). `since` = this handover's timestamp.
     await scheduleHandoverSla({

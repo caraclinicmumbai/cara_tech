@@ -29,6 +29,13 @@ model Lead {
   // the post-call write-back, staff-editable. Free text.
   tag   String?
 
+  // ── Stage-age tracking (§3.1) — `stageChangedAt` is set whenever `stage` moves
+  //    (auto-advance or manual), so the worker can flag a lead "stuck in stage"
+  //    past the SLA and alert the counsellor. `stageStuckNotifiedAt` dedups that
+  //    alert per stall; it's reset to null on every stage change. ──
+  stageChangedAt      DateTime? @default(now())
+  stageStuckNotifiedAt DateTime?
+
   // ── Lost (§3.1) — when staff manually move the stage to "lost" they MUST give a
   //    reason; captured here for win/loss analysis. Cleared if reactivated. ──
   lostReason String?
@@ -95,6 +102,7 @@ model Lead {
   @@index([duplicateOfId])
   @@index([heldForReview])
   @@index([stage])
+  @@index([stageChangedAt])
   @@index([needsHandover])
   @@index([assignedRepId])
 }

@@ -18,6 +18,7 @@ import {
   runHandoverSlaCheck,
   type HandoverSlaJob,
 } from "@/lib/handoverSla";
+import { runStageSlaScan } from "@/lib/stageSla";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -93,3 +94,12 @@ const runMonitor = () =>
 runMonitor();
 setInterval(runMonitor, MONITOR_INTERVAL_MS);
 logger.info(`ElevenLabs monitor active (every ${MONITOR_INTERVAL_MS / 60_000} min)`);
+
+// Stuck-in-stage SLA scan — flag leads that haven't advanced stage past the SLA
+// and alert the counsellor (§3.1). Scan now, then on an interval (default 6h).
+const STAGE_SLA_SCAN_MS = Number(process.env.STAGE_SLA_SCAN_HOURS ?? 6) * 60 * 60_000;
+const runStageScan = () =>
+  runStageSlaScan().catch((err) => logger.error(`Stage-SLA scan error: ${String(err)}`));
+runStageScan();
+setInterval(runStageScan, STAGE_SLA_SCAN_MS);
+logger.info(`Stage-SLA scan active (every ${STAGE_SLA_SCAN_MS / 3_600_000} h)`);

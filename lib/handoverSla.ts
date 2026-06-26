@@ -12,6 +12,7 @@ import { Queue } from "bullmq";
 import { bullConnection } from "@/lib/queue";
 import { prisma } from "@/lib/prisma";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
+import { counsellorChannel } from "@/lib/counsellor";
 import { logger } from "@/lib/logger";
 
 export const HANDOVER_SLA_QUEUE = "handover-sla";
@@ -49,10 +50,9 @@ export function slaHours(): number {
   return Number.isFinite(h) && h > 0 ? h : 2;
 }
 
-/// Where the unattended-lead escalation goes — a counsellor/supervisor channel or
-/// Slack user id. Falls back to the default channel.
+/// Where the unattended-lead escalation goes — the shared counsellor channel.
 export function escalationTarget(): string | undefined {
-  return process.env.HANDOVER_ESCALATION_CHANNEL ?? process.env.SLACK_DEFAULT_CHANNEL;
+  return counsellorChannel();
 }
 
 /// Schedule the SLA check for a handover that just fired. Idempotent per
