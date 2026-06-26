@@ -6,7 +6,8 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { isLeadStage, LOST_STAGE } from "@/lib/leadStages";
+import { isLeadStage, LOST_STAGE, isPreConsultation, stageLabel } from "@/lib/leadStages";
+import { notifyCounsellor } from "@/lib/counsellor";
 import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
 import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
 import { clickToCall, isTwilioConfigured } from "@/lib/providers/twilio";
@@ -30,17 +31,40 @@ export async function setLeadStage(
   const lostReason = reason?.trim().slice(0, REASON_MAX);
   if (isLost && !lostReason) throw new Error("A reason is required to mark a lead lost");
 
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { stage: true, name: true, phone: true },
+  });
+  if (!lead) throw new Error("Lead not found");
+  const stageChanged = lead.stage !== stage;
+  const isPremature = isLost && isPreConsultation(lead.stage);
+
   await prisma.lead.update({
     where: { id: leadId },
     data: {
       stage,
       lostReason: isLost ? lostReason : null,
       lostAt: isLost ? new Date() : null,
+      // Flag premature losses for the daily digest; clear it when un-lost.
+      prematureLost: isLost ? isPremature : false,
+      // Reset the stage-age clock + stuck-alert dedup whenever the stage moves.
+      ...(stageChanged ? { stageChangedAt: new Date(), stageStuckNotifiedAt: null } : {}),
     },
   });
   logger.info(
     `Lead ${leadId} stage set to ${stage}${isLost ? ` (lost: ${lostReason})` : ""} by ${session.user.email ?? "?"}`,
   );
+
+  // Premature lost (§3.1): the lead was marked Lost before ever completing a
+  // consultation — alert the counsellor for a possible save.
+  if (isPremature) {
+    await notifyCounsellor({
+      kind: "premature_lost",
+      lead: { id: leadId, name: lead.name, phone: lead.phone },
+      reason: lostReason,
+      extra: [`Marked lost at *${stageLabel(lead.stage)}* — never completed a consultation.`],
+    });
+  }
 
   revalidatePath("/leads");
   revalidatePath(`/leads/${leadId}`);

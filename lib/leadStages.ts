@@ -65,6 +65,22 @@ export function stageFromOutcome(outcome?: string): LeadStage | null {
   }
 }
 
+/// Pipeline rank of a stage (position in LEAD_STAGES); unknown → fresh_inquiry.
+export function stageRank(stage: string): number {
+  return RANK[isLeadStage(stage) ? stage : DEFAULT_STAGE];
+}
+
+/// Was this lead lost BEFORE completing a consultation? Such a "Lost" is
+/// premature — the lead never reached the consultation that creates value, so the
+/// counsellor gets a chance to save it (§3.1).
+export function isPreConsultation(stage: string): boolean {
+  return stageRank(stage) < RANK.consultation_done;
+}
+
+/// Stages excluded from the "stuck in stage" SLA scan — the won + terminal states
+/// where a lead legitimately rests (§3.1).
+export const STAGE_SLA_EXCLUDED: LeadStage[] = ["converted_followup", "converted", "lost"];
+
 /// Forward-only auto-advance: returns `next` only if it's further along than the
 /// current stage; otherwise null (= leave the stage untouched). Manual edits in
 /// the UI bypass this and may move the stage in any direction.
