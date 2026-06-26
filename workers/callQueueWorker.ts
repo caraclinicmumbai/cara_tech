@@ -20,6 +20,7 @@ import {
 } from "@/lib/handoverSla";
 import { runStageSlaScan } from "@/lib/stageSla";
 import { DIGEST_QUEUE, scheduleDailyDigest, sendDailyDigest } from "@/lib/digest";
+import { monitorSystemHealth } from "@/lib/healthMonitor";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -104,6 +105,15 @@ const runStageScan = () =>
 runStageScan();
 setInterval(runStageScan, STAGE_SLA_SCAN_MS);
 logger.info(`Stage-SLA scan active (every ${STAGE_SLA_SCAN_MS / 3_600_000} h)`);
+
+// System health monitor — probe Postgres / Redis / web / external APIs and alert
+// the CRM admin + branch manager on Slack the moment something goes down (§3.1).
+const HEALTH_MONITOR_MS = Number(process.env.HEALTH_MONITOR_MINUTES ?? 5) * 60_000;
+const runHealth = () =>
+  monitorSystemHealth().catch((err) => logger.error(`Health monitor error: ${String(err)}`));
+runHealth();
+setInterval(runHealth, HEALTH_MONITOR_MS);
+logger.info(`System health monitor active (every ${HEALTH_MONITOR_MS / 60_000} min)`);
 
 // Branch Manager daily digest — a repeatable (cron) job fires once a day at
 // DIGEST_HOUR_IST; this worker registers it and processes it (§3.1).
