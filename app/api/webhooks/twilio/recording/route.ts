@@ -30,6 +30,17 @@ export async function POST(req: Request) {
   const recordingUrl = params.RecordingUrl ? `${params.RecordingUrl}.mp3` : undefined;
   const duration = params.RecordingDuration ? parseInt(params.RecordingDuration, 10) : undefined;
 
+  // Idempotency: Twilio retries recording callbacks. Skip if we've already stored
+  // this CallSid (the unique providerSid would otherwise reject the duplicate, and
+  // we must not re-run transcription/scoring).
+  if (params.CallSid) {
+    const existing = await prisma.call.findUnique({ where: { providerSid: params.CallSid } });
+    if (existing) {
+      logger.info(`Duplicate Twilio recording callback for ${params.CallSid} — already stored (call ${existing.id})`);
+      return NextResponse.json({ ok: true, duplicate: true }, { status: 200 });
+    }
+  }
+
   const call = await prisma.call.create({
     data: {
       leadId,
