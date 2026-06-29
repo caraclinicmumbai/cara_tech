@@ -61,7 +61,8 @@ worker.
   parked.
 - **Retries depend on the worker being up.** Daytime first-attempts call immediately,
   but held/retry/callback calls require the worker service running to drain.
-- **The attempt count is derived from the number of `Call` rows** for the lead, so a
-  manually-logged call would shift the ladder.
+- **The attempt count is derived from the number of AI `Call` rows** (`initial` +
+  `reconfirmation`) for the lead. `human_handover` recordings are excluded so they
+  can't shift the ladder; a manually-logged AI-type call still would.
 - **No per-lead time-zone awareness.** All leads are treated as IST; an out-of-state
   patient in another zone is still called on the IST schedule.

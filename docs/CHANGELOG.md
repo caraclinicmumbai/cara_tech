@@ -7,6 +7,23 @@ Format: newest first.
 
 ---
 
+## 2026-06-29 — Critical reliability fixes in the post-call pipeline
+
+From the gap audit. Fixes the top reliability findings in `recordCall`:
+
+- **Idempotency** — `Call.elevenlabsId` and `Call.providerSid` are now `@unique`;
+  `recordCall` returns the existing call on a duplicate webhook (ElevenLabs/n8n/Twilio
+  retries) instead of re-scoring, re-alerting, and re-scheduling. The Twilio recording
+  webhook is idempotent on `CallSid` too.
+- **Attempt-count bug** — the retry-ladder index now counts only AI call types, so a
+  `human_handover` recording can't inflate it (which previously caused `NaN` delays or
+  premature `unreachable`).
+- **Atomic write** — the `Call` insert + `Lead` update run in one transaction;
+  side-effects (queue/Slack/WhatsApp) are deferred until after commit.
+
+Updated: [flow 2](flows/02-ai-calling-and-retries.md), [flow 3](flows/03-post-call-cqs-and-stage.md).
+Schema change: `@unique` on `Call.elevenlabsId` + `Call.providerSid` (additive index).
+
 ## 2026-06-27 — Documentation module created
 
 Initial flow-wise documentation covering the system as it stands in `main` after the

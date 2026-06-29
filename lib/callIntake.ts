@@ -52,27 +52,36 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
   const lead = await prisma.lead.findUnique({ where: { id: input.leadId } });
   if (!lead) return { ok: false, reason: "lead_not_found" };
 
+  // Idempotency (§ reliability): ElevenLabs and n8n both retry on timeout/5xx. If
+  // this conversation is already recorded, return it WITHOUT re-scoring (paid),
+  // re-alerting, or re-scheduling — a duplicate would also corrupt the attempt count.
+  if (input.elevenlabsId) {
+    const existing = await prisma.call.findUnique({ where: { elevenlabsId: input.elevenlabsId } });
+    if (existing) {
+      logger.info(`Duplicate post-call for ${input.elevenlabsId} — already recorded (call ${existing.id}); skipping`);
+      return { ok: true, call: existing };
+    }
+  }
+
   // Conversation Quality Score (§3.1) — Claude scores the transcript against the
   // rubric. Best-effort: null when unconfigured/empty/failed. The computed score
-  // also drives the high-CQS handover trigger below.
+  // also drives the high-CQS handover trigger below. Computed BEFORE the DB
+  // transaction (a slow external call must not hold a transaction open).
   const scored = await scoreCQS(input.transcript);
 
-  const call = await prisma.call.create({
-    data: {
-      leadId: input.leadId,
-      callType: input.callType,
-      elevenlabsId: input.elevenlabsId,
-      transcript: input.transcript,
-      outcome: input.outcome,
-      sentiment: input.sentiment,
-      duration: input.duration,
-      cqs: scored?.cqs,
-      cqsBreakdown: scored?.breakdown,
-    },
-  });
+  // This call's attempt number = prior AI calls + 1. Count ONLY AI call types so a
+  // human_handover recording can't inflate the ladder index (which would
+  // mis-schedule the next retry or prematurely mark the lead unreachable).
+  const attemptNumber =
+    (await prisma.call.count({
+      where: { leadId: lead.id, callType: { in: ["initial", "reconfirmation"] } },
+    })) + 1;
 
-  // This call's attempt number = total calls recorded for the lead (incl. this one).
-  const attemptNumber = await prisma.call.count({ where: { leadId: lead.id } });
+  // Side-effects (queue ops, Slack, WhatsApp) are deferred until AFTER the DB write
+  // commits: a rollback then leaves no orphaned jobs/alerts, and the Call + Lead are
+  // written atomically so a mid-pipeline crash can't leave the Call recorded but the
+  // Lead un-advanced (which would stall the lead forever).
+  const afterCommit: Array<() => Promise<void>> = [];
   const callbackAt = parseCallbackAt(input.callbackAt);
   const unanswered = !RESOLVED_OUTCOMES.includes(input.outcome ?? "");
 
@@ -131,8 +140,10 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     leadData.optedOut = true;
     leadData.optedOutAt = new Date();
     leadData.optedOutReason = "Said not interested on AI call";
-    const canceled = await cancelScheduledCalls(lead.id);
-    logger.info(`Lead ${lead.id} opted out (not interested) — suppressed all outreach, canceled ${canceled} pending`);
+    afterCommit.push(async () => {
+      const canceled = await cancelScheduledCalls(lead.id);
+      logger.info(`Lead ${lead.id} opted out (not interested) — suppressed all outreach, canceled ${canceled} pending`);
+    });
   } else if (handover.length > 0) {
     // Route to the sales team (§3.1): stop the AI drip, flag + log the reason,
     // and alert Slack. Preserve a "confirmed" status; otherwise the lead goes to
@@ -143,8 +154,6 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     leadData.handoverAt = new Date();
     leadData.handoverTriggers = handover.map((h) => h.key);
     status = leadData.status;
-    const canceled = await cancelScheduledCalls(lead.id);
-    await notifyHandover(lead, handover, input.transcript, scored?.cqs ?? input.cqs);
     // Counsellor oversight copy (§3.1): one alert per handover, framed by the most
     // significant trigger — a threat (abusive) and a fast-track (high CQS) each
     // get distinct treatment; everything else is a generic AI handoff.
@@ -154,22 +163,17 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
       : keys.includes("high_cqs")
         ? "fast_track"
         : "ai_handoff";
-    await notifyCounsellor({
-      kind,
-      lead,
-      reason: leadData.handoverReason,
-      cqs: scored?.cqs ?? input.cqs,
+    const handoverReason = leadData.handoverReason;
+    const handoverSince = leadData.handoverAt.getTime();
+    const cqsForAlerts = scored?.cqs ?? input.cqs;
+    afterCommit.push(async () => {
+      const canceled = await cancelScheduledCalls(lead.id);
+      await notifyHandover(lead, handover, input.transcript, cqsForAlerts);
+      await notifyCounsellor({ kind, lead, reason: handoverReason, cqs: cqsForAlerts });
+      // SLA timer: if no rep attends within HANDOVER_SLA_HOURS, escalate (§3.1).
+      await scheduleHandoverSla({ leadId: lead.id, since: handoverSince, reason: handoverReason });
+      logger.info(`Lead ${lead.id} handed to sales (${keys.join(",")}) — canceled ${canceled} pending`);
     });
-    // Start the SLA timer: if no rep attends this lead within HANDOVER_SLA_HOURS,
-    // it escalates to the counsellor (§3.1). `since` = this handover's timestamp.
-    await scheduleHandoverSla({
-      leadId: lead.id,
-      since: leadData.handoverAt.getTime(),
-      reason: leadData.handoverReason,
-    });
-    logger.info(
-      `Lead ${lead.id} handed to sales (${leadData.handoverTriggers.join(",")}) — canceled ${canceled} pending`,
-    );
   } else if (input.outcome === "rescheduled" || callbackAt) {
     // Lead asked to be called back (§3.1.2). If they named a time, honour it;
     // a vague "call me back" with no time defaults to the evening callback hour
@@ -180,47 +184,51 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     leadData.status = "rescheduled";
     leadData.callbackAt = target;
     callbackTimeStr = istTime(target);
-    const canceled = await cancelScheduledCalls(lead.id);
-    try {
-      await scheduleCallAttempt(
-        {
-          leadId: lead.id,
-          phone: lead.phone,
-          attempt: attemptNumber + 1,
-          callType: "reconfirmation",
-          context: input.transcript?.slice(0, 1000),
-        },
-        target.getTime() - Date.now(),
-      );
-      logger.info(
-        `Lead ${lead.id} callback ${callbackAt ? "at requested time" : "(no time → evening 7 PM default)"} ${target.toISOString()} — canceled ${canceled} pending`,
-      );
-    } catch (err) {
-      logger.error(`Failed to schedule callback for lead ${lead.id}: ${String(err)}`);
-    }
-  } else if (unanswered) {
-    const delays = retryDelaysDays(); // e.g. [1, 5]
-    const maxAttempts = delays.length + 1; // + the immediate intake call
-    if (attemptNumber < maxAttempts) {
-      const delayDays = delays[attemptNumber - 1]!; // delay from attempt N to N+1
-      const nextAttempt = attemptNumber + 1;
+    afterCommit.push(async () => {
+      const canceled = await cancelScheduledCalls(lead.id);
       try {
         await scheduleCallAttempt(
           {
             leadId: lead.id,
             phone: lead.phone,
-            attempt: nextAttempt,
+            attempt: attemptNumber + 1,
             callType: "reconfirmation",
             context: input.transcript?.slice(0, 1000),
           },
-          delayDays * DAY_MS,
+          target.getTime() - Date.now(),
         );
         logger.info(
-          `Lead ${lead.id} unanswered (attempt ${attemptNumber}) — scheduled attempt ${nextAttempt} in ${delayDays}d`,
+          `Lead ${lead.id} callback ${callbackAt ? "at requested time" : "(no time → evening 7 PM default)"} ${target.toISOString()} — canceled ${canceled} pending`,
         );
       } catch (err) {
-        logger.error(`Failed to schedule attempt ${nextAttempt} for lead ${lead.id}: ${String(err)}`);
+        logger.error(`Failed to schedule callback for lead ${lead.id}: ${String(err)}`);
       }
+    });
+  } else if (unanswered) {
+    const delays = retryDelaysDays(); // e.g. [1, 5]
+    const maxAttempts = delays.length + 1; // + the immediate intake call
+    if (attemptNumber < maxAttempts) {
+      const delayDays = delays[attemptNumber - 1] ?? delays[delays.length - 1]!; // attempt N→N+1
+      const nextAttempt = attemptNumber + 1;
+      afterCommit.push(async () => {
+        try {
+          await scheduleCallAttempt(
+            {
+              leadId: lead.id,
+              phone: lead.phone,
+              attempt: nextAttempt,
+              callType: "reconfirmation",
+              context: input.transcript?.slice(0, 1000),
+            },
+            delayDays * DAY_MS,
+          );
+          logger.info(
+            `Lead ${lead.id} unanswered (attempt ${attemptNumber}) — scheduled attempt ${nextAttempt} in ${delayDays}d`,
+          );
+        } catch (err) {
+          logger.error(`Failed to schedule attempt ${nextAttempt} for lead ${lead.id}: ${String(err)}`);
+        }
+      });
     } else {
       // Exhausted all attempts with no answer — mark unreachable (fallback queue).
       status = "unreachable";
@@ -230,19 +238,57 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     }
   }
 
-  await prisma.lead.update({ where: { id: lead.id }, data: leadData });
+  // Atomic write (§ reliability): the Call and the Lead update land together, or
+  // neither does — no "Call recorded but Lead un-advanced" stall on a crash.
+  let call: Call;
+  try {
+    call = await prisma.$transaction(async (tx) => {
+      const created = await tx.call.create({
+        data: {
+          leadId: input.leadId,
+          callType: input.callType,
+          elevenlabsId: input.elevenlabsId,
+          transcript: input.transcript,
+          outcome: input.outcome,
+          sentiment: input.sentiment,
+          duration: input.duration,
+          cqs: scored?.cqs,
+          cqsBreakdown: scored?.breakdown,
+        },
+      });
+      await tx.lead.update({ where: { id: lead.id }, data: leadData });
+      return created;
+    });
+  } catch (err) {
+    // Lost the race to a concurrent duplicate webhook (the unique elevenlabsId
+    // constraint fired) — treat as already-processed rather than erroring.
+    if ((err as { code?: string }).code === "P2002" && input.elevenlabsId) {
+      const existing = await prisma.call.findUnique({ where: { elevenlabsId: input.elevenlabsId } });
+      if (existing) {
+        logger.info(`Concurrent duplicate for ${input.elevenlabsId} — already recorded; skipping`);
+        return { ok: true, call: existing };
+      }
+    }
+    throw err;
+  }
+
+  // Post-commit side-effects (queue scheduling + Slack), best-effort and isolated
+  // so one failure can't abort the rest.
+  for (const action of afterCommit) {
+    await action().catch((err) => logger.error(`Post-commit action failed for lead ${lead.id}: ${String(err)}`));
+  }
 
   // Automated WhatsApp outreach (§3.1.3) — best-effort, each gated by its env
   // template (unset = off). Skipped automatically when the lead has opted out.
-  const fn = firstName(lead.name);
+  const first = firstName(lead.name);
   if (input.outcome === "confirmed") {
-    await sendAutomatedTemplate(lead.id, outreachTemplate.confirmed(), [fn]);
+    await sendAutomatedTemplate(lead.id, outreachTemplate.confirmed(), [first]);
   }
   if (becameUnreachable) {
-    await sendAutomatedTemplate(lead.id, outreachTemplate.unreachable(), [fn]);
+    await sendAutomatedTemplate(lead.id, outreachTemplate.unreachable(), [first]);
   }
   if (callbackTimeStr) {
-    await sendAutomatedTemplate(lead.id, outreachTemplate.callback(), [fn, callbackTimeStr]);
+    await sendAutomatedTemplate(lead.id, outreachTemplate.callback(), [first, callbackTimeStr]);
   }
 
   logger.info(

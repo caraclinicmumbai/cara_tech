@@ -163,9 +163,12 @@ model Call {
   outcome      String? // confirmed | no_answer | rescheduled | not_interested
   sentiment    String? // positive | neutral | negative
   duration     Int? // seconds
-  elevenlabsId String? // ElevenLabs call ID for reference
+  // Provider correlation ids are UNIQUE so a retried/duplicate webhook (ElevenLabs
+  // + n8n + Twilio all retry on timeout/5xx) can't create a second Call and
+  // re-run the pipeline. NULLs are allowed and don't collide (Postgres).
+  elevenlabsId String? @unique // ElevenLabs conversation/call id
   recordingUrl String? // Twilio recording URL for human-handover calls (§3.1)
-  providerSid  String? // Twilio CallSid (correlation)
+  providerSid  String? @unique // Twilio CallSid (correlation)
   cqs          Int? // Conversation Quality Score 0–100, judged by Claude (§3.1)
   cqsBreakdown Json? // per-dimension scores + objection type + summary
   createdAt    DateTime @default(now())

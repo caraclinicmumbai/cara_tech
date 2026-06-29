@@ -14,6 +14,12 @@ Both funnel into **`recordCall` (`lib/callIntake.ts`)**.
 
 ## Step-by-step (`recordCall`)
 
+0. **Idempotency + atomicity.** A duplicate webhook (ElevenLabs/n8n retry on
+   timeout/5xx) is detected by the unique `Call.elevenlabsId` and returns the
+   existing call without re-processing. The `Call` insert and the `Lead` update run
+   in a single transaction, and all side-effects (queue scheduling, Slack, WhatsApp)
+   are deferred until **after** commit — so a rollback leaves no orphaned jobs and a
+   mid-pipeline crash can't leave a Call recorded with the Lead un-advanced.
 1. **Conversation Quality Score.** `scoreCQS` (`lib/cqs.ts`) sends the transcript to
    Claude, which scores six dimensions; a weighted sum gives a 0–100 `cqs`. Stored with
    the call as `cqs` + `cqsBreakdown`. Best-effort — null when unconfigured/empty/failed,
@@ -83,5 +89,7 @@ fast.
   score as a triage signal, not ground truth.
 - **Stage auto-advance never reaches `consultation_done`, `existing_followup`,
   `converted*`, or `lost`** — those are staff-only transitions.
-- **Attempt numbering keys off `Call` row count**, so out-of-band call records affect
-  the ladder (see flow 2).
+- **Residual crash window:** the DB write is atomic, but the post-commit side-effects
+  (scheduling the next retry, Slack) are not in the transaction. A crash in the
+  millisecond between commit and scheduling could drop a retry job; the lead would
+  then surface via stuck-in-stage / unreachable rather than be retried automatically.
