@@ -51,7 +51,9 @@ export function isEscalationScore(cqs?: number | null): boolean {
 /// Languages the AI agent can handle. Anything else → manual handover. Codes are
 /// matched case-insensitively on the first token (so "ta-IN" or "Tamil" → "ta"/"tamil").
 function supportedLanguages(): string[] {
-  return (process.env.HANDOVER_SUPPORTED_LANGUAGES ?? "en,hi,mr")
+  // Hindi/Hinglish + English only — matches the AI agent's First Call Rulebook
+  // (§2, Commandment #4). Any other language (incl. Marathi) routes to a human.
+  return (process.env.HANDOVER_SUPPORTED_LANGUAGES ?? "en,hi")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);

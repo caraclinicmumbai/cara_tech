@@ -27,6 +27,10 @@ data model, integrations), then dip into the flow you care about.
 | 6 | [WhatsApp messaging](flows/06-whatsapp-messaging.md) | Unified inbound/outbound thread, templates, media, automated outreach |
 | 7 | [System health monitor](flows/07-system-health-monitor.md) | Downtime / API-failure alerts to admin + branch manager |
 
+**Also:** [ElevenLabs agent ↔ CRM integration contract](elevenlabs-agent-integration.md) —
+what the AI first-call agent must emit (outcome, handover keys, callback time, tag,
+language) for the automation to fire correctly.
+
 ## Gaps & roadmap
 
 The full known-gaps backlog (security, reliability, compliance, testing, ops) from

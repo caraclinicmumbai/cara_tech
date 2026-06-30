@@ -161,3 +161,10 @@ items are addressed (and keep [CHANGELOG.md](CHANGELOG.md) in step).
   data from production once real patient data coexists.
 - ⬜ 🟡 **F5 — No payment/quote/invoice capture.** A `price_request` handover trigger exists
   but nothing records quotes/payments. *(Likely out of scope for the sales layer — noted.)*
+- ⬜ 🟠 **F6 — No nurture / drip-only outcome state.** `recordCall` outcomes are
+  confirmed / rescheduled / not_interested / no_answer. A "cold but receptive" lead has
+  no home: `not_interested` hard-suppresses all outreach (incl. the content drip), while
+  leaving it unanswered re-enters the aggressive retry ladder. The AI agent (per the
+  rulebook) produces NURTURE leads that need a slow content drip, not calls. → Add a
+  `nurture` outcome/state that stops calling but keeps the WhatsApp content drip.
+  See [elevenlabs-agent-integration.md](elevenlabs-agent-integration.md) §3.
