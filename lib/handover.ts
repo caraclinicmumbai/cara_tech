@@ -143,14 +143,21 @@ export function buildEscalationMessage(opts: {
       text: { type: "mrkdwn", text: `*Call transcript:*\n${truncate(transcript.trim(), 2600)}` },
     });
   }
+  // Action buttons: "Call & record" (interactive — handled by /api/slack/interact:
+  // rings the rep who clicks, then dials + records the lead) and "Open lead".
+  const elements: unknown[] = [
+    {
+      type: "button",
+      text: { type: "plain_text", text: "📞 Call & record", emoji: true },
+      action_id: "call_and_record",
+      value: lead.id,
+      style: "primary",
+    },
+  ];
   if (base) {
-    blocks.push({
-      type: "actions",
-      elements: [
-        { type: "button", text: { type: "plain_text", text: "Open lead" }, url: `${base}/leads/${lead.id}` },
-      ],
-    });
+    elements.push({ type: "button", text: { type: "plain_text", text: "Open lead" }, url: `${base}/leads/${lead.id}` });
   }
+  blocks.push({ type: "actions", elements });
 
   // Fallback plain text (shown in notifications / if blocks unsupported).
   const text = hot
