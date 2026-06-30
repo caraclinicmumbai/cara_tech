@@ -7,6 +7,16 @@ Format: newest first.
 
 ---
 
+## 2026-07-01 — Record who handled a human-handover call
+
+Human-handover calls now capture the rep who took them. The initiating rep's id is
+threaded through the Twilio callback URLs (clickToCall → voice TwiML →
+recordingStatusCallback) and stored as `Call.handledById`. Shown as "👤 Handled by
+<name>" on the lead-detail call list and a "Handled by" column on the Calls page
+(AI calls show "🤖 AI"). Recording-webhook signature reconstruction switched to the
+incoming path+query so the threaded `repId` is covered (verified). Schema: additive
+`Call.handledById` → SalesRep.
+
 ## 2026-07-01 — Interactive Slack "Call & record" button
 
 Handover Slack alerts now carry a "📞 Call & record" button. When a rep clicks it,

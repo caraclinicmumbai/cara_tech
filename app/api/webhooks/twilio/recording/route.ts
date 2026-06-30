@@ -11,12 +11,15 @@ export async function POST(req: Request) {
   const url = new URL(req.url);
   const leadId = url.searchParams.get("leadId");
 
+  const repId = url.searchParams.get("repId") ?? undefined;
+
   const form = await req.formData();
   const params: Record<string, string> = {};
   for (const [k, v] of form.entries()) params[k] = String(v);
 
-  // Reconstruct the exact public URL Twilio signed (base + path + query).
-  const signedUrl = `${publicBase()}/api/webhooks/twilio/recording?leadId=${encodeURIComponent(leadId ?? "")}`;
+  // Reconstruct the exact public URL Twilio signed (base + path + the same query
+  // string it was configured with, including repId).
+  const signedUrl = `${publicBase()}${url.pathname}${url.search}`;
   if (!verifyTwilioSignature(signedUrl, params, req.headers.get("x-twilio-signature"))) {
     logger.warn("Twilio recording webhook: bad signature");
     return NextResponse.json({ error: "Invalid signature" }, { status: 403 });
@@ -48,6 +51,7 @@ export async function POST(req: Request) {
       recordingUrl,
       duration: Number.isFinite(duration) ? duration : undefined,
       providerSid: params.CallSid,
+      handledById: repId, // the rep who initiated the click-to-call
     },
   });
   logger.info(`Stored human-handover recording for lead ${leadId} (call ${call.id}, ${duration ?? "?"}s)`);

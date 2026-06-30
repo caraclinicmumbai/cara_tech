@@ -49,7 +49,7 @@ export default async function LeadDetailPage({
   const lead = await prisma.lead.findUnique({
     where: { id },
     include: {
-      calls: { orderBy: { createdAt: "desc" } },
+      calls: { orderBy: { createdAt: "desc" }, include: { handledBy: { select: { name: true } } } },
       duplicateOf: true,
       duplicates: { orderBy: { createdAt: "desc" } },
       messages: { orderBy: { createdAt: "asc" } },
@@ -215,6 +215,11 @@ export default async function LeadDetailPage({
               >
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                   <span className="font-medium">{call.callType}</span>
+                  {call.callType === "human_handover" && (
+                    <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-xs text-blue-700 dark:text-blue-400">
+                      👤 Handled by {call.handledBy?.name ?? "—"}
+                    </span>
+                  )}
                   <span>Outcome: {call.outcome ?? "—"}</span>
                   <span>Sentiment: {call.sentiment ?? "—"}</span>
                   <span>Duration: {call.duration ? `${call.duration}s` : "—"}</span>

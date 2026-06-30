@@ -122,7 +122,8 @@ model SalesRep {
   lastAssignedAt DateTime? // round-robin cursor
   createdAt      DateTime  @default(now())
 
-  leads Lead[] @relation("LeadAssignee")
+  leads        Lead[] @relation("LeadAssignee")
+  handledCalls Call[] @relation("CallHandler")
 
   @@index([active, lastAssignedAt])
 }
@@ -171,6 +172,12 @@ model Call {
   providerSid  String? @unique // Twilio CallSid (correlation)
   cqs          Int? // Conversation Quality Score 0–100, judged by Claude (§3.1)
   cqsBreakdown Json? // per-dimension scores + objection type + summary
+
+  // Who handled a human-handover call — the rep who initiated the click-to-call
+  // (from the Slack button or the in-app button). Null for AI calls. (§3.1)
+  handledById String?
+  handledBy   SalesRep? @relation("CallHandler", fields: [handledById], references: [id], onDelete: SetNull)
+
   createdAt    DateTime @default(now())
 
   @@index([leadId])
