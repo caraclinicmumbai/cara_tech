@@ -132,6 +132,87 @@ sends** the templates automatically on `confirmed` / `unreachable` / `callback`
 (`lib/outreach.ts`) — the agent does not send them itself. These fire only once the
 corresponding WhatsApp templates are approved and their env names set.
 
+## 10. How to configure this in ElevenLabs (step-by-step)
+
+All the §2 fields are set up as **Data Collection** items on the agent. ElevenLabs
+extracts them from the transcript after the call and includes them in the post-call
+webhook — which is exactly what the CRM reads.
+
+**Where:** ElevenLabs → Conversational AI → your agent → **Analysis** tab →
+**Data collection** → **Add item** (one per field below).
+
+For each item set: **Identifier** (must match exactly), **Data type** = `String`,
+and paste the **Description** (the extraction instruction).
+
+### `outcome` — String
+```
+The single outcome of this call. Return exactly ONE keyword:
+- confirmed — the patient booked or agreed to a consultation/appointment.
+- rescheduled — the patient wants a callback later, asked to follow up, or is warm
+  but not booking yet. Also use this for nurture/"send me info" leads.
+- not_interested — the patient explicitly does NOT want to be contacted / is not
+  interested at all (a hard opt-out). Use ONLY for a genuine opt-out.
+- no_answer — nobody actually engaged (voicemail, wrong number, no conversation).
+If unsure between rescheduled and not_interested, choose rescheduled. Output only the keyword.
+```
+
+### `sentiment` — String
+```
+The patient's overall sentiment. Return exactly one of: positive, neutral, negative.
+```
+
+### `callback_time` — String
+```
+If the patient agreed to a specific callback time, return it as an ISO-8601 datetime
+WITH the IST offset, e.g. 2026-07-01T18:00:00+05:30. Resolve relative phrases
+("kal subah 11 baje", "aaj shaam 6 baje") to an absolute IST datetime based on the
+call time. If no specific time was agreed, return an empty string.
+```
+
+### `tag` — String
+```
+A short label of what the patient wants, for the CRM. Examples: "Hair transplant",
+"PRP / thinning", "Female hair loss", "Beard transplant", "Eyebrow transplant",
+"Rhinoplasty", "Skin / aesthetic", "Product enquiry". If the lead is early-stage /
+not ready, prefix with "NURTURE - ". Keep it under ~60 characters.
+```
+
+### `language` — String
+```
+The main language the patient spoke. Return "en" for English, "hi" for
+Hindi/Hinglish. If they primarily spoke another language and could not switch to
+Hindi/English, return that language name in lowercase (e.g. "marathi", "gujarati",
+"tamil"). Output only the code or single word.
+```
+
+### `handover_reasons` — String  (the §4 escalation mapping)
+```
+A comma-separated list of reasons to hand this lead to a human, using ONLY these
+keys (return an empty string if none apply):
+- wants_human — asked for a human/doctor, OR is an international patient.
+- clinical_question — asked a clinical question the agent couldn't answer, or sounded
+  medically urgent (sudden extreme hair loss, scalp condition).
+- emotional_distress — significant emotional distress, or angry about a previous clinic.
+- competitor_mention — mentioned a competitor or wanted a comparison.
+- price_request — negotiated or pushed hard on price.
+- abusive — abusive or inappropriate.
+- wrong_person_landline — wrong person answered / a landline answered by someone else.
+Example output: "wants_human, price_request". Do NOT invent any other keys.
+```
+
+> **Boolean alternative:** instead of the single `handover_reasons` string you may
+> create individual **Boolean** items named `asked_price`, `clinical_question`,
+> `emotional_distress`, `wants_human`, `competitor_mention`, `unresolved_objection`,
+> `abusive`, `wrong_person_landline` — the CRM reads either form. The single string
+> is simpler to maintain.
+
+### Verify
+1. Ensure the agent's **post-call webhook** is enabled and points at
+   `…/api/webhooks/call-completed` (it already is in prod).
+2. Place a test call, then check the webhook payload has
+   `analysis.data_collection_results` populated with these keys — or just confirm the
+   lead in the CRM shows the right stage/tag/handover after the call.
+
 ## 9. Call-window note
 
 The CRM only dials between **10:00–22:00 IST** (do-not-call window). The Rulebook's
