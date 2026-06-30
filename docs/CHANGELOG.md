@@ -7,6 +7,13 @@ Format: newest first.
 
 ---
 
+## 2026-06-30 — Gaps & roadmap backlog documented
+
+Captured the full 2026-06-29 audit (security / reliability / compliance-ops) as
+[gaps-and-roadmap.md](gaps-and-roadmap.md) — the single tracked backlog with
+severity/status/file refs. Linked from the README. The three critical reliability
+items are marked ✅ done (see entry below); everything else is ⬜ open.
+
 ## 2026-06-29 — Critical reliability fixes in the post-call pipeline
 
 From the gap audit. Fixes the top reliability findings in `recordCall`:
