@@ -7,6 +7,20 @@ Format: newest first.
 
 ---
 
+## 2026-06-30 — ElevenLabs agent ↔ CRM integration contract
+
+Aligned the AI first-call agent (the "First Call Rulebook") with the CRM. Added
+[elevenlabs-agent-integration.md](elevenlabs-agent-integration.md): the exact
+post-call data-collection fields the agent must emit (`outcome`, `sentiment`,
+`callback_time`, `tag`, `language`, `handover_reasons`), the outcome→behaviour map,
+the Rulebook §15 escalation → `handover_reasons` key mapping, the required
+recording-consent disclosure, and the "WhatsApp is sent by the CRM" / "CQS is
+computed by the CRM" clarifications.
+
+Code: `HANDOVER_SUPPORTED_LANGUAGES` default changed `en,hi,mr` → `en,hi` to match
+the rulebook (agent handles Hindi/English only; Marathi routes to a human).
+Added gap F6 (no nurture/drip-only outcome state).
+
 ## 2026-06-30 — Gaps & roadmap backlog documented
 
 Captured the full 2026-06-29 audit (security / reliability / compliance-ops) as
