@@ -75,8 +75,10 @@ Skips if superseded by a newer handover or the lead is gone.
 - **A rep dialling from their personal phone** (via the `tel:` link, not the in-app
   Call & record button) leaves no `Call` record, so the SLA reads it as **unattended**
   and may falsely escalate. Low-harm; nudge reps to use the in-app button.
-- **The interactive Slack "Call & record" button is not built** (deferred). The call
-  starts from the lead page, not from the Slack message itself.
+- **Interactive Slack "Call & record" button** — the handover DM has a button that
+  rings the rep who clicks and dials+records the lead (`/api/slack/interact`, verified
+  via `SLACK_SIGNING_SECRET`). Requires Interactivity enabled in the Slack app with the
+  Request URL set to `<base>/api/slack/interact`. The lead page has the same button.
 - **Rep roster must be seeded** (`SalesRep` rows with phone + Slack id) for individual
   DMs and the call button; without it, alerts fall back to the channel and assignment
   is a no-op.

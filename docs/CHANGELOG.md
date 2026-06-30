@@ -7,6 +7,16 @@ Format: newest first.
 
 ---
 
+## 2026-07-01 — Interactive Slack "Call & record" button
+
+Handover Slack alerts now carry a "📞 Call & record" button. When a rep clicks it,
+`/api/slack/interact` (Slack-signature verified) looks up the clicker's `SalesRep`
+phone and fires `clickToCall` — Twilio rings the rep, then dials + records the lead.
+Acks fast, reports back via `response_url`. New: `SLACK_SIGNING_SECRET`; needs
+Interactivity enabled in the Slack app (Request URL `<base>/api/slack/interact`).
+Files: `app/api/slack/interact/route.ts`, `lib/slack.ts` (verifySlackSignature),
+`lib/handover.ts` (button). Updated flow 4.
+
 ## 2026-07-01 — Fix post-call webhook payload validation (live wiring)
 
 The live ElevenLabs post-call webhook was returning 400 (schema reject) on real
