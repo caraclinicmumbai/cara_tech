@@ -7,6 +7,21 @@ Format: newest first.
 
 ---
 
+## 2026-07-01 — Fix post-call webhook payload validation (live wiring)
+
+The live ElevenLabs post-call webhook was returning 400 (schema reject) on real
+payloads, so calls never reached `recordCall`. Two over-strict Zod constraints:
+
+- data-collection `value` required a string, but real values can be boolean
+  (`consultation_scheduled=false`) or null (`patient_name=null`);
+- `dynamic_variables` required string values, but ElevenLabs injects numeric/boolean
+  `system__*` variables (turns, duration, is_text_only).
+
+Loosened both to `z.unknown()`; the mapper now coerces values via a `str()` helper.
+Also repointed the workspace post-call webhook from the dead n8n URL to the CRM's
+direct endpoint (`/api/webhooks/call-completed`) and set the matching signing secret.
+Files: `lib/contracts.ts`, `lib/providers/elevenlabs.ts`.
+
 ## 2026-06-30 — ElevenLabs agent ↔ CRM integration contract
 
 Aligned the AI first-call agent (the "First Call Rulebook") with the CRM. Added
