@@ -27,8 +27,10 @@ export function publicBase(): string {
 export type ClickToCallResult = { ok: true; sid: string } | { ok: false; error: string };
 
 /// Start a recorded click-to-call: ring `repPhone`; on answer Twilio fetches our
-/// TwiML (which dials the lead + records). Returns the parent call SID.
-export async function clickToCall(repPhone: string, leadId: string): Promise<ClickToCallResult> {
+/// TwiML (which dials the lead + records). `repId` (the rep who initiated it) is
+/// threaded through the callback URLs so the recording is attributed to them.
+/// Returns the parent call SID.
+export async function clickToCall(repPhone: string, leadId: string, repId?: string): Promise<ClickToCallResult> {
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   const from = process.env.TWILIO_CALLER_ID;
@@ -37,10 +39,11 @@ export async function clickToCall(repPhone: string, leadId: string): Promise<Cli
   if (!base) return { ok: false, error: "No public base URL (set TWILIO_PUBLIC_BASE or NEXTAUTH_URL)" };
 
   try {
+    const voiceUrl = `${base}/api/twilio/voice/${leadId}${repId ? `?repId=${encodeURIComponent(repId)}` : ""}`;
     const body = new URLSearchParams({
       To: repPhone,
       From: from,
-      Url: `${base}/api/twilio/voice/${leadId}`,
+      Url: voiceUrl,
     });
     const res = await axios.post(`${API}/Accounts/${sid}/Calls.json`, body, {
       auth: { username: sid, password: token },
@@ -58,10 +61,13 @@ export async function clickToCall(repPhone: string, leadId: string): Promise<Cli
 }
 
 /// TwiML returned when the rep answers: announce, then dial + record the lead.
-/// The recording completion is POSTed to our webhook with the leadId.
-export function dialLeadTwiML(leadPhone: string, leadId: string): string {
+/// The recording completion is POSTed to our webhook with the leadId (and the
+/// handling rep's id, when known, so the recording is attributed to them).
+export function dialLeadTwiML(leadPhone: string, leadId: string, repId?: string): string {
   const base = publicBase();
-  const cb = `${base}/api/webhooks/twilio/recording?leadId=${encodeURIComponent(leadId)}`;
+  const cb =
+    `${base}/api/webhooks/twilio/recording?leadId=${encodeURIComponent(leadId)}` +
+    (repId ? `&repId=${encodeURIComponent(repId)}` : "");
   const from = process.env.TWILIO_CALLER_ID ?? "";
   return (
     `<?xml version="1.0" encoding="UTF-8"?>` +

@@ -77,7 +77,7 @@ export async function POST(req: Request) {
         await replyToSlack(responseUrl, "⚠️ Lead not found.");
         return;
       }
-      const res = await clickToCall(rep.phone, leadId);
+      const res = await clickToCall(rep.phone, leadId, rep.id);
       await replyToSlack(
         responseUrl,
         res.ok

@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export default async function CallsPage() {
   const calls = await prisma.call.findMany({
     orderBy: { createdAt: "desc" },
-    include: { lead: true },
+    include: { lead: true, handledBy: { select: { name: true } } },
     take: 100,
   });
 
@@ -19,6 +19,7 @@ export default async function CallsPage() {
             <tr>
               <th className="px-3 py-2">Lead</th>
               <th className="px-3 py-2">Type</th>
+              <th className="px-3 py-2">Handled by</th>
               <th className="px-3 py-2">Outcome</th>
               <th className="px-3 py-2">Sentiment</th>
               <th className="px-3 py-2">Duration</th>
@@ -34,6 +35,11 @@ export default async function CallsPage() {
                   </Link>
                 </td>
                 <td className="px-3 py-2">{call.callType}</td>
+                <td className="px-3 py-2">
+                  {call.callType === "human_handover"
+                    ? `👤 ${call.handledBy?.name ?? "—"}`
+                    : "🤖 AI"}
+                </td>
                 <td className="px-3 py-2">{call.outcome ?? "—"}</td>
                 <td className="px-3 py-2">{call.sentiment ?? "—"}</td>
                 <td className="px-3 py-2">{call.duration ? `${call.duration}s` : "—"}</td>
@@ -42,7 +48,7 @@ export default async function CallsPage() {
             ))}
             {calls.length === 0 && (
               <tr>
-                <td className="px-3 py-6 text-center text-black/50" colSpan={6}>
+                <td className="px-3 py-6 text-center text-black/50" colSpan={7}>
                   No calls yet.
                 </td>
               </tr>

@@ -105,7 +105,7 @@ export async function callLeadAndRecord(
   const repPhone = lead.assignedRep?.phone;
   if (!repPhone) return { ok: false, error: "No assigned rep with a phone to call from" };
 
-  const res = await clickToCall(repPhone, leadId);
+  const res = await clickToCall(repPhone, leadId, lead.assignedRep?.id);
   if (!res.ok) return { ok: false, error: res.error };
   logger.info(`Click-to-call started for lead ${leadId} (rep ${lead.assignedRep?.name}) by ${session.user.email}`);
   return { ok: true };
