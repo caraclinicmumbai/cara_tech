@@ -182,16 +182,24 @@ const HANDOVER_BOOLEAN_FIELDS: Record<string, string> = {
   wrong_person_landline: "wrong_person_landline",
 };
 
-function isTruthy(v?: string): boolean {
-  const s = (v ?? "").trim().toLowerCase();
+/// Coerce a data-collection value (string | boolean | number | null) to a non-empty
+/// string, or undefined. Data-collection items aren't always strings.
+function str(v: unknown): string | undefined {
+  if (v == null || v === "") return undefined;
+  return typeof v === "string" ? v : String(v);
+}
+
+function isTruthy(v: unknown): boolean {
+  if (typeof v === "boolean") return v;
+  const s = String(v ?? "").trim().toLowerCase();
   return s === "true" || s === "yes" || s === "1" || s === "y";
 }
 
 /// Build the handover trigger keys the agent flagged: an explicit comma-separated
 /// `handover_reasons`/`handover_reason` data point, plus any known boolean fields.
-function collectHandoverReasons(collected: Record<string, { value?: string }>): string[] {
+function collectHandoverReasons(collected: Record<string, { value?: unknown }>): string[] {
   const out = new Set<string>();
-  const explicit = `${collected.handover_reasons?.value ?? ""},${collected.handover_reason?.value ?? ""}`;
+  const explicit = `${str(collected.handover_reasons?.value) ?? ""},${str(collected.handover_reason?.value) ?? ""}`;
   for (const r of explicit.split(",").map((s) => s.trim()).filter(Boolean)) out.add(r);
   for (const [field, key] of Object.entries(HANDOVER_BOOLEAN_FIELDS)) {
     if (isTruthy(collected[field]?.value)) out.add(key);
@@ -204,13 +212,13 @@ function collectHandoverReasons(collected: Record<string, { value?: string }>): 
 export function mapElevenLabsPostCall(payload: PostCall): RecordCallInput | null {
   const data = payload.data;
   const dyn = data.conversation_initiation_client_data?.dynamic_variables ?? {};
-  const leadId = dyn.lead_id;
+  const leadId = str(dyn.lead_id);
   if (!leadId) return null;
 
   const callType = dyn.call_type === "reconfirmation" ? "reconfirmation" : "initial";
   const collected = data.analysis?.data_collection_results ?? {};
-  const cqsRaw = collected.cqs?.value;
-  const cqs = cqsRaw != null && cqsRaw !== "" ? Number(cqsRaw) : undefined;
+  const cqsRaw = str(collected.cqs?.value);
+  const cqs = cqsRaw ? Number(cqsRaw) : undefined;
 
   return {
     leadId,
@@ -218,21 +226,21 @@ export function mapElevenLabsPostCall(payload: PostCall): RecordCallInput | null
     elevenlabsId: data.conversation_id,
     transcript: flattenTranscript(data.transcript) ?? data.analysis?.transcript_summary,
     outcome:
-      collected.outcome?.value ?? outcomeFromSuccess(data.analysis?.call_successful),
-    sentiment: collected.sentiment?.value,
+      str(collected.outcome?.value) ?? outcomeFromSuccess(data.analysis?.call_successful),
+    sentiment: str(collected.sentiment?.value),
     duration: data.metadata?.call_duration_secs,
     // ISO datetime the agent captured when the lead requested a callback (§3.1.2).
-    callbackAt: collected.callback_time?.value,
+    callbackAt: str(collected.callback_time?.value),
     // What the lead asked for (e.g. "Hair transplant") → the lead's tag (§3.1).
     // Accept whichever data-collection key the agent uses for the service/ask.
     tag:
-      collected.tag?.value ??
-      collected.requested_service?.value ??
-      collected.service?.value ??
-      collected.interest?.value,
+      str(collected.tag?.value) ??
+      str(collected.requested_service?.value) ??
+      str(collected.service?.value) ??
+      str(collected.interest?.value),
     // AI→human handover signals (§3.1).
     handoverReasons: collectHandoverReasons(collected),
     cqs: cqs != null && !Number.isNaN(cqs) ? cqs : undefined,
-    language: collected.language?.value,
+    language: str(collected.language?.value),
   };
 }

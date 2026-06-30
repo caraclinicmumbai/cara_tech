@@ -99,7 +99,10 @@ export const googleLeadFormSchema = z.object({
 /// ElevenLabs Conversational AI post-call webhook ("post_call_transcription").
 /// Lenient: ElevenLabs adds fields over time, so unknown keys pass through.
 /// `dynamic_variables` round-trips the lead_id/call_type we set when dialing.
-const dataCollectionItem = z.object({ value: z.string().optional() }).passthrough();
+// `value` can be string | boolean | number | null depending on the data-collection
+// field's type (e.g. a boolean `consultation_scheduled`, or a null when unset), so
+// don't constrain it — the mapper coerces what it reads to a string.
+const dataCollectionItem = z.object({ value: z.unknown().optional() }).passthrough();
 
 export const elevenLabsPostCallSchema = z
   .object({
@@ -131,7 +134,9 @@ export const elevenLabsPostCallSchema = z
           .optional(),
         conversation_initiation_client_data: z
           .object({
-            dynamic_variables: z.record(z.string(), z.string()).optional(),
+            // ElevenLabs injects system__* variables that are numbers/booleans
+            // (turns, duration, is_text_only…), so values aren't all strings.
+            dynamic_variables: z.record(z.string(), z.unknown()).optional(),
           })
           .passthrough()
           .optional(),
