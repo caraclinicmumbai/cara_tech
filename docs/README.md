@@ -27,6 +27,12 @@ data model, integrations), then dip into the flow you care about.
 | 6 | [WhatsApp messaging](flows/06-whatsapp-messaging.md) | Unified inbound/outbound thread, templates, media, automated outreach |
 | 7 | [System health monitor](flows/07-system-health-monitor.md) | Downtime / API-failure alerts to admin + branch manager |
 
+## Gaps & roadmap
+
+The full known-gaps backlog (security, reliability, compliance, testing, ops) from
+the 2026-06-29 audit lives in **[gaps-and-roadmap.md](gaps-and-roadmap.md)** — the
+single tracked list, with severity, status, file references, and fix directions.
+
 ## Known limitations (index)
 
 Each flow lists its own limitations; the cross-cutting ones worth knowing up front:
