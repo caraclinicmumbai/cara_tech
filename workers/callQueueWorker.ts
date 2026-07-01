@@ -11,7 +11,7 @@ import {
   type CallAttemptJob,
 } from "@/lib/queue";
 import { isWithinDnd } from "@/lib/callWindow";
-import { triggerOutboundCall } from "@/lib/n8n";
+import { placeOutboundCall } from "@/lib/providers/elevenlabs";
 import { monitorElevenLabs } from "@/lib/providers/elevenlabsHealth";
 import {
   HANDOVER_SLA_QUEUE,
@@ -37,7 +37,10 @@ const worker = new Worker<CallAttemptJob>(
     const { leadId, phone, context, attempt, callType } = job.data;
 
     // Opt-out gate (§3.1.10): never call a lead who opted out / said not interested.
-    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { optedOut: true } });
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { optedOut: true, name: true, interest: true },
+    });
     if (lead?.optedOut) {
       logger.info(`Lead ${leadId} opted out — suppressing scheduled call (attempt ${attempt})`);
       return { suppressed: true, leadId, attempt };
@@ -52,10 +55,11 @@ const worker = new Worker<CallAttemptJob>(
     }
 
     logger.info(`Call attempt ${attempt} firing for lead ${leadId}`);
-    await triggerOutboundCall({
+    await placeOutboundCall({
       leadId,
       phone,
-      name: "", // n8n re-fetches lead details by leadId if needed
+      name: lead?.name ?? "",
+      interest: lead?.interest ?? undefined,
       callType,
       context,
     });
