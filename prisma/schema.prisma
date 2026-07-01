@@ -119,6 +119,10 @@ model SalesRep {
   slackUserId    String? // Slack member id (e.g. U0123ABCD) for the individual DM
   phone          String // E.164, for click-to-call
   active         Boolean   @default(true)
+  // Sales head (§3.1): a manager, NOT a line telecaller. Excluded from the
+  // round-robin handover rota, and pinged ONLY on CQS extremes (very high /
+  // very low) — the exceptional wins and the quality failures worth their time.
+  salesHead      Boolean   @default(false)
   lastAssignedAt DateTime? // round-robin cursor
   createdAt      DateTime  @default(now())
 

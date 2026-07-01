@@ -1,7 +1,8 @@
 # Flow 5 — Counsellor & manager alerts
 
-Two oversight feeds: a real-time **counsellor** feed for events that need attention,
-and a once-a-day **branch manager** digest.
+Three oversight feeds: a real-time **counsellor** feed for events that need attention,
+a **sales-head** feed reserved for CQS extremes, and a once-a-day **branch manager**
+digest.
 
 ## Counsellor oversight feed (`lib/counsellor.ts`)
 
@@ -31,6 +32,24 @@ excluding won/terminal stages (`converted_followup`, `converted`, `lost`) and
 opted-out leads. Each is alerted **once per stall** (`stageStuckNotifiedAt` dedups;
 it's nulled whenever the stage changes, re-arming the next stall).
 
+## Sales-head escalation (`lib/salesHead.ts`)
+
+The **sales head** is a manager, not a line telecaller. A `SalesRep` with
+`salesHead = true` is **excluded from the round-robin rota** (`pickNextRep` filters
+them out) — so routine handovers never route to them — and is DM'd **only on CQS
+extremes**: a call scoring **≥ `SALES_HEAD_CQS_HIGH`** (default 90 — a standout worth
+their personal touch) or **≤ `SALES_HEAD_CQS_LOW`** (default 15 — a quality failure
+worth review).
+
+`notifySalesHead(lead, cqs)` fires from **both** scoring points, independent of any
+handover: the AI post-call path (`recordCall`, every scored AI call) and the human
+callback path (`transcribeAndScoreCall`, after a recorded call is scored). It targets
+the sales head's own Slack DM (`SalesRep.slackUserId`). Best-effort — no sales head,
+no Slack id, or a non-extreme score → no-op.
+
+> Keep `COUNSELLOR_CHANNEL` pointed at a counsellor/ops channel, **not** the sales
+> head, or they'll receive the full oversight feed on top of their extremes-only DMs.
+
 ## Branch Manager daily digest (`lib/digest.ts`)
 
 Once a day (default 09:00 IST), a BullMQ **repeatable/cron** job posts a summary of
@@ -46,6 +65,8 @@ the previous IST calendar day to `BRANCH_MANAGER_CHANNEL`:
 ## Key files
 
 - `lib/counsellor.ts` — `notifyCounsellor`, `counsellorChannel`, the 5 kinds
+- `lib/salesHead.ts` — `notifySalesHead`, `isSalesHeadScore` (CQS-extreme DM)
+- `lib/salesReps.ts` — `pickNextRep` (excludes sales heads), `getSalesHead`
 - `lib/stageSla.ts` — stuck-in-stage scan
 - `lib/digest.ts` — metrics, rendering, cron scheduling
 - `lib/leadStages.ts` — `isPreConsultation`, `STAGE_SLA_EXCLUDED`
@@ -55,7 +76,9 @@ the previous IST calendar day to `BRANCH_MANAGER_CHANNEL`:
 
 | Env | Default | Meaning |
 |-----|---------|---------|
-| `COUNSELLOR_CHANNEL` | → escalation/default channel | Counsellor feed target |
+| `COUNSELLOR_CHANNEL` | → escalation/default channel | Counsellor feed target (not the sales head) |
+| `SALES_HEAD_CQS_HIGH` | `90` | CQS at/above this DMs the sales head |
+| `SALES_HEAD_CQS_LOW` | `15` | CQS at/below this DMs the sales head |
 | `BRANCH_MANAGER_CHANNEL` | → default channel | Digest target |
 | `STAGE_SLA_DAYS` | `7` | Days in a stage before "stuck" |
 | `STAGE_SLA_SCAN_HOURS` | `6` | How often the worker scans for stuck leads |

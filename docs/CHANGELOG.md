@@ -7,6 +7,18 @@ Format: newest first.
 
 ---
 
+## 2026-07-01 — Sales-head escalation: CQS-extremes-only, off the rota
+
+The sales head is a manager, not a line telecaller. New `SalesRep.salesHead` flag:
+such reps are **excluded from the round-robin rota** (`pickNextRep`) so routine
+handovers never route to them, and they're DM'd **only on CQS extremes** — a call
+scoring ≥ `SALES_HEAD_CQS_HIGH` (default 90) or ≤ `SALES_HEAD_CQS_LOW` (default 15).
+`notifySalesHead` (`lib/salesHead.ts`) fires from both scoring points — the AI
+post-call path (`recordCall`) and the human callback path (`transcribeAndScoreCall`) —
+independent of any handover. Anita Kishnani flagged `salesHead` in prod (rota is now
+Fahar only). Schema: additive `SalesRep.salesHead`. New env: `SALES_HEAD_CQS_HIGH`,
+`SALES_HEAD_CQS_LOW`. Updated [flow 5](flows/05-counsellor-and-manager-alerts.md).
+
 ## 2026-07-01 — Fix malformed TwiML on rep click-to-call (unescaped `&`)
 
 The "who handled it" change added a `repId` query param to the recording-status

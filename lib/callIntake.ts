@@ -12,6 +12,7 @@ import { stageFromOutcome, advanceStage } from "@/lib/leadStages";
 import { evaluateHandover, notifyHandover } from "@/lib/handover";
 import { scheduleHandoverSla } from "@/lib/handoverSla";
 import { notifyCounsellor, type CounsellorAlertKind } from "@/lib/counsellor";
+import { notifySalesHead } from "@/lib/salesHead";
 import { sendAutomatedTemplate, outreachTemplate, firstName, istTime } from "@/lib/outreach";
 import { scoreCQS } from "@/lib/cqs";
 import { logger } from "@/lib/logger";
@@ -237,6 +238,12 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
       logger.info(`Lead ${lead.id} unreachable after ${attemptNumber} attempts`);
     }
   }
+
+  // Sales-head CQS-extreme ping (§3.1) — independent of any handover: fires for
+  // EVERY scored call whose CQS is very high or very low, DMing the sales head.
+  afterCommit.push(async () => {
+    await notifySalesHead(lead, scored?.cqs);
+  });
 
   // Atomic write (§ reliability): the Call and the Lead update land together, or
   // neither does — no "Call recorded but Lead un-advanced" stall on a crash.
