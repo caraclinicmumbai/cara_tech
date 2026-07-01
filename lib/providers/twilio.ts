@@ -60,6 +60,19 @@ export async function clickToCall(repPhone: string, leadId: string, repId?: stri
   }
 }
 
+/// Escape a value for safe embedding in XML (attribute or text). Critically, the
+/// recording-callback URL carries a `leadId=…&repId=…` query string, and a raw `&`
+/// makes the TwiML invalid — Twilio then plays "an application error has occurred"
+/// to the rep instead of dialing the lead.
+function xmlEscape(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 /// TwiML returned when the rep answers: announce, then dial + record the lead.
 /// The recording completion is POSTed to our webhook with the leadId (and the
 /// handling rep's id, when known, so the recording is attributed to them).
@@ -73,9 +86,9 @@ export function dialLeadTwiML(leadPhone: string, leadId: string, repId?: string)
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<Response>` +
     `<Say>Connecting you to the patient now. This call is recorded.</Say>` +
-    `<Dial callerId="${from}" record="record-from-answer-dual" ` +
-    `recordingStatusCallback="${cb}" recordingStatusCallbackEvent="completed">` +
-    `<Number>${leadPhone}</Number>` +
+    `<Dial callerId="${xmlEscape(from)}" record="record-from-answer-dual" ` +
+    `recordingStatusCallback="${xmlEscape(cb)}" recordingStatusCallbackEvent="completed">` +
+    `<Number>${xmlEscape(leadPhone)}</Number>` +
     `</Dial>` +
     `</Response>`
   );
