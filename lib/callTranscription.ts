@@ -12,6 +12,7 @@ import { fetchTwilioRecording } from "@/lib/providers/twilio";
 import { transcribeAudio } from "@/lib/providers/elevenlabs";
 import { scoreCQS } from "@/lib/cqs";
 import { isEscalationScore, escalateHotCall } from "@/lib/handover";
+import { isSalesHeadScore, notifySalesHead } from "@/lib/salesHead";
 import { logger } from "@/lib/logger";
 
 /// Download the recording, transcribe it, score it, and persist transcript + CQS
@@ -47,6 +48,16 @@ export async function transcribeAndScoreCall(
     logger.info(
       `Transcribed + scored handover call ${callId} (CQS ${scored?.cqs ?? "n/a"}, ${transcript.length} chars)`,
     );
+
+    // Sales-head CQS-extreme ping (§3.1) — a very high / very low score on a human
+    // callback, DMing the sales head (independent of the hot-lead escalation below).
+    if (scored && isSalesHeadScore(scored.cqs)) {
+      const lead = await prisma.lead.findUnique({
+        where: { id: updated.leadId },
+        select: { id: true, name: true, phone: true },
+      });
+      if (lead) await notifySalesHead(lead, scored.cqs);
+    }
 
     // Hot-lead escalation (§3.1): a human call that scored ≥ threshold is
     // high-intent — raise the escalation flag and ping the owning rep so it gets
