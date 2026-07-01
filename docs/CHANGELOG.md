@@ -7,6 +7,19 @@ Format: newest first.
 
 ---
 
+## 2026-07-01 — Place outbound AI calls directly via ElevenLabs (drop n8n)
+
+The outbound-call trigger routed through **n8n Agent 1** (`N8N_WEBHOOK_NEW_LEAD`), but
+the n8n instance (`caraclinic.app.n8n.cloud`) went down — a `GET` on the webhook now
+returns `404 No workspace here`. That silently killed every app-initiated call: the
+lead saved, the phone never rang. (The same instance had already broken the *post-call*
+webhook, which we bypassed earlier.) Both call sites — intake auto-call
+(`lib/leadIntake.ts`) and worker retries/callbacks (`workers/callQueueWorker.ts`) —
+now call `placeOutboundCall` (`lib/providers/elevenlabs.ts` →
+`/v1/convai/twilio/outbound-call`) directly, removing the n8n dependency entirely. The
+worker now fetches the lead's name/interest to pass as `dynamic_variables` (the old
+n8n path re-fetched them server-side). Updated [flow 2](flows/02-ai-calling-and-retries.md).
+
 ## 2026-07-01 — Record who handled a human-handover call
 
 Human-handover calls now capture the rep who took them. The initiating rep's id is

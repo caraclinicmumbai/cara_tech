@@ -10,10 +10,12 @@ worker.
 
 ## Step-by-step
 
-1. **Place the call.** The app triggers **n8n Agent 1** (`lib/n8n.ts` →
-   `N8N_WEBHOOK_NEW_LEAD`), which calls **ElevenLabs** to dial the lead via Twilio.
-   `dynamic_variables` (lead id, call type, name, interest, prior context) round-trip
-   so the post-call webhook can be correlated back.
+1. **Place the call.** The app calls **ElevenLabs directly** (`lib/providers/elevenlabs.ts`
+   → `placeOutboundCall` → `/v1/convai/twilio/outbound-call`), which dials the lead via
+   Twilio. `dynamic_variables` (lead id, call type, name, interest, prior context)
+   round-trip so the post-call webhook can be correlated back. (Previously routed via
+   n8n Agent 1; n8n was removed after its instance went down — it had also broken the
+   post-call webhook — so both call directions now talk to ElevenLabs directly.)
 2. **The attempt ladder (§3.1.2).** Attempt 1 is placed immediately at intake. On each
    **unanswered** result, `recordCall` (flow 3) schedules the next attempt via BullMQ:
    `RETRY_DELAYS_DAYS` (default `1,5`) → attempt 2 after 1 day, attempt 3 after 5 days.
@@ -34,7 +36,7 @@ worker.
 
 ## Key files
 
-- `lib/n8n.ts` — triggers Agent 1
+- `lib/providers/elevenlabs.ts` — `placeOutboundCall` (direct ElevenLabs outbound call)
 - `lib/queue.ts` — `scheduleCallAttempt`, `cancelScheduledCalls`, retry math, DND defer
 - `lib/callWindow.ts` — IST DND window + callback-hour math
 - `workers/callQueueWorker.ts` — consumes attempt jobs, opt-out + DND gates
@@ -48,13 +50,13 @@ worker.
 | `DND_START_HOUR` / `DND_END_HOUR` | `22` / `10` | DND window (calls allowed 10:00–22:00 IST) |
 | `CALLBACK_HOUR` | `19` | Default evening callback hour (IST) |
 | `AI_MAX_CONCURRENT_CALLS` | `10` | Max simultaneous calls draining the queue |
-| `N8N_WEBHOOK_NEW_LEAD` | — | Agent 1 webhook URL |
+| `ELEVENLABS_API_KEY` / `ELEVENLABS_AGENT_ID` / `ELEVENLABS_AGENT_PHONE_NUMBER_ID` | — | Direct outbound-call credentials |
 
 ## Limitations
 
-- **Live AI calling is currently gated on ElevenLabs credits.** With the account at
-  zero, ElevenLabs cannot place calls; the trigger still fires but no conversation
-  happens. (The ElevenLabs health monitor alerts Slack on this.)
+- **Live AI calling is gated on ElevenLabs credits.** With the account at zero,
+  ElevenLabs cannot place calls; the trigger still fires but no conversation happens.
+  (The ElevenLabs health monitor alerts Slack on this.)
 - **Statutory TRAI DND is not implemented.** Only the internal _time window_ is
   enforced. Real DND scrubbing needs a DLT-registered provider/SMS-gateway DND API,
   which isn't wired; the gate is designed (consent overrides DND; WhatsApp exempt) but

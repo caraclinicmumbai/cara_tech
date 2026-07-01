@@ -4,7 +4,7 @@
 // lead, dedupes on the provider id, and fires n8n Agent 1 for the initial call.
 import type { Lead } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { triggerOutboundCall } from "@/lib/n8n";
+import { placeOutboundCall } from "@/lib/providers/elevenlabs";
 import { scheduleCallAttempt, cancelScheduledCalls } from "@/lib/queue";
 import { isWithinDnd } from "@/lib/callWindow";
 import { sendAutomatedTemplate, outreachTemplate, firstName } from "@/lib/outreach";
@@ -211,14 +211,13 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
     return { lead, deduped: false };
   }
 
-  // Don't fail intake if n8n is momentarily unavailable — the lead is saved.
+  // Don't fail intake if ElevenLabs is momentarily unavailable — the lead is saved.
   try {
-    await triggerOutboundCall({
+    await placeOutboundCall({
       leadId: lead.id,
       name: lead.name,
       phone: lead.phone,
       interest: lead.interest ?? undefined,
-      source: lead.source ?? undefined,
       callType: "initial",
     });
   } catch (err) {
