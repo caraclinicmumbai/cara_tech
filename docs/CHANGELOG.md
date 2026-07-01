@@ -7,6 +7,16 @@ Format: newest first.
 
 ---
 
+## 2026-07-01 — Fix malformed TwiML on rep click-to-call (unescaped `&`)
+
+The "who handled it" change added a `repId` query param to the recording-status
+callback URL embedded in the dial TwiML, giving it a second param joined by a raw
+`&`. Inside an XML attribute a bare `&` is invalid, so when the rep answered, Twilio
+failed to parse the TwiML and played *"an application error has occurred"* instead of
+dialing the lead. `dialLeadTwiML` now XML-escapes the callback URL (and caller id /
+lead number) — `&` → `&amp;`. (The single-param URL before the repId feature had no
+`&`, which is why the earlier button test passed.) File: `lib/providers/twilio.ts`.
+
 ## 2026-07-01 — Place outbound AI calls directly via ElevenLabs (drop n8n)
 
 The outbound-call trigger routed through **n8n Agent 1** (`N8N_WEBHOOK_NEW_LEAD`), but
