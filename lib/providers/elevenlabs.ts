@@ -121,6 +121,26 @@ export async function placeOutboundCall(ctx: OutboundCallContext) {
   return res.data;
 }
 
+/// Fetch the recorded audio of an AI conversation (the ElevenLabs voice call),
+/// for the in-CRM player. Returns the MP3 bytes + mime, or null on any failure.
+export async function fetchConversationAudio(
+  conversationId: string,
+): Promise<{ buffer: Buffer; mime: string } | null> {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const res = await axios.get<ArrayBuffer>(
+      `${API_BASE}/v1/convai/conversations/${encodeURIComponent(conversationId)}/audio`,
+      { headers: { "xi-api-key": apiKey }, responseType: "arraybuffer", timeout: 30_000 },
+    );
+    const mime = String(res.headers["content-type"] ?? "audio/mpeg");
+    return { buffer: Buffer.from(res.data), mime };
+  } catch (err) {
+    logger.error(`ElevenLabs conversation audio fetch failed (${conversationId}): ${String(err)}`);
+    return null;
+  }
+}
+
 // ── Post-call webhook ────────────────────────────────────────────────
 
 /// Verify the ElevenLabs post-call webhook HMAC.
