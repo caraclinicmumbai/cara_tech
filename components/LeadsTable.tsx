@@ -37,6 +37,8 @@ type Col = {
   number?: boolean;
 };
 
+type OpenFilter = { key: string; x: number; y: number };
+
 export function LeadsTable({
   leads,
   sourceLabels,
@@ -49,7 +51,7 @@ export function LeadsTable({
   const [search, setSearch] = useState("");
   const [enumFilters, setEnumFilters] = useState<Record<string, Set<string>>>({});
   const [textFilters, setTextFilters] = useState<Record<string, string>>({});
-  const [openFilter, setOpenFilter] = useState<string | null>(null);
+  const [openFilter, setOpenFilter] = useState<OpenFilter | null>(null);
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
 
   const columns: Col[] = useMemo(
@@ -157,9 +159,24 @@ export function LeadsTable({
     });
   }
 
+  // Open the filter panel anchored just under the clicked caret. Rendered as a
+  // FIXED layer (not inside the scroll container) so it can't be clipped.
+  function openFilterAt(key: string, el: HTMLElement) {
+    if (openFilter?.key === key) {
+      setOpenFilter(null);
+      return;
+    }
+    const r = el.getBoundingClientRect();
+    const width = 208; // w-52
+    const x = Math.min(r.left, window.innerWidth - width - 8);
+    setOpenFilter({ key, x: Math.max(8, x), y: r.bottom + 4 });
+  }
+
   const isFiltered = (key: string) => !!enumFilters[key]?.size || !!textFilters[key];
   const anyActive =
     !!search || Object.keys(enumFilters).length > 0 || Object.keys(textFilters).length > 0;
+
+  const openCol = openFilter ? columns.find((c) => c.key === openFilter.key) : null;
 
   return (
     <div className="space-y-3">
@@ -187,11 +204,6 @@ export function LeadsTable({
         )}
       </div>
 
-      {/* Backdrop to close an open filter dropdown on outside click. */}
-      {openFilter && (
-        <div className="fixed inset-0 z-20" onClick={() => setOpenFilter(null)} />
-      )}
-
       <div className="overflow-x-auto rounded border border-black/10 dark:border-white/15">
         <table className="min-w-full text-sm">
           <thead className="bg-black/5 text-left dark:bg-white/10">
@@ -201,7 +213,7 @@ export function LeadsTable({
                   key={c.key}
                   className={`whitespace-nowrap px-4 py-2 ${
                     i === 0
-                      ? "sticky left-0 z-20 border-r border-black/10 bg-black/5 dark:border-white/15 dark:bg-white/10"
+                      ? "sticky left-0 z-20 border-r border-black/10 bg-background dark:border-white/15"
                       : ""
                   }`}
                 >
@@ -217,61 +229,17 @@ export function LeadsTable({
                       <span className="text-xs">{sort.dir === "asc" ? "▲" : "▼"}</span>
                     )}
                     {c.filter !== "none" && (
-                      <div className="relative">
-                        <button
-                          onClick={() =>
-                            setOpenFilter(openFilter === c.key ? null : c.key)
-                          }
-                          title="Filter"
-                          className={`rounded px-1 text-xs ${
-                            isFiltered(c.key)
-                              ? "text-blue-600 dark:text-blue-400"
-                              : "text-black/40 dark:text-white/40"
-                          }`}
-                        >
-                          ▼
-                        </button>
-                        {openFilter === c.key && (
-                          <div className="absolute left-0 z-30 mt-1 w-52 rounded border border-black/15 bg-background p-2 shadow-lg dark:border-white/20">
-                            <div className="mb-1 flex items-center justify-between">
-                              <span className="text-xs font-medium">Filter {c.label}</span>
-                              <button
-                                onClick={() => clearColumn(c.key)}
-                                className="text-xs text-blue-600 hover:underline dark:text-blue-400"
-                              >
-                                Clear
-                              </button>
-                            </div>
-                            {c.filter === "text" ? (
-                              <input
-                                autoFocus
-                                value={textFilters[c.key] ?? ""}
-                                onChange={(e) => setText(c.key, e.target.value)}
-                                placeholder={`Contains…`}
-                                className="w-full rounded border border-black/15 bg-background px-2 py-1 text-xs outline-none focus:border-black/40 dark:border-white/20"
-                              />
-                            ) : (
-                              <div className="max-h-56 space-y-0.5 overflow-auto">
-                                {distinct[c.key]?.map((v) => (
-                                  <label
-                                    key={v || "∅"}
-                                    className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs hover:bg-black/5 dark:hover:bg-white/10"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={enumFilters[c.key]?.has(v) ?? false}
-                                      onChange={() => toggleEnum(c.key, v)}
-                                    />
-                                    <span className="truncate">
-                                      {c.display ? c.display(v) : v || "—"}
-                                    </span>
-                                  </label>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                      <button
+                        onClick={(e) => openFilterAt(c.key, e.currentTarget)}
+                        title="Filter"
+                        className={`rounded px-1 text-xs ${
+                          isFiltered(c.key)
+                            ? "text-blue-600 dark:text-blue-400"
+                            : "text-black/40 hover:text-black/70 dark:text-white/40 dark:hover:text-white/70"
+                        }`}
+                      >
+                        ▾
+                      </button>
                     )}
                   </div>
                 </th>
@@ -352,6 +320,54 @@ export function LeadsTable({
           </tbody>
         </table>
       </div>
+
+      {/* Filter panel — fixed layer so the table's overflow can't clip it. */}
+      {openFilter && openCol && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpenFilter(null)} />
+          <div
+            style={{ position: "fixed", top: openFilter.y, left: openFilter.x, width: 208 }}
+            className="z-50 rounded border border-black/15 bg-background p-2 shadow-lg dark:border-white/20"
+          >
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-xs font-medium">Filter {openCol.label}</span>
+              <button
+                onClick={() => clearColumn(openCol.key)}
+                className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+              >
+                Clear
+              </button>
+            </div>
+            {openCol.filter === "text" ? (
+              <input
+                autoFocus
+                value={textFilters[openCol.key] ?? ""}
+                onChange={(e) => setText(openCol.key, e.target.value)}
+                placeholder="Contains…"
+                className="w-full rounded border border-black/15 bg-background px-2 py-1 text-xs outline-none focus:border-black/40 dark:border-white/20"
+              />
+            ) : (
+              <div className="max-h-56 space-y-0.5 overflow-auto">
+                {distinct[openCol.key]?.map((v) => (
+                  <label
+                    key={v || "∅"}
+                    className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs hover:bg-black/5 dark:hover:bg-white/10"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={enumFilters[openCol.key]?.has(v) ?? false}
+                      onChange={() => toggleEnum(openCol.key, v)}
+                    />
+                    <span className="truncate">
+                      {openCol.display ? openCol.display(v) : v || "—"}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
