@@ -252,6 +252,16 @@ export default async function LeadDetailPage({
                   />
                 )}
 
+                {/* AI (ElevenLabs) call recording — fetched on demand from ElevenLabs. */}
+                {!call.recordingUrl && call.elevenlabsId && (
+                  <audio
+                    controls
+                    preload="none"
+                    className="mt-3 w-full"
+                    src={`/api/elevenlabs/recording/${call.id}`}
+                  />
+                )}
+
                 {call.transcript ? (
                   <details className="mt-3 group">
                     <summary className="cursor-pointer text-sm text-black/60 hover:underline dark:text-white/60">

@@ -7,6 +7,15 @@ Format: newest first.
 
 ---
 
+## 2026-07-08 — Play the AI call recording in the CRM
+
+AI (ElevenLabs) calls previously showed only the transcript. The lead-detail call list
+now also renders an audio player for AI calls, mirroring the Twilio handover-recording
+player. New `fetchConversationAudio()` (`lib/providers/elevenlabs.ts`) pulls the MP3 from
+`/v1/convai/conversations/{id}/audio`, served through a session-gated proxy route
+(`app/api/elevenlabs/recording/[callId]`) keyed on the stored `elevenlabsId`. Files:
+`app/(dashboard)/leads/[id]/page.tsx`.
+
 ## 2026-07-07 — Show CQS in the leads table
 
 Added a **CQS** column to the `/leads` table showing each lead's latest scored call's
