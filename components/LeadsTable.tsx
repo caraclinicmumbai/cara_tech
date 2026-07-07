@@ -52,7 +52,6 @@ export function LeadsTable({
   const [enumFilters, setEnumFilters] = useState<Record<string, Set<string>>>({});
   const [textFilters, setTextFilters] = useState<Record<string, string>>({});
   const [openFilter, setOpenFilter] = useState<OpenFilter | null>(null);
-  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
 
   const columns: Col[] = useMemo(
     () => [
@@ -97,7 +96,7 @@ export function LeadsTable({
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let out = leads.filter((l) => {
+    return leads.filter((l) => {
       if (q && !l.name.toLowerCase().includes(q)) return false;
       for (const c of columns) {
         if (c.filter === "enum") {
@@ -110,19 +109,7 @@ export function LeadsTable({
       }
       return true;
     });
-    if (sort) {
-      const col = columns.find((c) => c.key === sort.key);
-      if (col) {
-        out = [...out].sort((a, b) => {
-          const av = col.value(a);
-          const bv = col.value(b);
-          const cmp = col.number ? Number(av) - Number(bv) : av.localeCompare(bv);
-          return sort.dir === "asc" ? cmp : -cmp;
-        });
-      }
-    }
-    return out;
-  }, [leads, columns, search, enumFilters, textFilters, sort]);
+  }, [leads, columns, search, enumFilters, textFilters]);
 
   function toggleEnum(key: string, v: string) {
     setEnumFilters((prev) => {
@@ -150,13 +137,6 @@ export function LeadsTable({
       return n;
     });
     setText(key, "");
-  }
-  function toggleSort(key: string) {
-    setSort((prev) => {
-      if (!prev || prev.key !== key) return { key, dir: "asc" };
-      if (prev.dir === "asc") return { key, dir: "desc" };
-      return null;
-    });
   }
 
   // Open the filter panel anchored just under the clicked caret. Rendered as a
@@ -218,16 +198,7 @@ export function LeadsTable({
                   }`}
                 >
                   <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => toggleSort(c.key)}
-                      className="font-semibold hover:underline"
-                      title="Sort"
-                    >
-                      {c.label}
-                    </button>
-                    {sort?.key === c.key && (
-                      <span className="text-xs">{sort.dir === "asc" ? "▲" : "▼"}</span>
-                    )}
+                    <span className="font-semibold">{c.label}</span>
                     {c.filter !== "none" && (
                       <button
                         onClick={(e) => openFilterAt(c.key, e.currentTarget)}
