@@ -7,6 +7,18 @@ Format: newest first.
 
 ---
 
+## 2026-07-07 — Leads table: per-column filters, sort, name search; walk-in consolidated
+
+The `/leads` table is now an interactive client component (`components/LeadsTable.tsx`):
+a **name search** box up top, **click-to-sort** on every column header, and a
+**per-column filter** — a checkbox dropdown of the distinct values for enum-like
+columns (Source, Stage, Status, Calls) and a "contains" box for free-text columns
+(Phone, Campaign, Tag, Interest). Filters combine (AND) with the search; a live
+"N of M" counter and "Clear all filters" reset. Interactive cells (StageSelect,
+TagField) still render inline. Separately, the **Walk-in tab** dropped its own
+"Recent walk-ins" table — walk-ins already appear in the (now filterable) main list —
+leaving just the entry form.
+
 ## 2026-07-07 — Global kill-switch to pause automated AI calls
 
 New `AI_CALLS_PAUSED` env flag (`aiCallsPaused()` in `lib/queue.ts`). When truthy,
