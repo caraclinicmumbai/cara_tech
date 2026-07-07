@@ -7,6 +7,15 @@ Format: newest first.
 
 ---
 
+## 2026-07-07 — Leads table UI fixes (sticky column + dropdown clipping)
+
+Follow-up to the leads table: (1) the sticky Name column used a translucent header
+background, so horizontally-scrolled columns bled through it ("hoName") — made it
+opaque; (2) the `overflow-x-auto` scroll container forced `overflow-y: auto`, clipping
+filter dropdowns on right-side columns — the filter panel now renders as a fixed,
+viewport-clamped layer that can't be clipped; (3) swapped the boxy filter glyph for a
+clean `▾` caret. File: `components/LeadsTable.tsx`.
+
 ## 2026-07-07 — Leads table: per-column filters, sort, name search; walk-in consolidated
 
 The `/leads` table is now an interactive client component (`components/LeadsTable.tsx`):
