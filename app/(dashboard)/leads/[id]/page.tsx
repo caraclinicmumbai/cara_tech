@@ -6,6 +6,7 @@ import { TagField } from "@/components/TagField";
 import { WhatsAppChat } from "@/components/WhatsAppChat";
 import { CallButton } from "@/components/CallButton";
 import { isServiceWindowOpen } from "@/lib/messages";
+import { formatIst } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +81,7 @@ export default async function LeadDetailPage({
           <div className="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm">
             🚫 <span className="font-medium">Opted out — all outreach suppressed.</span>
             {lead.optedOutReason ? ` ${lead.optedOutReason}.` : ""}
-            {lead.optedOutAt ? ` (${lead.optedOutAt.toLocaleString()})` : ""}
+            {lead.optedOutAt ? ` (${formatIst(lead.optedOutAt)})` : ""}
           </div>
         )}
 
@@ -89,7 +90,7 @@ export default async function LeadDetailPage({
             🤝 <span className="font-medium">Handover to sales.</span>
             {lead.handoverReason ? ` ${lead.handoverReason}.` : ""}
             {lead.assignedRep ? ` Assigned to ${lead.assignedRep.name}.` : ""}
-            {lead.handoverAt ? ` (${lead.handoverAt.toLocaleString()})` : ""}
+            {lead.handoverAt ? ` (${formatIst(lead.handoverAt)})` : ""}
           </div>
         )}
 
@@ -101,7 +102,7 @@ export default async function LeadDetailPage({
           <div className="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm">
             ❌ <span className="font-medium">Marked lost.</span>
             {lead.lostReason ? ` Reason: ${lead.lostReason}.` : ""}
-            {lead.lostAt ? ` (${lead.lostAt.toLocaleString()})` : ""}
+            {lead.lostAt ? ` (${formatIst(lead.lostAt)})` : ""}
           </div>
         )}
 
@@ -109,7 +110,7 @@ export default async function LeadDetailPage({
           <div className="rounded border border-orange-500/50 bg-orange-500/10 px-3 py-2 text-sm">
             🛑 <span className="font-medium">Held for review</span> — no AI call was placed.
             {lead.heldReason ? ` ${lead.heldReason}.` : ""}
-            {lead.heldAt ? ` (${lead.heldAt.toLocaleString()})` : ""} Vet this lead before contacting.
+            {lead.heldAt ? ` (${formatIst(lead.heldAt)})` : ""} Vet this lead before contacting.
           </div>
         )}
 
@@ -140,7 +141,7 @@ export default async function LeadDetailPage({
         {lead.callbackAt && (
           <div className="rounded border border-blue-500/40 bg-blue-500/5 px-3 py-2 text-sm">
             📞 <span className="font-medium">Callback requested</span> for{" "}
-            {lead.callbackAt.toLocaleString()} — auto-retries cancelled, a call is scheduled for this time.
+            {formatIst(lead.callbackAt)} — auto-retries cancelled, a call is scheduled for this time.
           </div>
         )}
 
@@ -161,10 +162,10 @@ export default async function LeadDetailPage({
           <Field label="Ad ID" value={lead.adId} />
           <Field
             label="Callback at"
-            value={lead.callbackAt ? lead.callbackAt.toLocaleString() : null}
+            value={lead.callbackAt ? formatIst(lead.callbackAt) : null}
           />
-          <Field label="Created" value={lead.createdAt.toLocaleString()} />
-          <Field label="Updated" value={lead.updatedAt.toLocaleString()} />
+          <Field label="Created" value={formatIst(lead.createdAt)} />
+          <Field label="Updated" value={formatIst(lead.updatedAt)} />
         </dl>
       </section>
 
@@ -238,7 +239,7 @@ export default async function LeadDetailPage({
                     </span>
                   )}
                   <span className="ml-auto text-black/50 dark:text-white/50">
-                    {call.createdAt.toLocaleString()}
+                    {formatIst(call.createdAt)}
                   </span>
                 </div>
 

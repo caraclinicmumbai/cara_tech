@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { formatIst } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -216,7 +217,7 @@ export default async function DashboardPage() {
                   <td className="px-3 py-2">{call.outcome ?? "—"}</td>
                   <td className="px-3 py-2">{call.sentiment ?? "—"}</td>
                   <td className="px-3 py-2 text-black/60 dark:text-white/60">
-                    {call.createdAt.toLocaleString()}
+                    {formatIst(call.createdAt)}
                   </td>
                 </tr>
               ))}
