@@ -7,6 +7,12 @@ Format: newest first.
 
 ---
 
+## 2026-07-07 — Leads table: remove click-to-sort (keep filters)
+
+Per request, the column headers no longer sort on click — the labels are plain text
+again. Per-column filtering (dropdowns / contains) and the name search are unchanged.
+File: `components/LeadsTable.tsx`.
+
 ## 2026-07-07 — Leads table UI fixes (sticky column + dropdown clipping)
 
 Follow-up to the leads table: (1) the sticky Name column used a translucent header
