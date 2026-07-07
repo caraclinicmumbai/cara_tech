@@ -7,6 +7,14 @@ Format: newest first.
 
 ---
 
+## 2026-07-07 — Show CQS in the leads table
+
+Added a **CQS** column to the `/leads` table showing each lead's latest scored call's
+score as a colour-coded badge (green ≥75, amber ≥50, red <50; "—" when unscored),
+matching the lead-detail styling. The leads query fetches the most recent call with a
+non-null `cqs` per lead. Filterable like the other enum columns. Files:
+`app/(dashboard)/leads/page.tsx`, `components/LeadsTable.tsx`.
+
 ## 2026-07-07 — Render all UI timestamps in IST
 
 The servers run UTC, so `toLocaleString()` rendered every user-facing time 5h30m early

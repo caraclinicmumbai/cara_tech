@@ -19,7 +19,16 @@ const SOURCE_LABELS: Record<string, string> = {
 export default async function LeadsPage() {
   const leads = await prisma.lead.findMany({
     orderBy: { createdAt: "desc" },
-    include: { _count: { select: { calls: true } } },
+    include: {
+      _count: { select: { calls: true } },
+      // Latest scored call → the lead's current CQS shown in the table.
+      calls: {
+        where: { cqs: { not: null } },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { cqs: true },
+      },
+    },
   });
 
   const rows: LeadRow[] = leads.map((l) => ({
@@ -34,6 +43,7 @@ export default async function LeadsPage() {
     interest: l.interest,
     status: l.status,
     calls: l._count.calls,
+    cqs: l.calls[0]?.cqs ?? null,
     duplicateOfId: l.duplicateOfId,
     optedOut: l.optedOut,
     heldForReview: l.heldForReview,
