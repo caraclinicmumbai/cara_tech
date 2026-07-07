@@ -17,6 +17,7 @@ export type LeadRow = {
   interest: string | null;
   status: string;
   calls: number;
+  cqs: number | null;
   duplicateOfId: string | null;
   optedOut: boolean;
   heldForReview: boolean;
@@ -76,6 +77,14 @@ export function LeadsTable({
       { key: "interest", label: "Interest", value: (l) => l.interest ?? "", filter: "text" },
       { key: "status", label: "Status", value: (l) => l.status, filter: "enum" },
       { key: "calls", label: "Calls", value: (l) => String(l.calls), filter: "enum", number: true },
+      {
+        key: "cqs",
+        label: "CQS",
+        value: (l) => (l.cqs == null ? "" : String(l.cqs)),
+        display: (v) => (v === "" ? "—" : v),
+        filter: "enum",
+        number: true,
+      },
     ],
     [sourceLabels, stageLabels],
   );
@@ -279,11 +288,29 @@ export function LeadsTable({
                 <td className="whitespace-nowrap px-4 py-2">{lead.interest ?? "—"}</td>
                 <td className="whitespace-nowrap px-4 py-2">{lead.status}</td>
                 <td className="whitespace-nowrap px-4 py-2">{lead.calls}</td>
+                <td className="whitespace-nowrap px-4 py-2">
+                  {typeof lead.cqs === "number" ? (
+                    <span
+                      title="Conversation Quality Score (latest scored call)"
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        lead.cqs >= 75
+                          ? "bg-green-600/15 text-green-700 dark:text-green-400"
+                          : lead.cqs >= 50
+                            ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                            : "bg-red-500/15 text-red-700 dark:text-red-400"
+                      }`}
+                    >
+                      {lead.cqs}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td className="px-3 py-6 text-center text-black/50" colSpan={9}>
+                <td className="px-3 py-6 text-center text-black/50" colSpan={10}>
                   No leads match the current filters.
                 </td>
               </tr>
