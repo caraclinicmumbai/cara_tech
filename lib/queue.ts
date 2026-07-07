@@ -15,6 +15,15 @@ export const bullConnection = redis as unknown as ConnectionOptions;
 // existing worker/monitoring binding keeps working.
 export const CALL_ATTEMPT_QUEUE = "reconfirmation-calls";
 
+/// Global kill-switch for automated AI outbound calls (§3.1). When AI_CALLS_PAUSED
+/// is truthy, lead intake places/queues no calls and the worker skips scheduled
+/// attempts (retries/callbacks) — leads are still captured, just not dialled.
+/// Rep-initiated click-to-call is UNAFFECTED. Toggle via env; no redeploy needed.
+export function aiCallsPaused(): boolean {
+  const v = (process.env.AI_CALLS_PAUSED ?? "").trim().toLowerCase();
+  return v === "true" || v === "1" || v === "yes" || v === "on";
+}
+
 /// Payload carried by a delayed call-attempt job.
 export type CallAttemptJob = {
   leadId: string;

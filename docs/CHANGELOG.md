@@ -7,6 +7,14 @@ Format: newest first.
 
 ---
 
+## 2026-07-07 — Global kill-switch to pause automated AI calls
+
+New `AI_CALLS_PAUSED` env flag (`aiCallsPaused()` in `lib/queue.ts`). When truthy,
+lead intake captures the lead but places/queues no call (`lib/leadIntake.ts`), and the
+worker skips any already-queued retry/callback as it fires (`workers/callQueueWorker.ts`).
+Rep-initiated click-to-call is unaffected. Toggle live on Railway — no redeploy.
+Updated [flow 2](flows/02-ai-calling-and-retries.md) + `.env.example`.
+
 ## 2026-07-01 — Sales-head escalation: CQS-extremes-only, off the rota
 
 The sales head is a manager, not a line telecaller. New `SalesRep.salesHead` flag:

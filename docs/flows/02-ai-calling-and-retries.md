@@ -51,6 +51,18 @@ worker.
 | `CALLBACK_HOUR` | `19` | Default evening callback hour (IST) |
 | `AI_MAX_CONCURRENT_CALLS` | `10` | Max simultaneous calls draining the queue |
 | `ELEVENLABS_API_KEY` / `ELEVENLABS_AGENT_ID` / `ELEVENLABS_AGENT_PHONE_NUMBER_ID` | — | Direct outbound-call credentials |
+| `AI_CALLS_PAUSED` | unset | Truthy = pause ALL automated calls (intake + queued retries) |
+
+## Kill-switch (`AI_CALLS_PAUSED`)
+
+A global pause on automated outbound calls. When `AI_CALLS_PAUSED` is truthy
+(`true`/`1`/`yes`/`on`), **both** entry points no-op: intake captures the lead but
+places/queues nothing (`lib/leadIntake.ts`), and the worker skips any already-queued
+retry/callback job as it fires (`workers/callQueueWorker.ts`). Leads still flow in;
+they just aren't dialled. **Rep-initiated click-to-call is unaffected.** It's an env
+toggle (`aiCallsPaused()` in `lib/queue.ts`) — flip it on Railway, no redeploy. Note
+that queued jobs are consumed (and dropped) while paused rather than held, so a lead
+paused mid-ladder won't auto-resume its remaining retries when unpaused.
 
 ## Limitations
 
