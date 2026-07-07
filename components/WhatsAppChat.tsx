@@ -8,6 +8,7 @@ import {
   sendLeadWhatsAppTemplate,
 } from "@/app/(dashboard)/leads/actions";
 import type { WhatsAppTemplate } from "@/lib/whatsappTemplates";
+import { formatIst } from "@/lib/datetime";
 
 export type ChatMessage = {
   id: string;
@@ -110,7 +111,7 @@ export function WhatsAppChat({
                     suppressHydrationWarning
                     className="mt-0.5 text-right text-[10px] text-black/40 dark:text-white/40"
                   >
-                    {new Date(m.createdAt).toLocaleString()}
+                    {formatIst(m.createdAt)}
                     {!inbound && m.status ? ` · ${m.status}` : ""}
                   </div>
                 </div>

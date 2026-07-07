@@ -7,6 +7,15 @@ Format: newest first.
 
 ---
 
+## 2026-07-07 — Render all UI timestamps in IST
+
+The servers run UTC, so `toLocaleString()` rendered every user-facing time 5h30m early
+(a call placed at 10:02 AM IST showed as "4:32 AM"). New `formatIst()` helper
+(`lib/datetime.ts`, `Asia/Kolkata`) now formats every timestamp in the UI — lead detail
+(created/updated, handover, callback, lost, opted-out, held), the Calls page, the
+Dashboard recent-calls, and the WhatsApp thread — e.g. "4 Jul 2026, 10:02 AM IST". No
+calling-logic change; the DND window was already IST-correct, this only fixes display.
+
 ## 2026-07-07 — Leads table: remove click-to-sort (keep filters)
 
 Per request, the column headers no longer sort on click — the labels are plain text
