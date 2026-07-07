@@ -8,6 +8,7 @@ import {
   CALL_ATTEMPT_QUEUE,
   bullConnection,
   deferCallToWindow,
+  aiCallsPaused,
   type CallAttemptJob,
 } from "@/lib/queue";
 import { isWithinDnd } from "@/lib/callWindow";
@@ -35,6 +36,13 @@ const worker = new Worker<CallAttemptJob>(
   CALL_ATTEMPT_QUEUE,
   async (job) => {
     const { leadId, phone, context, attempt, callType } = job.data;
+
+    // Global kill-switch (§3.1): AI_CALLS_PAUSED halts all automated calls, including
+    // already-queued retries/callbacks firing now. Rep click-to-call is unaffected.
+    if (aiCallsPaused()) {
+      logger.info(`AI calls paused (AI_CALLS_PAUSED) — skipping scheduled call for lead ${leadId} (attempt ${attempt})`);
+      return { paused: true, leadId, attempt };
+    }
 
     // Opt-out gate (§3.1.10): never call a lead who opted out / said not interested.
     const lead = await prisma.lead.findUnique({

@@ -5,7 +5,7 @@
 import type { Lead } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { placeOutboundCall } from "@/lib/providers/elevenlabs";
-import { scheduleCallAttempt, cancelScheduledCalls } from "@/lib/queue";
+import { scheduleCallAttempt, cancelScheduledCalls, aiCallsPaused } from "@/lib/queue";
 import { isWithinDnd } from "@/lib/callWindow";
 import { sendAutomatedTemplate, outreachTemplate, firstName } from "@/lib/outreach";
 import { logger } from "@/lib/logger";
@@ -180,6 +180,14 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
   // is set. Fires for real new leads (not duplicates/walk-ins/held), even for
   // call-paused sources. If they reply, it opens the 24h window for follow-up.
   await sendAutomatedTemplate(lead.id, outreachTemplate.newLead(), [firstName(lead.name)]);
+
+  // Global kill-switch (§3.1) — AI_CALLS_PAUSED halts ALL automated outbound calls
+  // (this immediate intake call AND any DND-held/queued attempts). The lead is still
+  // captured; nothing is dialled or queued. Rep click-to-call is unaffected.
+  if (aiCallsPaused()) {
+    logger.info(`AI calls paused (AI_CALLS_PAUSED) — lead ${lead.id} saved without calling`);
+    return { lead, deduped: false };
+  }
 
   // Auto-calling paused for this source (e.g. Meta, pending App Review) — capture only.
   if (isAutoCallPaused(input.source)) {
