@@ -287,7 +287,14 @@ export function LeadsTable({
                 <td className="whitespace-nowrap px-4 py-2">
                   <TagField leadId={lead.id} tag={lead.tag} />
                 </td>
-                <td className="whitespace-nowrap px-4 py-2">{lead.interest ?? "—"}</td>
+                <td className="px-4 py-2">
+                  <span
+                    className="block max-w-[200px] truncate"
+                    title={lead.interest ?? undefined}
+                  >
+                    {lead.interest ?? "—"}
+                  </span>
+                </td>
                 <td className="whitespace-nowrap px-4 py-2">{lead.status}</td>
                 <td className="whitespace-nowrap px-4 py-2">{lead.calls}</td>
                 <td className="whitespace-nowrap px-4 py-2">

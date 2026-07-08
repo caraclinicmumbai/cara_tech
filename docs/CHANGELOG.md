@@ -7,6 +7,12 @@ Format: newest first.
 
 ---
 
+## 2026-07-08 — Truncate long Interest in the leads table
+
+The Interest column now truncates to a fixed width with an ellipsis
+(`max-w-[200px] truncate`) and shows the full text via a native `title` tooltip on
+hover — long values no longer stretch the column. File: `components/LeadsTable.tsx`.
+
 ## 2026-07-08 — Soft-delete leads + Deleted (trash) section
 
 Leads can now be deleted from the leads table (🗑 button in a new Actions column) —
