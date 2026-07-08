@@ -218,3 +218,15 @@ Example output: "wants_human, price_request". Do NOT invent any other keys.
 The CRM only dials between **10:00–22:00 IST** (do-not-call window). The Rulebook's
 late-night "Namaste (9 PM–4:59 AM)" greeting row therefore rarely applies to
 automated calls; keep it for manual use.
+
+## 11. Voicemail detection (enabled — ends the call)
+
+The agent's **`voicemail_detection`** system tool is enabled (agent config
+`conversation_config.agent.prompt.built_in_tools.voicemail_detection`, params
+`{ system_tool_type: "voicemail_detection", voicemail_message: "" }`). An empty
+`voicemail_message` means: on detecting an answering machine / voicemail greeting, the
+agent **ends the call immediately** rather than leaving a message or talking to dead
+air. This is a cost + correctness guard — before it was enabled, a machine-answered
+call (e.g. lead "Faiz") kept the agent monologuing to silence for ~2 minutes.
+Configured via `PATCH /v1/convai/agents/{id}` (not in this repo — it's ElevenLabs-side
+agent state; re-apply there if the agent is recreated).
