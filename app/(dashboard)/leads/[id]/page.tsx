@@ -5,6 +5,7 @@ import { StageSelect } from "@/components/StageSelect";
 import { TagField } from "@/components/TagField";
 import { WhatsAppChat } from "@/components/WhatsAppChat";
 import { CallButton } from "@/components/CallButton";
+import { MergeLeadButton } from "@/components/MergeLeadButton";
 import { isServiceWindowOpen } from "@/lib/messages";
 import { formatIst } from "@/lib/datetime";
 
@@ -115,12 +116,15 @@ export default async function LeadDetailPage({
         )}
 
         {lead.duplicateOf && (
-          <div className="rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm">
-            ⚠️ <span className="font-medium">Possible duplicate</span> of an existing lead —{" "}
-            <Link href={`/leads/${lead.duplicateOf.id}`} className="font-medium underline">
-              {lead.duplicateOf.name} ({lead.duplicateOf.phone})
-            </Link>
-            . No AI call was placed; review/merge before contacting.
+          <div className="space-y-2 rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm">
+            <div>
+              ⚠️ <span className="font-medium">Possible duplicate</span> of an existing lead —{" "}
+              <Link href={`/leads/${lead.duplicateOf.id}`} className="font-medium underline">
+                {lead.duplicateOf.name} ({lead.duplicateOf.phone})
+              </Link>
+              . No AI call was placed; review/merge before contacting.
+            </div>
+            <MergeLeadButton leadId={lead.id} originalName={lead.duplicateOf.name} />
           </div>
         )}
 

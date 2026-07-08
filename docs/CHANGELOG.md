@@ -7,6 +7,16 @@ Format: newest first.
 
 ---
 
+## 2026-07-08 — Merge button for duplicate leads
+
+The duplicate-lead banner on a lead's detail page now has a **Merge** button. It runs
+the `mergeDuplicateLead` server action: re-parents the duplicate's calls + messages
+onto the original, re-points any leads that considered it their original, backfills
+fields the original is missing (never overwrites), deletes the duplicate, and navigates
+to the survivor. Confirmation-gated + session-checked. Files:
+`app/(dashboard)/leads/actions.ts`, `components/MergeLeadButton.tsx`,
+`app/(dashboard)/leads/[id]/page.tsx`. Updated [flow 1](flows/01-lead-intake.md).
+
 ## 2026-07-08 — Play the AI call recording in the CRM
 
 AI (ElevenLabs) calls previously showed only the transcript. The lead-detail call list
