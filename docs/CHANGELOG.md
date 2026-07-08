@@ -7,6 +7,15 @@ Format: newest first.
 
 ---
 
+## 2026-07-08 — Enable voicemail detection on the AI agent (ElevenLabs config)
+
+Enabled the `voicemail_detection` system tool on the agent with an empty
+`voicemail_message`, so it **ends the call immediately** when it detects an answering
+machine — instead of monologuing to dead air (as happened on lead "Faiz", ~2 min of
+paid silence). ElevenLabs-side agent config change (`PATCH /v1/convai/agents/{id}`),
+not a code change; documented in
+[elevenlabs-agent-integration.md §11](elevenlabs-agent-integration.md).
+
 ## 2026-07-08 — Merge button for duplicate leads
 
 The duplicate-lead banner on a lead's detail page now has a **Merge** button. It runs
