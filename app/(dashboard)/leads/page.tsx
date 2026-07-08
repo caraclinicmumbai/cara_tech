@@ -18,6 +18,7 @@ const SOURCE_LABELS: Record<string, string> = {
 
 export default async function LeadsPage() {
   const leads = await prisma.lead.findMany({
+    where: { deletedAt: null },
     orderBy: { createdAt: "desc" },
     include: {
       _count: { select: { calls: true } },

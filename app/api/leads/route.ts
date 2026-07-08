@@ -11,6 +11,7 @@ export async function GET() {
   if (denied) return denied;
 
   const leads = await prisma.lead.findMany({
+    where: { deletedAt: null },
     orderBy: { createdAt: "desc" },
     include: { calls: { orderBy: { createdAt: "desc" } } },
   });

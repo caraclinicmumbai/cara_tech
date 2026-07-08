@@ -75,7 +75,7 @@ export async function computeDigestMetrics(
 
   // 1. Leads received + top sources.
   const received = await prisma.lead.findMany({
-    where: { createdAt: window },
+    where: { createdAt: window, deletedAt: null },
     select: { source: true },
   });
   const leadsReceived = received.length;
@@ -104,7 +104,7 @@ export async function computeDigestMetrics(
   const slaH = slaHours();
   const cutoff = new Date(Date.now() - slaH * 60 * 60_000);
   const pendingCandidates = await prisma.lead.findMany({
-    where: { needsHandover: true, handoverAt: { lt: cutoff } },
+    where: { needsHandover: true, handoverAt: { lt: cutoff }, deletedAt: null },
     select: { id: true, name: true, handoverAt: true },
     orderBy: { handoverAt: "asc" },
     take: 200,
@@ -119,7 +119,7 @@ export async function computeDigestMetrics(
 
   // 4. Premature Lost flags raised in the window.
   const prematureLost = await prisma.lead.count({
-    where: { prematureLost: true, lostAt: window },
+    where: { prematureLost: true, lostAt: window, deletedAt: null },
   });
 
   return {

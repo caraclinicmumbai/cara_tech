@@ -109,10 +109,10 @@ export default async function DashboardPage() {
     durationAgg,
     recentCalls,
   ] = await Promise.all([
-    prisma.lead.count(),
+    prisma.lead.count({ where: { deletedAt: null } }),
     prisma.call.count(),
-    prisma.lead.groupBy({ by: ["status"], _count: { _all: true } }),
-    prisma.lead.groupBy({ by: ["source"], _count: { _all: true } }),
+    prisma.lead.groupBy({ by: ["status"], where: { deletedAt: null }, _count: { _all: true } }),
+    prisma.lead.groupBy({ by: ["source"], where: { deletedAt: null }, _count: { _all: true } }),
     prisma.call.groupBy({ by: ["outcome"], _count: { _all: true } }),
     prisma.call.groupBy({ by: ["sentiment"], _count: { _all: true } }),
     prisma.call.aggregate({ _avg: { duration: true } }),

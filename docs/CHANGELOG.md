@@ -7,6 +7,18 @@ Format: newest first.
 
 ---
 
+## 2026-07-08 — Soft-delete leads + Deleted (trash) section
+
+Leads can now be deleted from the leads table (🗑 button in a new Actions column) —
+a **soft delete**: it sets `Lead.deletedAt`/`deletedBy`, cancels any pending calls, and
+moves the lead to a new **Deleted** nav section (`/leads/deleted`), where it can be
+**Restored** or **Deleted permanently** (hard delete, cascades calls/messages). Deleted
+leads are excluded everywhere: leads list, dashboard counts, dedup, digest, stage-SLA
+scan, and the worker's call gate. Schema: additive `Lead.deletedAt` + `deletedBy`
+(+ index). New: `softDeleteLead` / `restoreLead` / `permanentlyDeleteLead` actions,
+`LeadDeleteButton` / `DeletedLeadActions` components, `/leads/deleted` page, nav link.
+Updated [flow 1](flows/01-lead-intake.md).
+
 ## 2026-07-08 — Enable voicemail detection on the AI agent (ElevenLabs config)
 
 Enabled the `voicemail_detection` system tool on the agent with an empty

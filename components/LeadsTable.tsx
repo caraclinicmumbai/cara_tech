@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { StageSelect } from "@/components/StageSelect";
 import { TagField } from "@/components/TagField";
+import { LeadDeleteButton } from "@/components/LeadDeleteButton";
 
 export type LeadRow = {
   id: string;
@@ -224,6 +225,7 @@ export function LeadsTable({
                   </div>
                 </th>
               ))}
+              <th className="whitespace-nowrap px-4 py-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -306,11 +308,14 @@ export function LeadsTable({
                     "—"
                   )}
                 </td>
+                <td className="whitespace-nowrap px-4 py-2 text-right">
+                  <LeadDeleteButton leadId={lead.id} name={lead.name} />
+                </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td className="px-3 py-6 text-center text-black/50" colSpan={10}>
+                <td className="px-3 py-6 text-center text-black/50" colSpan={11}>
                   No leads match the current filters.
                 </td>
               </tr>

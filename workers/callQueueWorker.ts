@@ -45,10 +45,15 @@ const worker = new Worker<CallAttemptJob>(
     }
 
     // Opt-out gate (§3.1.10): never call a lead who opted out / said not interested.
+    // Also skip a lead that was moved to trash (soft-deleted) after this was queued.
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      select: { optedOut: true, name: true, interest: true },
+      select: { optedOut: true, name: true, interest: true, deletedAt: true },
     });
+    if (lead?.deletedAt) {
+      logger.info(`Lead ${leadId} deleted — suppressing scheduled call (attempt ${attempt})`);
+      return { suppressed: true, leadId, attempt };
+    }
     if (lead?.optedOut) {
       logger.info(`Lead ${leadId} opted out — suppressing scheduled call (attempt ${attempt})`);
       return { suppressed: true, leadId, attempt };

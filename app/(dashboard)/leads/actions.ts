@@ -11,6 +11,7 @@ import { notifyCounsellor } from "@/lib/counsellor";
 import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
 import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
 import { clickToCall, isTwilioConfigured } from "@/lib/providers/twilio";
+import { cancelScheduledCalls } from "@/lib/queue";
 import { logger } from "@/lib/logger";
 
 const TAG_MAX = 120;
@@ -205,4 +206,59 @@ export async function mergeDuplicateLead(
   revalidatePath("/leads");
   revalidatePath(`/leads/${originalId}`);
   return { ok: true, originalId };
+}
+
+/// Soft-delete a lead (§3.1) — move it to the Deleted section. It's hidden from the
+/// leads list, metrics, dedup, and calling; any pending calls are cancelled. It can
+/// be restored or permanently removed from the Deleted page.
+export async function softDeleteLead(leadId: string): Promise<{ ok: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { deletedAt: true } });
+  if (!lead) return { ok: false, error: "Lead not found" };
+  if (lead.deletedAt) return { ok: true }; // already in trash
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { deletedAt: new Date(), deletedBy: session.user.email ?? null },
+  });
+  await cancelScheduledCalls(leadId).catch((err) =>
+    logger.error(`Failed to cancel calls for deleted lead ${leadId}: ${String(err)}`),
+  );
+  logger.info(`Lead ${leadId} moved to trash by ${session.user.email ?? "?"}`);
+  revalidatePath("/leads");
+  revalidatePath("/leads/deleted");
+  return { ok: true };
+}
+
+/// Restore a soft-deleted lead back into the active list.
+export async function restoreLead(leadId: string): Promise<{ ok: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { deletedAt: null, deletedBy: null },
+  });
+  logger.info(`Lead ${leadId} restored by ${session.user.email ?? "?"}`);
+  revalidatePath("/leads");
+  revalidatePath("/leads/deleted");
+  return { ok: true };
+}
+
+/// Permanently delete a lead (and its calls/messages, via cascade). Guarded: only
+/// leads already in the trash can be permanently removed.
+export async function permanentlyDeleteLead(leadId: string): Promise<{ ok: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { deletedAt: true } });
+  if (!lead) return { ok: false, error: "Lead not found" };
+  if (!lead.deletedAt) return { ok: false, error: "Move the lead to trash first" };
+
+  await prisma.lead.delete({ where: { id: leadId } });
+  logger.info(`Lead ${leadId} permanently deleted by ${session.user.email ?? "?"}`);
+  revalidatePath("/leads/deleted");
+  return { ok: true };
 }

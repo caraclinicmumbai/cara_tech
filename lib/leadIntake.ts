@@ -74,7 +74,7 @@ async function findDuplicateLead(phone: string, email?: string): Promise<Lead | 
   if (last10.length >= 7) or.push({ phone: { contains: last10 } });
   if (email) or.push({ email: { equals: email, mode: "insensitive" } });
   if (or.length === 0) return null;
-  return prisma.lead.findFirst({ where: { OR: or }, orderBy: { createdAt: "asc" } });
+  return prisma.lead.findFirst({ where: { deletedAt: null, OR: or }, orderBy: { createdAt: "asc" } });
 }
 
 /// Opt out every lead matching a phone (last 10 digits) and cancel their pending
@@ -84,7 +84,7 @@ export async function optOutLeadsByPhone(phone: string, reason: string): Promise
   const last10 = (phone.match(/\d/g)?.join("") ?? "").slice(-10);
   if (last10.length < 7) return 0;
   const leads = await prisma.lead.findMany({
-    where: { phone: { contains: last10 } },
+    where: { phone: { contains: last10 }, deletedAt: null },
     select: { id: true },
   });
   for (const l of leads) {
@@ -113,7 +113,7 @@ export type IngestResult = {
 export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
   if (input.externalId) {
     const existing = await prisma.lead.findFirst({
-      where: { source: input.source, externalId: input.externalId },
+      where: { source: input.source, externalId: input.externalId, deletedAt: null },
     });
     if (existing) {
       logger.info(
