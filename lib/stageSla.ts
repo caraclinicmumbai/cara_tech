@@ -32,6 +32,7 @@ export async function runStageSlaScan(limit = 200): Promise<number> {
         stageChangedAt: { lt: cutoff },
         stageStuckNotifiedAt: null, // not yet alerted for this stall
         optedOut: false, // don't chase opted-out leads
+        deletedAt: null,
       },
       select: { id: true, name: true, phone: true, stage: true, stageChangedAt: true },
       orderBy: { stageChangedAt: "asc" },

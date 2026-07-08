@@ -92,6 +92,12 @@ model Lead {
   campaign   String? // campaign id/name
   adId       String? // ad / adgroup / creative id
 
+  // ── Soft delete / trash (§3.1) — a staff-removed lead. When set it's excluded
+  //    from lists, metrics, dedup, and calling; it shows in the Deleted section,
+  //    where it can be restored (deletedAt→null) or permanently removed. ──
+  deletedAt DateTime?
+  deletedBy String? // staff email who moved it to trash
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -108,6 +114,7 @@ model Lead {
   @@index([stageChangedAt])
   @@index([needsHandover])
   @@index([assignedRepId])
+  @@index([deletedAt])
 }
 
 /// A sales rep / telecaller who receives AI→human handovers (§3.1). Handovers are
