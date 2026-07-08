@@ -153,3 +153,56 @@ export async function setLeadTag(leadId: string, tag: string): Promise<void> {
   revalidatePath("/leads");
   revalidatePath(`/leads/${leadId}`);
 }
+
+/// Merge a duplicate lead into its original (§3.1.1). Moves the duplicate's calls,
+/// messages, and any leads that pointed at it onto the original, backfills fields
+/// the original is missing from the duplicate (never overwrites existing data),
+/// then deletes the duplicate. Returns the original's id so the UI can navigate.
+export async function mergeDuplicateLead(
+  leadId: string,
+): Promise<{ ok: true; originalId: string } | { ok: false; error: string }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const dup = await prisma.lead.findUnique({
+    where: { id: leadId },
+    include: { duplicateOf: true },
+  });
+  if (!dup) return { ok: false, error: "Lead not found" };
+  if (!dup.duplicateOfId || !dup.duplicateOf) {
+    return { ok: false, error: "This lead isn't marked as a duplicate of another" };
+  }
+  const original = dup.duplicateOf;
+  const originalId = original.id;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Re-parent the duplicate's call + message history onto the original.
+      await tx.call.updateMany({ where: { leadId: dup.id }, data: { leadId: originalId } });
+      await tx.message.updateMany({ where: { leadId: dup.id }, data: { leadId: originalId } });
+      // Any lead that considered THIS one its original now points at the survivor.
+      await tx.lead.updateMany({ where: { duplicateOfId: dup.id }, data: { duplicateOfId: originalId } });
+      // Backfill only the fields the original is missing (don't clobber its data).
+      await tx.lead.update({
+        where: { id: originalId },
+        data: {
+          email: original.email ?? dup.email,
+          interest: original.interest ?? dup.interest,
+          tag: original.tag ?? dup.tag,
+          campaign: original.campaign ?? dup.campaign,
+          adId: original.adId ?? dup.adId,
+          externalId: original.externalId ?? dup.externalId,
+        },
+      });
+      await tx.lead.delete({ where: { id: dup.id } });
+    });
+  } catch (err) {
+    logger.error(`Merge lead ${dup.id} → ${originalId} failed: ${String(err)}`);
+    return { ok: false, error: "Merge failed — please try again" };
+  }
+
+  logger.info(`Merged duplicate lead ${dup.id} into ${originalId} by ${session.user.email ?? "?"}`);
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${originalId}`);
+  return { ok: true, originalId };
+}

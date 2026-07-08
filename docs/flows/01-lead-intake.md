@@ -25,7 +25,10 @@ A new lead arrives from one of these channels:
    - **Dedups on `source` + `externalId`** so a provider re-delivery can't double-insert.
    - **Duplicate detection (§3.1.1):** matches an existing lead by phone (last 10
      digits) or email. A match is linked via `duplicateOfId`, routed to
-     `manual_followup`, and **never auto-called** — a counsellor reviews/merges.
+     `manual_followup`, and **never auto-called** — a counsellor reviews/merges. The
+     duplicate's lead page shows a **Merge** button (`mergeDuplicateLead` action): it
+     re-parents the duplicate's calls + messages onto the original, backfills fields
+     the original is missing, deletes the duplicate, and opens the survivor.
    - **Held-for-review (anti-spam):** more than 5 web-form submissions from one IP in
      10 minutes flags the lead `heldForReview` (status `manual_followup`, no AI call).
      A separate hard ceiling (50/10 min) returns HTTP 429 outright.
