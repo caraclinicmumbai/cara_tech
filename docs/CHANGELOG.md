@@ -7,6 +7,16 @@ Format: newest first.
 
 ---
 
+## 2026-07-09 — Manual call button available for opted-out leads
+
+Opt-out only suppresses *automated* outreach — a human rep may still need to dial the
+lead. The lead-detail **call button** now shows for opted-out leads too (not just
+assigned ones), and `callLeadAndRecord` falls back to the least-recently-assigned
+active telecaller when the lead has no assigned rep, so the click-to-call works. A
+small caption notes automated outreach stays suppressed. Files:
+`app/(dashboard)/leads/[id]/page.tsx`, `components/CallButton.tsx`,
+`app/(dashboard)/leads/actions.ts`.
+
 ## 2026-07-08 — Truncate long Interest in the leads table
 
 The Interest column now truncates to a fixed width with an ellipsis
