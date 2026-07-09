@@ -93,7 +93,7 @@ export async function sendLeadWhatsApp(
 /// recording is stored on the lead. Session-checked.
 export async function callLeadAndRecord(
   leadId: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; repName?: string }> {
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
   if (!isTwilioConfigured()) return { ok: false, error: "Calling is not configured yet" };
@@ -103,13 +103,24 @@ export async function callLeadAndRecord(
     include: { assignedRep: true },
   });
   if (!lead) return { ok: false, error: "Lead not found" };
-  const repPhone = lead.assignedRep?.phone;
-  if (!repPhone) return { ok: false, error: "No assigned rep with a phone to call from" };
 
-  const res = await clickToCall(repPhone, leadId, lead.assignedRep?.id);
+  // Prefer the assigned rep. Otherwise fall back to the least-recently-assigned
+  // active telecaller — so a manual rep call still works for unassigned leads,
+  // including opted-out ones (opt-out only blocks AUTOMATED calls, not a human
+  // rep dialling back). Sales heads are excluded from the fallback (not the rota).
+  let rep = lead.assignedRep;
+  if (!rep?.phone) {
+    rep = await prisma.salesRep.findFirst({
+      where: { active: true, salesHead: false, NOT: { phone: "" } },
+      orderBy: [{ lastAssignedAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }],
+    });
+  }
+  if (!rep?.phone) return { ok: false, error: "No rep with a phone to call from" };
+
+  const res = await clickToCall(rep.phone, leadId, rep.id);
   if (!res.ok) return { ok: false, error: res.error };
-  logger.info(`Click-to-call started for lead ${leadId} (rep ${lead.assignedRep?.name}) by ${session.user.email}`);
-  return { ok: true };
+  logger.info(`Click-to-call started for lead ${leadId} (rep ${rep.name}) by ${session.user.email}`);
+  return { ok: true, repName: rep.name };
 }
 
 /// List APPROVED templates for the re-engagement picker (used when the 24h

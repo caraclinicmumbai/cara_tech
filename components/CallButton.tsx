@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { callLeadAndRecord } from "@/app/(dashboard)/leads/actions";
 
 // Starts a recorded click-to-call: rings the assigned rep, then connects the lead.
-export function CallButton({ leadId, repName }: { leadId: string; repName: string }) {
+export function CallButton({ leadId, repName }: { leadId: string; repName?: string }) {
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -17,7 +17,10 @@ export function CallButton({ leadId, repName }: { leadId: string; repName: strin
             const res = await callLeadAndRecord(leadId);
             setMsg(
               res.ok
-                ? { ok: true, text: `Calling ${repName} — answer to be connected to the patient.` }
+                ? {
+                    ok: true,
+                    text: `Calling ${res.repName ?? repName ?? "the rep"} — answer to be connected to the patient.`,
+                  }
                 : { ok: false, text: res.error ?? "Failed to start call" },
             );
           })
