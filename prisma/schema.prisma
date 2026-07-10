@@ -24,7 +24,7 @@ model Lead {
   // ── Sales pipeline stage (human-facing, §3.1) — distinct from `status` (the
   //    internal automation state). Auto-advanced FORWARD-ONLY by call outcomes
   //    and editable by staff. Keys in lib/leadStages.ts. ──
-  stage String @default("fresh_inquiry") // fresh_inquiry | communication_not_established | in_consideration | appointment_scheduled | consultation_done | existing_followup | converted_followup | converted | lost
+  stage String @default("ai_contacted") // ai_contacted | ai_attempted_unreachable | communication_not_established | human_callback_pending | in_consideration | appointment_scheduled | consultation_done | converted | lost
   // What the lead asked for in the call (e.g. "Hair transplant") — AI-filled from
   // the post-call write-back, staff-editable. Free text.
   tag   String?
@@ -36,9 +36,11 @@ model Lead {
   stageChangedAt      DateTime? @default(now())
   stageStuckNotifiedAt DateTime?
 
-  // ── Lost (§3.1) — when staff manually move the stage to "lost" they MUST give a
-  //    reason; captured here for win/loss analysis. Cleared if reactivated. ──
-  lostReason String?
+  // ── Lost (§3.1) — moving the stage to "lost" needs a preset `lostTag` and/or a
+  //    free-text `lostReason` review. A tag makes the review optional; with no tag
+  //    a written reason is required. Both cleared if the lead is reactivated. ──
+  lostTag    String? // one of LOST_PRESET_TAGS (e.g. "pricing issue")
+  lostReason String? // free-text review (optional when a tag is set)
   lostAt     DateTime?
   // True when the lead was marked Lost BEFORE completing a consultation (a
   //    premature loss the counsellor was alerted to). Counted in the daily digest.
