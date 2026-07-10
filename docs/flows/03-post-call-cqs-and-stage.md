@@ -25,12 +25,19 @@ Both funnel into **`recordCall` (`lib/callIntake.ts`)**.
    the call as `cqs` + `cqsBreakdown`. Best-effort — null when unconfigured/empty/failed,
    never blocks intake. (See "CQS rubric" below.)
 2. **Persist the `Call`** (type, transcript, outcome, sentiment, duration, cqs).
-3. **Stage auto-advance (forward-only).** `stageFromOutcome` maps the outcome to a stage
-   (`confirmed`→`appointment_scheduled`, `rescheduled`→`in_consideration`,
-   `no_answer`→`communication_not_established`); `advanceStage` applies it only if it
-   moves the lead **forward** (never regresses a stage staff already set). On a real
-   move, `stageChangedAt` is reset and `stageStuckNotifiedAt` cleared (feeds flow 5's
-   stuck-in-stage SLA).
+3. **Stage auto-advance (forward-only).** The pipeline is: **AI Contacted →
+   AI Attempted—Unreachable → Communication Not Established → Human Callback Pending →
+   In Consideration → Appointment Scheduled → Consultation Done → Converted → Lost**
+   (a new lead starts at *AI Contacted*). `recordCall` picks the stage this call
+   resolves to, by priority: handover fired → **Human Callback Pending**; `confirmed`
+   → **Appointment Scheduled**; asked-to-call-later (`rescheduled`/callback) →
+   **Communication Not Established**; retries exhausted → **AI Attempted—Unreachable**;
+   `not_interested` is opt-out only (no stage move); an engaged call with no other
+   signal stays at *AI Contacted*. `advanceStage` applies it only if it moves the lead
+   **forward** (never regresses a stage staff already set). *In Consideration*,
+   *Consultation Done*, and *Converted* are set by staff (the AI can't verify them). On
+   a real move, `stageChangedAt` is reset and `stageStuckNotifiedAt` cleared (feeds
+   flow 5's stuck-in-stage SLA).
 4. **Tag.** What the lead asked for (AI-extracted) is written to `Lead.tag` if present.
 5. **Branch on outcome:**
    - **`not_interested`** → opt-out: suppress all outreach, cancel pending jobs.

@@ -111,7 +111,8 @@ export default async function LeadDetailPage({
         {lead.stage === "lost" && (
           <div className="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm">
             ❌ <span className="font-medium">Marked lost.</span>
-            {lead.lostReason ? ` Reason: ${lead.lostReason}.` : ""}
+            {lead.lostTag ? ` Reason: ${lead.lostTag}.` : ""}
+            {lead.lostReason ? ` Review: ${lead.lostReason}.` : ""}
             {lead.lostAt ? ` (${formatIst(lead.lostAt)})` : ""}
           </div>
         )}

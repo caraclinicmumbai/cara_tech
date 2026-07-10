@@ -6,7 +6,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { isLeadStage, LOST_STAGE, isPreConsultation, stageLabel } from "@/lib/leadStages";
+import { isLeadStage, LOST_STAGE, isPreConsultation, stageLabel, isLostTag } from "@/lib/leadStages";
 import { notifyCounsellor } from "@/lib/counsellor";
 import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
 import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
@@ -21,16 +21,21 @@ const MESSAGE_MAX = 4096; // WhatsApp text body limit
 export async function setLeadStage(
   leadId: string,
   stage: string,
-  reason?: string,
+  opts?: { lostTag?: string; reason?: string },
 ): Promise<void> {
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
   if (!isLeadStage(stage)) throw new Error("Invalid stage");
 
-  // Moving to "Lost" requires a reason; any other stage clears a prior one.
+  // Moving to "Lost" needs a preset tag AND/OR a written review. A tag makes the
+  // review optional; with neither we reject. Any other stage clears a prior loss.
   const isLost = stage === LOST_STAGE;
-  const lostReason = reason?.trim().slice(0, REASON_MAX);
-  if (isLost && !lostReason) throw new Error("A reason is required to mark a lead lost");
+  const lostTag = opts?.lostTag?.trim();
+  const lostReason = opts?.reason?.trim().slice(0, REASON_MAX);
+  if (isLost && lostTag && !isLostTag(lostTag)) throw new Error("Invalid lost tag");
+  if (isLost && !lostTag && !lostReason) {
+    throw new Error("Pick a preset tag or write a reason to mark a lead lost");
+  }
 
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
@@ -44,7 +49,8 @@ export async function setLeadStage(
     where: { id: leadId },
     data: {
       stage,
-      lostReason: isLost ? lostReason : null,
+      lostTag: isLost ? (lostTag || null) : null,
+      lostReason: isLost ? (lostReason || null) : null,
       lostAt: isLost ? new Date() : null,
       // Flag premature losses for the daily digest; clear it when un-lost.
       prematureLost: isLost ? isPremature : false,
@@ -52,8 +58,9 @@ export async function setLeadStage(
       ...(stageChanged ? { stageChangedAt: new Date(), stageStuckNotifiedAt: null } : {}),
     },
   });
+  const lostSummary = [lostTag, lostReason].filter(Boolean).join(" — ");
   logger.info(
-    `Lead ${leadId} stage set to ${stage}${isLost ? ` (lost: ${lostReason})` : ""} by ${session.user.email ?? "?"}`,
+    `Lead ${leadId} stage set to ${stage}${isLost ? ` (lost: ${lostSummary})` : ""} by ${session.user.email ?? "?"}`,
   );
 
   // Premature lost (§3.1): the lead was marked Lost before ever completing a
@@ -62,7 +69,7 @@ export async function setLeadStage(
     await notifyCounsellor({
       kind: "premature_lost",
       lead: { id: leadId, name: lead.name, phone: lead.phone },
-      reason: lostReason,
+      reason: lostSummary || undefined,
       extra: [`Marked lost at *${stageLabel(lead.stage)}* — never completed a consultation.`],
     });
   }

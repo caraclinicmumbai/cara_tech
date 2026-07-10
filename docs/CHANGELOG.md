@@ -7,6 +7,25 @@ Format: newest first.
 
 ---
 
+## 2026-07-10 — New lead pipeline stages + Lost preset tags
+
+Reworked the pipeline to: **AI Contacted → AI Attempted—Unreachable → Communication
+Not Established → Human Callback Pending → In Consideration → Appointment Scheduled →
+Consultation Done → Converted → Lost**. All are auto-advanced (forward-only) by call
+events and manually editable. Auto-mapping in `recordCall`: handover → Human Callback
+Pending; `confirmed` → Appointment Scheduled; call-later → Communication Not
+Established; retries exhausted → AI Attempted—Unreachable; `not_interested` = opt-out
+only (no stage move). New leads default to *AI Contacted*.
+
+**Lost** now takes a **preset tag** (11 options: Not interested, Enquired for different
+product, Wrong number, Pricing issue, Enquired for competitor, Did not enquire, Chose
+competitor, Location issue, Clinic staff, Nonsense, Other) via a modal, plus an
+**optional review** (required only if no tag is picked). Schema: new `Lead.lostTag`;
+default stage → `ai_contacted`. Existing leads migrated (`fresh_inquiry`→`ai_contacted`,
+`existing_followup`→`consultation_done`, `converted_followup`→`converted`). Files:
+`lib/leadStages.ts`, `lib/callIntake.ts`, `components/StageSelect.tsx`,
+`app/(dashboard)/leads/actions.ts`. Updated [flow 3](flows/03-post-call-cqs-and-stage.md).
+
 ## 2026-07-10 — Duplicate detection: phone-only (email no longer matched)
 
 `findDuplicateLead` now matches on **phone (last 10 digits) only**. A shared email no

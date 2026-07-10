@@ -1,17 +1,17 @@
 // Sales pipeline stages (§3.1) — the human-facing lead lifecycle, distinct from
 // `status` (the internal automation state). Stage is auto-advanced FORWARD-ONLY
-// by call outcomes and freely editable by staff via the dashboard.
+// by call outcomes/events and freely editable by staff via the dashboard.
 //
 // Stored as stable snake_case keys; STAGE_LABELS holds the display text.
 
 export const LEAD_STAGES = [
-  "fresh_inquiry",
+  "ai_contacted",
+  "ai_attempted_unreachable",
   "communication_not_established",
+  "human_callback_pending",
   "in_consideration",
   "appointment_scheduled",
   "consultation_done",
-  "existing_followup",
-  "converted_followup",
   "converted",
   "lost",
 ] as const;
@@ -19,21 +19,44 @@ export const LEAD_STAGES = [
 export type LeadStage = (typeof LEAD_STAGES)[number];
 
 export const STAGE_LABELS: Record<LeadStage, string> = {
-  fresh_inquiry: "Fresh inquiry",
-  communication_not_established: "Communication not established",
-  in_consideration: "In consideration",
-  appointment_scheduled: "Appointment scheduled",
-  consultation_done: "Consultation done",
-  existing_followup: "Existing + follow up",
-  converted_followup: "Converted + follow up",
+  ai_contacted: "AI Contacted",
+  ai_attempted_unreachable: "AI Attempted — Unreachable",
+  communication_not_established: "Communication Not Established",
+  human_callback_pending: "Human Callback Pending",
+  in_consideration: "In Consideration",
+  appointment_scheduled: "Appointment Scheduled",
+  consultation_done: "Consultation Done",
   converted: "Converted",
   lost: "Lost",
 };
 
-/// "Lost" requires staff to record why. Auto-advance never reaches it.
+/// "Lost" needs a preset tag and/or a written reason (see LOST_PRESET_TAGS).
 export const LOST_STAGE: LeadStage = "lost";
 
-export const DEFAULT_STAGE: LeadStage = "fresh_inquiry";
+/// A new lead enters the pipeline in the AI-contact phase.
+export const DEFAULT_STAGE: LeadStage = "ai_contacted";
+
+/// Preset reasons shown when marking a lead Lost. A tag makes the free-text review
+/// optional; picking none requires a written reason instead.
+export const LOST_PRESET_TAGS = [
+  "Not interested",
+  "Enquired for different product",
+  "Wrong number",
+  "Pricing issue",
+  "Enquired for competitor",
+  "Did not enquire",
+  "Chose competitor",
+  "Location issue",
+  "Clinic staff",
+  "Nonsense",
+  "Other",
+] as const;
+
+export type LostTag = (typeof LOST_PRESET_TAGS)[number];
+
+export function isLostTag(v: string): v is LostTag {
+  return (LOST_PRESET_TAGS as readonly string[]).includes(v);
+}
 
 export function isLeadStage(v: string): v is LeadStage {
   return (LEAD_STAGES as readonly string[]).includes(v);
@@ -49,23 +72,22 @@ const RANK: Record<LeadStage, number> = Object.fromEntries(
   LEAD_STAGES.map((s, i) => [s, i]),
 ) as Record<LeadStage, number>;
 
-/// The stage a call outcome implies, or null when it maps to none.
-/// (not_interested is handled by the opt-out flag, not a stage; consultation_done
-/// and existing_followup are set by staff only.)
+/// The stage a call outcome implies on its own, or null when it maps to none.
+/// (Handover → human_callback_pending and unreachable-after-retries →
+/// ai_attempted_unreachable are decided in recordCall, which has that context;
+/// not_interested is opt-out only and doesn't move the stage.)
 export function stageFromOutcome(outcome?: string): LeadStage | null {
   switch (outcome) {
     case "confirmed":
       return "appointment_scheduled";
     case "rescheduled":
-      return "in_consideration";
-    case "no_answer":
       return "communication_not_established";
     default:
       return null;
   }
 }
 
-/// Pipeline rank of a stage (position in LEAD_STAGES); unknown → fresh_inquiry.
+/// Pipeline rank of a stage (position in LEAD_STAGES); unknown → default stage.
 export function stageRank(stage: string): number {
   return RANK[isLeadStage(stage) ? stage : DEFAULT_STAGE];
 }
@@ -79,7 +101,7 @@ export function isPreConsultation(stage: string): boolean {
 
 /// Stages excluded from the "stuck in stage" SLA scan — the won + terminal states
 /// where a lead legitimately rests (§3.1).
-export const STAGE_SLA_EXCLUDED: LeadStage[] = ["converted_followup", "converted", "lost"];
+export const STAGE_SLA_EXCLUDED: LeadStage[] = ["converted", "lost"];
 
 /// Forward-only auto-advance: returns `next` only if it's further along than the
 /// current stage; otherwise null (= leave the stage untouched). Manual edits in

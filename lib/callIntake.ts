@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { statusFromOutcome } from "@/lib/contracts";
 import { scheduleCallAttempt, cancelScheduledCalls, retryDelaysDays, DAY_MS } from "@/lib/queue";
 import { nextEveningCallback } from "@/lib/callWindow";
-import { stageFromOutcome, advanceStage } from "@/lib/leadStages";
+import { advanceStage, type LeadStage } from "@/lib/leadStages";
 import { evaluateHandover, notifyHandover } from "@/lib/handover";
 import { scheduleHandoverSla } from "@/lib/handoverSla";
 import { notifyCounsellor, type CounsellorAlertKind } from "@/lib/counsellor";
@@ -111,17 +111,6 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     cqs: scored?.cqs ?? input.cqs, // prefer our computed CQS over any agent-provided value
     language: input.language,
   });
-
-  // Pipeline stage: auto-advance FORWARD-ONLY from the call outcome so we never
-  // regress a stage staff (or an earlier, further-along call) already set (§3.1).
-  const nextStage = advanceStage(lead.stage, stageFromOutcome(input.outcome));
-  if (nextStage) {
-    leadData.stage = nextStage;
-    // Reset the stage-age clock (and clear any stuck alert) so the stuck-in-stage
-    // SLA measures time in the NEW stage (§3.1).
-    leadData.stageChangedAt = new Date();
-    leadData.stageStuckNotifiedAt = null;
-  }
 
   // Tag: what the lead asked for, as captured by the AI. Only overwrite when the
   // call actually carried one — an empty extraction shouldn't wipe a manual tag.
@@ -237,6 +226,33 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
       becameUnreachable = true;
       logger.info(`Lead ${lead.id} unreachable after ${attemptNumber} attempts`);
     }
+  }
+
+  // Pipeline stage (§3.1) — auto-advance FORWARD-ONLY based on what this call
+  // resolved to. Priority mirrors the branch handling above:
+  //   handover → Human Callback Pending; confirmed → Appointment Scheduled;
+  //   asked-to-call-later → Communication Not Established; exhausted retries →
+  //   AI Attempted — Unreachable. not_interested is opt-out only (no stage move),
+  //   and an engaged call with no other signal simply stays at AI Contacted.
+  let eventStage: LeadStage | null = null;
+  if (input.outcome === "not_interested") {
+    eventStage = null;
+  } else if (handover.length > 0) {
+    eventStage = "human_callback_pending";
+  } else if (input.outcome === "confirmed") {
+    eventStage = "appointment_scheduled";
+  } else if (callbackAt || input.outcome === "rescheduled") {
+    eventStage = "communication_not_established";
+  } else if (becameUnreachable) {
+    eventStage = "ai_attempted_unreachable";
+  }
+  const nextStage = advanceStage(lead.stage, eventStage);
+  if (nextStage) {
+    leadData.stage = nextStage;
+    // Reset the stage-age clock (+ clear any stuck alert) so the stuck-in-stage SLA
+    // measures time in the NEW stage (§3.1).
+    leadData.stageChangedAt = new Date();
+    leadData.stageStuckNotifiedAt = null;
   }
 
   // Sales-head CQS-extreme ping (§3.1) — independent of any handover: fires for
