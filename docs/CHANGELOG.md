@@ -7,6 +7,13 @@ Format: newest first.
 
 ---
 
+## 2026-07-10 — Duplicate detection: phone-only (email no longer matched)
+
+`findDuplicateLead` now matches on **phone (last 10 digits) only**. A shared email no
+longer flags a lead as a duplicate — two leads may legitimately use the same email, so
+only a repeated phone number marks a duplicate now. File: `lib/leadIntake.ts`; updated
+[flow 1](flows/01-lead-intake.md).
+
 ## 2026-07-09 — Manual call button available for opted-out leads
 
 Opt-out only suppresses *automated* outreach — a human rep may still need to dial the

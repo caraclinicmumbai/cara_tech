@@ -65,16 +65,18 @@ function isAutoCallPaused(source: LeadSource): boolean {
     .includes(source);
 }
 
-/// Find a pre-existing lead matching this one on phone (last 10 digits, to span
-/// +91/bare formats) or email (§3.1.1 duplicate detection). Returns the OLDEST
-/// match (the "original") so duplicates chain to one canonical record.
-async function findDuplicateLead(phone: string, email?: string): Promise<Lead | null> {
+/// Find a pre-existing lead matching this one on PHONE only (last 10 digits, to
+/// span +91/bare formats) — §3.1.1 duplicate detection. Email is intentionally NOT
+/// matched: two leads may legitimately share an email (e.g. a family member's), so
+/// only a repeated phone number marks a duplicate. Returns the OLDEST match (the
+/// "original") so duplicates chain to one canonical record.
+async function findDuplicateLead(phone: string): Promise<Lead | null> {
   const last10 = (phone.match(/\d/g)?.join("") ?? "").slice(-10);
-  const or: Array<Record<string, unknown>> = [];
-  if (last10.length >= 7) or.push({ phone: { contains: last10 } });
-  if (email) or.push({ email: { equals: email, mode: "insensitive" } });
-  if (or.length === 0) return null;
-  return prisma.lead.findFirst({ where: { deletedAt: null, OR: or }, orderBy: { createdAt: "asc" } });
+  if (last10.length < 7) return null;
+  return prisma.lead.findFirst({
+    where: { deletedAt: null, phone: { contains: last10 } },
+    orderBy: { createdAt: "asc" },
+  });
 }
 
 /// Opt out every lead matching a phone (last 10 digits) and cancel their pending
@@ -123,10 +125,10 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
     }
   }
 
-  // Duplicate detection (§3.1.1): a matching phone/email means a prior record
-  // exists — capture the new enquiry but link it, route to manual review, and
-  // never AI-call it (the counsellor reviews/merges first).
-  const dup = await findDuplicateLead(input.phone, input.email);
+  // Duplicate detection (§3.1.1): a matching PHONE means a prior record exists —
+  // capture the new enquiry but link it, route to manual review, and never AI-call
+  // it (the counsellor reviews/merges first). Email is not used for matching.
+  const dup = await findDuplicateLead(input.phone);
 
   // Walk-in/front-desk leads go straight to the manual follow-up queue —
   // a human is already with the patient, so there's no AI cold-call (§3.1.2).

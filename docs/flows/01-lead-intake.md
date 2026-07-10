@@ -23,8 +23,9 @@ A new lead arrives from one of these channels:
    lead, including attribution (`campaign`, `adId`, `externalId`).
 2. **`ingestLead` (`lib/leadIntake.ts`)** is the single funnel for all sources. It:
    - **Dedups on `source` + `externalId`** so a provider re-delivery can't double-insert.
-   - **Duplicate detection (§3.1.1):** matches an existing lead by phone (last 10
-     digits) or email. A match is linked via `duplicateOfId`, routed to
+   - **Duplicate detection (§3.1.1):** matches an existing lead by **phone only**
+     (last 10 digits). Email is intentionally not matched — two leads may share an
+     email legitimately. A match is linked via `duplicateOfId`, routed to
      `manual_followup`, and **never auto-called** — a counsellor reviews/merges. The
      duplicate's lead page shows a **Merge** button (`mergeDuplicateLead` action): it
      re-parents the duplicate's calls + messages onto the original, backfills fields
@@ -66,8 +67,8 @@ A new lead arrives from one of these channels:
   in the manual queue.
 - **CF7 web form can't be origin-gated.** WordPress posts server-to-server, so the
   origin allowlist doesn't apply to it; it relies on a shared secret / honeypot instead.
-- **Duplicate detection matches on phone last-10 / email only.** A patient who uses a
-  brand-new number and email won't be linked to their prior record.
+- **Duplicate detection matches on phone last-10 only** (email is not matched). A
+  patient who enquires from a brand-new number won't be linked to their prior record.
 - **Held-for-review uses a fixed window count.** The counter is `limit − remaining` over
   a single rate-limit window, not a precise rolling histogram — burst boundaries are
   approximate.
