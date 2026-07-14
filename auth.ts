@@ -45,7 +45,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         await clearLoginFailures(ip);
-        return { id: user.id, name: user.name, email: user.email, role: user.role };
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          salesRepId: user.salesRepId,
+        };
       },
     }),
   ],
@@ -63,12 +69,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return isLoggedIn;
     },
     jwt({ token, user }) {
-      if (user) token.role = (user as { role?: string }).role ?? "sales";
+      if (user) {
+        const u = user as { role?: string; salesRepId?: string | null };
+        token.role = u.role ?? "telecaller";
+        token.salesRepId = u.salesRepId ?? null;
+      }
       return token;
     },
     session({ session, token }) {
       if (session.user) {
-        (session.user as { role?: string }).role = token.role as string;
+        const u = session.user as { id?: string; role?: string; salesRepId?: string | null };
+        u.id = token.sub; // the User.id (JWT subject)
+        u.role = token.role as string;
+        u.salesRepId = (token.salesRepId as string | null) ?? null;
       }
       return session;
     },

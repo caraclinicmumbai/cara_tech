@@ -7,6 +7,18 @@ Format: newest first.
 
 ---
 
+## 2026-07-14 — RBAC Phase 1: roles + permission model (foundation)
+
+Foundation for role-based access (no enforcement yet — that's later phases). New
+`lib/rbac.ts`: five roles (`front_desk`, `telecaller`, `branch_manager`, `sales_head`,
+`crm_admin`), a central capability map, `can(role, cap)`, and `leadScope(role)`
+(front-desk/telecaller = own, others = all). `lib/authz.ts` bridges the session:
+`currentUser` / `requireCapability`. The session/JWT now carry `role` + `salesRepId` +
+`id`. Schema: `User.salesRepId` (unique, ↔ `SalesRep.user`), `Lead.createdById`, and
+`User.role` default → `telecaller`. Migrated the existing admin login `admin` →
+`crm_admin` in prod. Enforcement, ownership assignment, and the admin UI follow in
+Phases 2–4.
+
 ## 2026-07-10 — New lead pipeline stages + Lost preset tags
 
 Reworked the pipeline to: **AI Contacted → AI Attempted—Unreachable → Communication
