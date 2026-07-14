@@ -7,6 +7,15 @@ Format: newest first.
 
 ---
 
+## 2026-07-14 — RBAC Phase 4: admin UI for users, roles & rep roster
+
+New **/users** screen (CRM-Admin only, `users.manage`): create staff logins, set roles,
+link a login to a sales-rep identity, reset passwords, delete logins — plus a **sales-rep
+roster** section (`reps.manage`) to add reps (name/phone/Slack id), toggle active, and
+flag sales-head. Guards: can't demote/delete the last CRM Admin or yourself; a rep links
+to at most one login. Files: `app/(dashboard)/users/{page,actions}.tsx`,
+`components/UsersAdmin.tsx`. Replaces script-based user seeding.
+
 ## 2026-07-14 — RBAC Phase 2+3: ownership + enforcement
 
 **Ownership (Phase 2):** every new lead (incl. walk-ins) is now assigned round-robin to
