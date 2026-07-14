@@ -45,10 +45,12 @@ export function LeadsTable({
   leads,
   sourceLabels,
   stageLabels,
+  canDelete = false,
 }: {
   leads: LeadRow[];
   sourceLabels: Record<string, string>;
   stageLabels: Record<string, string>;
+  canDelete?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [enumFilters, setEnumFilters] = useState<Record<string, Set<string>>>({});
@@ -316,7 +318,11 @@ export function LeadsTable({
                   )}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2 text-right">
-                  <LeadDeleteButton leadId={lead.id} name={lead.name} />
+                  {canDelete ? (
+                    <LeadDeleteButton leadId={lead.id} name={lead.name} />
+                  ) : (
+                    <span className="text-black/30 dark:text-white/30">—</span>
+                  )}
                 </td>
               </tr>
             ))}

@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatIst } from "@/lib/datetime";
+import { currentUser, leadWhereForUser } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
 export default async function CallsPage() {
+  const user = await currentUser();
   const calls = await prisma.call.findMany({
+    // Scope to the viewer's leads (front-desk/telecaller = own; others = all).
+    where: { lead: { deletedAt: null, ...leadWhereForUser(user!) } },
     orderBy: { createdAt: "desc" },
     include: { lead: true, handledBy: { select: { name: true } } },
     take: 100,

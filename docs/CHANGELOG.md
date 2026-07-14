@@ -7,6 +7,26 @@ Format: newest first.
 
 ---
 
+## 2026-07-14 — RBAC Phase 2+3: ownership + enforcement
+
+**Ownership (Phase 2):** every new lead (incl. walk-ins) is now assigned round-robin to
+a telecaller at intake — its owner — with **no notification** (`lib/leadIntake.ts`). AI
+call flow unchanged. Handover now notifies that **existing owner** instead of
+re-assigning (`lib/handover.ts`, `getLeadOwner`). Staff-entered leads stamp
+`createdById`.
+
+**Enforcement (Phase 3):** `can(role, cap)` is now enforced at every layer —
+- **Server actions** (`leads/actions.ts`): each gated via `requireCapability` (editStage,
+  markLost, editTag, call, whatsapp, merge, softDelete, restore, permanentDelete).
+- **API routes**: `/api/leads` (create/view) + `/api/leads/walk-in` via `requireApiCapability`.
+- **Route guard** (`auth.ts` + `routeCapability`): bounces users lacking a page's
+  capability (dashboard/cqs→analytics, templates, settings, users, deleted→restore,
+  walk-in→walkin) to /leads.
+- **Ownership scoping** (`leadWhereForUser` / `canSeeLead`): front-desk/telecaller see
+  only leads they own or created — on /leads, lead detail (404 otherwise), and /calls.
+- **UI hiding**: nav links, the "New lead" form, the row Delete button, and permanent-
+  delete are hidden per capability. Role label shown in the header.
+
 ## 2026-07-14 — RBAC Phase 1: roles + permission model (foundation)
 
 Foundation for role-based access (no enforcement yet — that's later phases). New

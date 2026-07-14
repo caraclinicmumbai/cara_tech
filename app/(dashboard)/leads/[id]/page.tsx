@@ -8,6 +8,7 @@ import { CallButton } from "@/components/CallButton";
 import { MergeLeadButton } from "@/components/MergeLeadButton";
 import { isServiceWindowOpen } from "@/lib/messages";
 import { formatIst } from "@/lib/datetime";
+import { currentUser, canSeeLead } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,11 @@ export default async function LeadDetailPage({
   });
 
   if (!lead) notFound();
+
+  // Ownership scope (§3.1 RBAC): front-desk/telecaller may only open their own
+  // leads. Treat others as not found rather than leaking the record's existence.
+  const viewer = await currentUser();
+  if (!viewer || !canSeeLead(viewer, lead)) notFound();
 
   const windowOpen = await isServiceWindowOpen(lead.id);
 
