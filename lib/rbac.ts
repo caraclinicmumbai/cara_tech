@@ -132,3 +132,16 @@ export function can(role: string | undefined | null, capability: Capability): bo
 export function leadScope(role: string | undefined | null): "own" | "all" {
   return role === "front_desk" || role === "telecaller" ? "own" : "all";
 }
+
+/// The capability a top-level route requires, or null for routes any signed-in user
+/// may reach (e.g. /leads, /calls). Used by the proxy route guard. Order matters —
+/// more specific paths first.
+export function routeCapability(pathname: string): Capability | null {
+  if (pathname.startsWith("/dashboard") || pathname.startsWith("/cqs")) return "analytics.view";
+  if (pathname.startsWith("/templates")) return "templates.manage";
+  if (pathname.startsWith("/settings")) return "settings.manage";
+  if (pathname.startsWith("/users")) return "users.manage";
+  if (pathname.startsWith("/leads/deleted")) return "leads.restore";
+  if (pathname.startsWith("/leads/walk-in")) return "leads.walkin";
+  return null;
+}

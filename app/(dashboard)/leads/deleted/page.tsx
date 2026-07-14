@@ -2,6 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatIst } from "@/lib/datetime";
 import { DeletedLeadActions } from "@/components/DeletedLeadActions";
+import { currentUser } from "@/lib/authz";
+import { can } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,8 @@ const SOURCE_LABELS: Record<string, string> = {
 // Trash for soft-deleted leads (§3.1). Restore back to the active list, or remove
 // permanently (which also deletes the lead's calls + messages).
 export default async function DeletedLeadsPage() {
+  const user = await currentUser();
+  const canPurge = can(user?.role, "leads.permanentDelete");
   const leads = await prisma.lead.findMany({
     where: { deletedAt: { not: null } },
     orderBy: { deletedAt: "desc" },
@@ -75,7 +79,7 @@ export default async function DeletedLeadsPage() {
                   </td>
                   <td className="whitespace-nowrap px-4 py-2">{lead.deletedBy ?? "—"}</td>
                   <td className="whitespace-nowrap px-4 py-2 text-right">
-                    <DeletedLeadActions leadId={lead.id} name={lead.name} />
+                    <DeletedLeadActions leadId={lead.id} name={lead.name} canPurge={canPurge} />
                   </td>
                 </tr>
               ))}

@@ -3,7 +3,7 @@
 // Server Actions for staff edits to a lead's pipeline stage and tag (§3.1).
 // Server Functions are reachable via direct POST, so EVERY action re-checks the
 // session (see Next.js data-security guide) before touching the database.
-import { auth } from "@/auth";
+import { requireCapability } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isLeadStage, LOST_STAGE, isPreConsultation, stageLabel, isLostTag } from "@/lib/leadStages";
@@ -23,8 +23,8 @@ export async function setLeadStage(
   stage: string,
   opts?: { lostTag?: string; reason?: string },
 ): Promise<void> {
-  const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
+  const isLostStage = stage === LOST_STAGE;
+  const user = await requireCapability(isLostStage ? "leads.markLost" : "leads.editStage");
   if (!isLeadStage(stage)) throw new Error("Invalid stage");
 
   // Moving to "Lost" needs a preset tag AND/OR a written review. A tag makes the
@@ -60,7 +60,7 @@ export async function setLeadStage(
   });
   const lostSummary = [lostTag, lostReason].filter(Boolean).join(" — ");
   logger.info(
-    `Lead ${leadId} stage set to ${stage}${isLost ? ` (lost: ${lostSummary})` : ""} by ${session.user.email ?? "?"}`,
+    `Lead ${leadId} stage set to ${stage}${isLost ? ` (lost: ${lostSummary})` : ""} by ${user.email ?? "?"}`,
   );
 
   // Premature lost (§3.1): the lead was marked Lost before ever completing a
@@ -84,13 +84,12 @@ export async function sendLeadWhatsApp(
   leadId: string,
   body: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
+  const user = await requireCapability("leads.whatsapp");
 
   const text = body.trim().slice(0, MESSAGE_MAX);
   if (!text) return { ok: false, error: "Message is empty" };
 
-  const res = await sendLeadText(leadId, text, { sentBy: session.user.email ?? undefined });
+  const res = await sendLeadText(leadId, text, { sentBy: user.email ?? undefined });
   revalidatePath(`/leads/${leadId}`);
   return res.ok ? { ok: true } : { ok: false, error: res.error };
 }
@@ -101,8 +100,7 @@ export async function sendLeadWhatsApp(
 export async function callLeadAndRecord(
   leadId: string,
 ): Promise<{ ok: boolean; error?: string; repName?: string }> {
-  const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
+  const user = await requireCapability("leads.call");
   if (!isTwilioConfigured()) return { ok: false, error: "Calling is not configured yet" };
 
   const lead = await prisma.lead.findUnique({
@@ -126,15 +124,14 @@ export async function callLeadAndRecord(
 
   const res = await clickToCall(rep.phone, leadId, rep.id);
   if (!res.ok) return { ok: false, error: res.error };
-  logger.info(`Click-to-call started for lead ${leadId} (rep ${rep.name}) by ${session.user.email}`);
+  logger.info(`Click-to-call started for lead ${leadId} (rep ${rep.name}) by ${user.email}`);
   return { ok: true, repName: rep.name };
 }
 
 /// List APPROVED templates for the re-engagement picker (used when the 24h
 /// window is closed). Session-checked since it hits the WABA via our token.
 export async function listWhatsAppTemplates(): Promise<WhatsAppTemplate[]> {
-  const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
+  await requireCapability("leads.whatsapp");
   return listApprovedTemplates();
 }
 
@@ -146,22 +143,20 @@ export async function sendLeadWhatsAppTemplate(
   languageCode: string,
   params: string[] = [],
 ): Promise<{ ok: boolean; error?: string }> {
-  const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
+  const user = await requireCapability("leads.whatsapp");
   if (!templateName) return { ok: false, error: "No template selected" };
 
   const components = buildTemplateComponents(params);
   const res = await sendLeadTemplate(leadId, templateName, languageCode, components, {
     automated: false,
-    sentBy: session.user.email ?? undefined,
+    sentBy: user.email ?? undefined,
   });
   revalidatePath(`/leads/${leadId}`);
   return res.ok ? { ok: true } : { ok: false, error: res.error };
 }
 
 export async function setLeadTag(leadId: string, tag: string): Promise<void> {
-  const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
+  await requireCapability("leads.editTag");
 
   const trimmed = tag.trim().slice(0, TAG_MAX);
   await prisma.lead.update({
@@ -180,8 +175,7 @@ export async function setLeadTag(leadId: string, tag: string): Promise<void> {
 export async function mergeDuplicateLead(
   leadId: string,
 ): Promise<{ ok: true; originalId: string } | { ok: false; error: string }> {
-  const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
+  const user = await requireCapability("leads.merge");
 
   const dup = await prisma.lead.findUnique({
     where: { id: leadId },
@@ -220,7 +214,7 @@ export async function mergeDuplicateLead(
     return { ok: false, error: "Merge failed — please try again" };
   }
 
-  logger.info(`Merged duplicate lead ${dup.id} into ${originalId} by ${session.user.email ?? "?"}`);
+  logger.info(`Merged duplicate lead ${dup.id} into ${originalId} by ${user.email ?? "?"}`);
   revalidatePath("/leads");
   revalidatePath(`/leads/${originalId}`);
   return { ok: true, originalId };
@@ -230,8 +224,7 @@ export async function mergeDuplicateLead(
 /// leads list, metrics, dedup, and calling; any pending calls are cancelled. It can
 /// be restored or permanently removed from the Deleted page.
 export async function softDeleteLead(leadId: string): Promise<{ ok: boolean; error?: string }> {
-  const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
+  const user = await requireCapability("leads.softDelete");
 
   const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { deletedAt: true } });
   if (!lead) return { ok: false, error: "Lead not found" };
@@ -239,12 +232,12 @@ export async function softDeleteLead(leadId: string): Promise<{ ok: boolean; err
 
   await prisma.lead.update({
     where: { id: leadId },
-    data: { deletedAt: new Date(), deletedBy: session.user.email ?? null },
+    data: { deletedAt: new Date(), deletedBy: user.email ?? null },
   });
   await cancelScheduledCalls(leadId).catch((err) =>
     logger.error(`Failed to cancel calls for deleted lead ${leadId}: ${String(err)}`),
   );
-  logger.info(`Lead ${leadId} moved to trash by ${session.user.email ?? "?"}`);
+  logger.info(`Lead ${leadId} moved to trash by ${user.email ?? "?"}`);
   revalidatePath("/leads");
   revalidatePath("/leads/deleted");
   return { ok: true };
@@ -252,14 +245,13 @@ export async function softDeleteLead(leadId: string): Promise<{ ok: boolean; err
 
 /// Restore a soft-deleted lead back into the active list.
 export async function restoreLead(leadId: string): Promise<{ ok: boolean; error?: string }> {
-  const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
+  const user = await requireCapability("leads.restore");
 
   await prisma.lead.update({
     where: { id: leadId },
     data: { deletedAt: null, deletedBy: null },
   });
-  logger.info(`Lead ${leadId} restored by ${session.user.email ?? "?"}`);
+  logger.info(`Lead ${leadId} restored by ${user.email ?? "?"}`);
   revalidatePath("/leads");
   revalidatePath("/leads/deleted");
   return { ok: true };
@@ -268,15 +260,14 @@ export async function restoreLead(leadId: string): Promise<{ ok: boolean; error?
 /// Permanently delete a lead (and its calls/messages, via cascade). Guarded: only
 /// leads already in the trash can be permanently removed.
 export async function permanentlyDeleteLead(leadId: string): Promise<{ ok: boolean; error?: string }> {
-  const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
+  const user = await requireCapability("leads.permanentDelete");
 
   const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { deletedAt: true } });
   if (!lead) return { ok: false, error: "Lead not found" };
   if (!lead.deletedAt) return { ok: false, error: "Move the lead to trash first" };
 
   await prisma.lead.delete({ where: { id: leadId } });
-  logger.info(`Lead ${leadId} permanently deleted by ${session.user.email ?? "?"}`);
+  logger.info(`Lead ${leadId} permanently deleted by ${user.email ?? "?"}`);
   revalidatePath("/leads/deleted");
   return { ok: true };
 }

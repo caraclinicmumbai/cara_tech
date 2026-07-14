@@ -6,6 +6,7 @@ import type { Lead } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { placeOutboundCall } from "@/lib/providers/elevenlabs";
 import { scheduleCallAttempt, cancelScheduledCalls, aiCallsPaused } from "@/lib/queue";
+import { pickNextRep, assignLeadToRep } from "@/lib/salesReps";
 import { isWithinDnd } from "@/lib/callWindow";
 import { sendAutomatedTemplate, outreachTemplate, firstName } from "@/lib/outreach";
 import { logger } from "@/lib/logger";
@@ -38,6 +39,9 @@ export type NormalizedLead = {
   /// still captured but routed to manual review and never auto-called.
   heldForReview?: boolean;
   heldReason?: string;
+  /// The login (User.id) that created this lead — for Front-Desk "own leads"
+  /// scoping. Set for staff-entered leads (manual / walk-in); null for intake.
+  createdById?: string;
 };
 
 /// Sources that must NEVER trigger an automated AI call (§3.1.2 exceptions):
@@ -154,8 +158,20 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
       consentMethod: input.consentMethod,
       consentAt: input.consentAt,
       consentBy: input.consentBy,
+      createdById: input.createdById,
     },
   });
+
+  // Ownership (§3.1 RBAC): every new lead — including walk-ins and duplicates —
+  // gets a telecaller owner (round-robin) at intake, so "my leads" scoping works
+  // and there's someone to follow up. NO notification here; a later handover pings
+  // this owner (see notifyHandover). Best-effort — no reps configured → unassigned.
+  try {
+    const owner = await pickNextRep();
+    if (owner) await assignLeadToRep(lead.id, owner.id);
+  } catch (err) {
+    logger.error(`Failed to assign owner for lead ${lead.id}: ${String(err)}`);
+  }
 
   // Duplicate → manual queue, no AI call, merge prompt surfaced via the result.
   if (dup) {

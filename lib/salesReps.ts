@@ -24,6 +24,15 @@ export async function getSalesHead(): Promise<SalesRep | null> {
   return prisma.salesRep.findFirst({ where: { active: true, salesHead: true } });
 }
 
+/// The rep who owns a lead (assigned at intake / handover), or null.
+export async function getLeadOwner(leadId: string): Promise<SalesRep | null> {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { assignedRep: true },
+  });
+  return lead?.assignedRep ?? null;
+}
+
 /// Assign a lead to a rep (records who + when on the lead).
 export async function assignLeadToRep(leadId: string, repId: string): Promise<void> {
   await prisma.lead.update({

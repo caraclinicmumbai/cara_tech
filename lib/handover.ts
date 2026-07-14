@@ -11,7 +11,7 @@
 import type { Lead } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
-import { pickNextRep, assignLeadToRep } from "@/lib/salesReps";
+import { pickNextRep, assignLeadToRep, getLeadOwner } from "@/lib/salesReps";
 import { logger } from "@/lib/logger";
 
 function truncate(s: string, max: number): string {
@@ -178,10 +178,14 @@ export async function notifyHandover(
 ): Promise<void> {
   if (fired.length === 0) return;
 
-  // Round-robin assignment (no-op if no reps configured yet) — happens even when
-  // Slack isn't set up, so the lead still gets an owner.
-  const rep = await pickNextRep();
-  if (rep) await assignLeadToRep(lead.id, rep.id);
+  // The lead already has an owner (assigned round-robin at intake, §3.1 RBAC) — the
+  // handover notifies THAT person, it doesn't re-assign. Fall back to round-robin
+  // only for legacy leads that predate ownership assignment.
+  let rep = await getLeadOwner(lead.id);
+  if (!rep) {
+    rep = await pickNextRep();
+    if (rep) await assignLeadToRep(lead.id, rep.id);
+  }
 
   if (!isSlackConfigured()) return;
 

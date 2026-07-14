@@ -4,12 +4,12 @@
 // walk-ins to manual follow-up and never triggers an AI call.
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { requireSession } from "@/lib/apiAuth";
+import { requireApiCapability } from "@/lib/apiAuth";
 import { walkInSchema } from "@/lib/contracts";
 import { ingestLead } from "@/lib/leadIntake";
 
 export async function POST(req: Request) {
-  const denied = await requireSession();
+  const { denied, userId } = await requireApiCapability("leads.walkin");
   if (denied) return denied;
 
   const body = await req.json().catch(() => null);
@@ -34,6 +34,7 @@ export async function POST(req: Request) {
     consentMethod: parsed.data.consentMethod,
     consentAt: new Date(),
     consentBy,
+    createdById: userId,
   });
 
   return NextResponse.json({ leadId: lead.id, status: lead.status }, { status: 201 });

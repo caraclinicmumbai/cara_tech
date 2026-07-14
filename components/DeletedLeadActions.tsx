@@ -5,7 +5,15 @@ import { useRouter } from "next/navigation";
 import { restoreLead, permanentlyDeleteLead } from "@/app/(dashboard)/leads/actions";
 
 // Restore or permanently remove a soft-deleted lead. Used on the Deleted page.
-export function DeletedLeadActions({ leadId, name }: { leadId: string; name: string }) {
+export function DeletedLeadActions({
+  leadId,
+  name,
+  canPurge = false,
+}: {
+  leadId: string;
+  name: string;
+  canPurge?: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -24,6 +32,7 @@ export function DeletedLeadActions({ leadId, name }: { leadId: string; name: str
       >
         ↩ Restore
       </button>
+      {canPurge && (
       <button
         disabled={pending}
         onClick={() => {
@@ -43,6 +52,7 @@ export function DeletedLeadActions({ leadId, name }: { leadId: string; name: str
       >
         Delete permanently
       </button>
+      )}
     </span>
   );
 }

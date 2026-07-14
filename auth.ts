@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/password";
 import { getClientIp } from "@/lib/rateLimit";
 import { isLoginLocked, recordLoginFailure, clearLoginFailures } from "@/lib/loginThrottle";
+import { can, routeCapability } from "@/lib/rbac";
 import { logger } from "@/lib/logger";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -63,10 +64,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const isLoggedIn = !!session?.user;
       const isOnLogin = nextUrl.pathname === "/login";
       if (isOnLogin) {
-        if (isLoggedIn) return Response.redirect(new URL("/dashboard", nextUrl));
+        if (isLoggedIn) return Response.redirect(new URL("/leads", nextUrl));
         return true;
       }
-      return isLoggedIn;
+      if (!isLoggedIn) return false;
+      // RBAC route guard: bounce users who lack the page's capability to /leads
+      // (reachable by everyone). Defense-in-depth alongside per-action checks.
+      const role = (session!.user as { role?: string }).role;
+      const cap = routeCapability(nextUrl.pathname);
+      if (cap && !can(role, cap)) {
+        return Response.redirect(new URL("/leads", nextUrl));
+      }
+      return true;
     },
     jwt({ token, user }) {
       if (user) {
