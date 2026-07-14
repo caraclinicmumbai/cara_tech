@@ -55,10 +55,16 @@ model Lead {
   handoverAt       DateTime?
   handoverTriggers String[] // machine keys of the triggers that fired
 
-  // ── Assignment (§3.1) — the sales rep a handover was routed to (round-robin). ──
+  // ── Assignment (§3.1) — the sales rep who OWNS this lead. Assigned round-robin
+  //    at intake (every lead gets an owner for "my leads" scoping); a later
+  //    handover notifies this existing owner rather than re-assigning. ──
   assignedRepId String?
   assignedRep   SalesRep? @relation("LeadAssignee", fields: [assignedRepId], references: [id], onDelete: SetNull)
   assignedAt    DateTime?
+
+  // Which login created this lead (§3.1 RBAC) — used for Front-Desk "own leads"
+  // scoping (they see what they entered). Null for AI/ad/web-intake leads.
+  createdById String?
 
   // ── Opt-out / suppression (§3.1.10) — hard flag: once true, NO outreach (calls,
   //    retries, callbacks) is allowed. Set on "not interested" or WhatsApp STOP. ──
@@ -137,6 +143,7 @@ model SalesRep {
 
   leads        Lead[] @relation("LeadAssignee")
   handledCalls Call[] @relation("CallHandler")
+  user         User? // the login account linked to this rep (§3.1 RBAC)
 
   @@index([active, lastAssignedAt])
 }
@@ -199,17 +206,26 @@ model Call {
 
 // ── Auth (NextAuth.js / Auth.js — §2.5) ──────────────────────────────
 
-/// Application user. `role` gates sales-rep vs. admin access.
+/// Application user (a login). `role` drives role-based access (§3.1 RBAC).
 model User {
   id            String    @id @default(cuid())
   name          String?
   email         String    @unique
   emailVerified DateTime?
   image         String?
-  role          String    @default("sales") // sales | admin
+  // RBAC role. See lib/rbac.ts for the capability map:
+  //   front_desk | telecaller | branch_manager | sales_head | crm_admin
+  role          String    @default("telecaller")
   passwordHash  String? // for credentials login (optional)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+
+  // Link this login to a sales-rep identity (§3.1) — so "my leads" scoping and
+  // handover/click-to-call attribution resolve to the person. Telecallers (and
+  // anyone who can be assigned leads) have one; pure admins may not.
+  salesRepId String?   @unique
+  salesRep   SalesRep? @relation(fields: [salesRepId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   accounts Account[]
   sessions Session[]
