@@ -12,19 +12,19 @@ datasource db {
 
 /// A captured sales lead — the central source of truth (§6.1).
 model Lead {
-  id            String   @id @default(cuid())
+  id            String  @id @default(cuid())
   name          String
   phone         String // E.164 format for ElevenLabs to dial, e.g. +919876543210
   email         String?
   interest      String? // free-text clinic interest, e.g. "Hair treatment"
   source        String? // web_form | referral | manual | walk_in | facebook | instagram | google
-  status        String   @default("new") // new | manual_followup | called | confirmed | rescheduled | unreachable | not_interested | lost
+  status        String  @default("new") // new | manual_followup | called | confirmed | rescheduled | unreachable | not_interested | lost
   interestLevel String? // high | medium | low — set by call outcome
 
   // ── Sales pipeline stage (human-facing, §3.1) — distinct from `status` (the
   //    internal automation state). Auto-advanced FORWARD-ONLY by call outcomes
   //    and editable by staff. Keys in lib/leadStages.ts. ──
-  stage String @default("ai_contacted") // ai_contacted | ai_attempted_unreachable | communication_not_established | human_callback_pending | in_consideration | appointment_scheduled | consultation_done | converted | lost
+  stage String  @default("ai_contacted") // ai_contacted | ai_attempted_unreachable | communication_not_established | human_callback_pending | in_consideration | appointment_scheduled | consultation_done | converted | lost
   // What the lead asked for in the call (e.g. "Hair transplant") — AI-filled from
   // the post-call write-back, staff-editable. Free text.
   tag   String?
@@ -33,18 +33,18 @@ model Lead {
   //    (auto-advance or manual), so the worker can flag a lead "stuck in stage"
   //    past the SLA and alert the counsellor. `stageStuckNotifiedAt` dedups that
   //    alert per stall; it's reset to null on every stage change. ──
-  stageChangedAt      DateTime? @default(now())
+  stageChangedAt       DateTime? @default(now())
   stageStuckNotifiedAt DateTime?
 
   // ── Lost (§3.1) — moving the stage to "lost" needs a preset `lostTag` and/or a
   //    free-text `lostReason` review. A tag makes the review optional; with no tag
   //    a written reason is required. Both cleared if the lead is reactivated. ──
-  lostTag    String? // one of LOST_PRESET_TAGS (e.g. "pricing issue")
-  lostReason String? // free-text review (optional when a tag is set)
-  lostAt     DateTime?
+  lostTag       String? // one of LOST_PRESET_TAGS (e.g. "pricing issue")
+  lostReason    String? // free-text review (optional when a tag is set)
+  lostAt        DateTime?
   // True when the lead was marked Lost BEFORE completing a consultation (a
   //    premature loss the counsellor was alerted to). Counted in the daily digest.
-  prematureLost Boolean @default(false)
+  prematureLost Boolean   @default(false)
 
   // ── AI→human handover (§3.1) — when an AI call hits a trigger (pricing/clinical
   //    question, distress, wants-human, competitor, unresolved objection, CQS≥75,
@@ -65,6 +65,32 @@ model Lead {
   // Which login created this lead (§3.1 RBAC) — used for Front-Desk "own leads"
   // scoping (they see what they entered). Null for AI/ad/web-intake leads.
   createdById String?
+
+  // ── Branch (Phase 2) — nullable scaffold. One branch for now; every branch-scoped
+  //    feature (routing, dashboards, attribution, toggles) hangs off this later. ──
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  // ── Protection flags (Phase 2 §compliance) — persistent, call-BLOCKING flags,
+  //    distinct from transient handoverTriggers. Any of these true = the "call"
+  //    action is refused unless a manager overrides with a logged reason. A
+  //    possible-minor / legal-threat / complaint also excludes the lead from ALL
+  //    campaigns. Cleared only by a Branch Manager / Admin (audited). ──
+  possibleMinor     Boolean @default(false)
+  hearingImpaired   Boolean @default(false)
+  legalThreatFreeze Boolean @default(false)
+  complaintOpen     Boolean @default(false)
+  protectionNote    String? // free-text context for whoever set/clears a flag
+
+  // ── Per-channel consent (Phase 2 §consent) — consent is not one bit. Someone can
+  //    allow a nurse's call but not marketing. Checked before EVERY message/call,
+  //    alongside the hard `optedOut` suppression. Null = unknown (treat as no for
+  //    marketing). `onDnd` caches the last Do-Not-Call registry lookup. ──
+  consentCall      Boolean?
+  consentMarketing Boolean?
+  consentUpdatedAt DateTime?
+  onDnd            Boolean   @default(false)
+  dndCheckedAt     DateTime?
 
   // ── Opt-out / suppression (§3.1.10) — hard flag: once true, NO outreach (calls,
   //    retries, callbacks) is allowed. Set on "not interested" or WhatsApp STOP. ──
@@ -111,6 +137,7 @@ model Lead {
 
   calls    Call[]
   messages Message[]
+  quotes   Quote[]
 
   @@index([status])
   @@index([phone])
@@ -141,8 +168,13 @@ model SalesRep {
   lastAssignedAt DateTime? // round-robin cursor
   createdAt      DateTime  @default(now())
 
-  leads        Lead[] @relation("LeadAssignee")
-  handledCalls Call[] @relation("CallHandler")
+  // Branch (Phase 2) — nullable scaffold; the rep's home branch for routing/scoping.
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  leads        Lead[]  @relation("LeadAssignee")
+  handledCalls Call[]  @relation("CallHandler")
+  ownedQuotes  Quote[] @relation("QuoteOwner")
   user         User? // the login account linked to this rep (§3.1 RBAC)
 
   @@index([active, lastAssignedAt])
@@ -176,9 +208,9 @@ model Message {
 
 /// A single AI voice call placed against a Lead (§6.2).
 model Call {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   leadId       String
-  lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lead         Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
   callType     String // initial | reconfirmation | human_handover
   transcript   String?
   outcome      String? // confirmed | no_answer | rescheduled | not_interested
@@ -198,7 +230,7 @@ model Call {
   handledById String?
   handledBy   SalesRep? @relation("CallHandler", fields: [handledById], references: [id], onDelete: SetNull)
 
-  createdAt    DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([leadId])
   @@index([callType])
@@ -223,6 +255,10 @@ model User {
   // anyone who can be assigned leads) have one; pure admins may not.
   salesRepId String?   @unique
   salesRep   SalesRep? @relation(fields: [salesRepId], references: [id], onDelete: SetNull)
+
+  // Branch (Phase 2) — nullable scaffold; the login's home branch for scoping.
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -264,4 +300,123 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// ── Phase 2 foundations ──────────────────────────────────────────────
+
+/// A clinic branch (Phase 2). Nullable scaffold for now — the clinic runs one
+/// branch, so leads/reps/users may have a null branchId. Everything branch-scoped
+/// (routing, dashboards, ad attribution, per-branch feature toggles, invoicing
+/// credit) hangs off this once multi-branch is switched on.
+model Branch {
+  id        String   @id @default(cuid())
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  leads          Lead[]
+  reps           SalesRep[]
+  users          User[]
+  invoicedQuotes Quote[]    @relation("QuoteInvoicedBranch")
+}
+
+/// A treatment quote (Phase 2 §multi-quote). THE structural change: a lead is the
+/// person, a quote is the treatment. One lead holds many quotes; each converts on
+/// its own with its own price, status, post-sales journey, and invoice. The lead
+/// never "converts" — it summarises its quotes. A repeat request for the same
+/// treatment is a NEW quote (new `cycle`), never a reopened old one.
+model Quote {
+  id        String @id @default(cuid())
+  leadId    String
+  lead      Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  treatment String // e.g. "Hair transplant (FUE)", "PRP"
+
+  // Quote lifecycle — independent of the lead's person-track stage.
+  // drafted | sent | viewed | accepted | awaiting_payment | converted |
+  // in_treatment | completed | rejected | expired | replaced | withdrawn
+  status       String  @default("drafted")
+  // Post-sales journey once converted (§post-sales): pre_op | surgery_done |
+  // post_op_followup | recovery_monitoring | closed_successfully. Null pre-conversion.
+  journeyStage String?
+
+  // Cycle: 1 = first time we've quoted this person for this treatment, 2 = repeat, …
+  cycle Int @default(1)
+
+  price    Int? // whole rupees (no card/bank data ever stored here)
+  currency String @default("INR")
+
+  rejectionReason String? // mandatory (from a list) when status=rejected
+  // What brought THIS quote about (attribution stops at the door they came through):
+  // ad | asked_during_consultation | post_op_upsell | existing_patient_repeat
+  source          String?
+  expiresAt       DateTime? // default 30 days from send; nudge 48h before
+
+  // Populated by the billing system — never typed. "Converted" means a real invoice
+  // exists for THIS quote; the invoicing branch earns the credit.
+  invoicedBranchId String?
+  invoicedBranch   Branch? @relation("QuoteInvoicedBranch", fields: [invoicedBranchId], references: [id], onDelete: SetNull)
+
+  // Counsellor who owns THIS quote (may differ from the lead's owner).
+  ownerRepId String?
+  ownerRep   SalesRep? @relation("QuoteOwner", fields: [ownerRepId], references: [id], onDelete: SetNull)
+
+  // On conversion the QUOTE locks (read-only) — never the lead, which stays active
+  // for the person's other open quotes. Only an Admin unlocks, with a logged reason.
+  lockedAt    DateTime?
+  convertedAt DateTime?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  versions QuoteVersion[]
+
+  @@index([leadId])
+  @@index([status])
+  @@index([ownerRepId])
+  @@index([invoicedBranchId])
+}
+
+/// Price-version history for a Quote (§multi-quote). Revising a price REPLACES the
+/// current version (kept, marked replaced) rather than creating a new quote — so the
+/// full price trail survives. No quote or version is ever deleted.
+model QuoteVersion {
+  id          String   @id @default(cuid())
+  quoteId     String
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  price       Int
+  note        String?
+  replaced    Boolean  @default(false)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([quoteId, createdAt])
+}
+
+/// Append-only audit trail (Phase 2 §audit). Every mutation, consent change,
+/// reassignment, export, login, and record view writes one row here. Rows are never
+/// updated or deleted by application code; `prevHash`/`hash` form a chain so a gap
+/// or edit is detectable. True WORM immutability (if compliance demands it) is a
+/// storage-layer concern layered on top of this.
+model AuditLog {
+  id         String   @id @default(cuid())
+  at         DateTime @default(now())
+  actorId    String? // User.id (null for system/automation)
+  actorEmail String?
+  action     String // e.g. lead.field.update | lead.stage.move | consent.change | reassignment | export | login | login.failed | record.view | settings.change | toggle.change
+  entityType String // lead | quote | user | setting | toggle | …
+  entityId   String?
+  field      String?
+  oldValue   String?
+  newValue   String?
+  reason     String? // mandatory for some actions (toggle change, phone edit, flag clear)
+  ip         String?
+  meta       Json?
+  prevHash   String? // hash of the previous row (tamper-evidence chain)
+  hash       String? // hash of this row's canonical content
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([at])
+  @@index([action])
 }
