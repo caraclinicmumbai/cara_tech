@@ -7,6 +7,37 @@ Format: newest first.
 
 ---
 
+## 2026-07-15 — Phase 2 foundations: multi-quote model + pipeline cutover
+
+**The structural change (§multi-quote):** a lead is the *person*; a **Quote** is the
+*treatment*. One lead holds many quotes, each converting on its own. The lead never
+"converts" — it summarises its quotes ("2 quotes — 1 converted, 1 open").
+
+**Schema (additive, applied to prod):** `Quote` + `QuoteVersion` (price history),
+`Branch` scaffold + nullable `branchId` on Lead/SalesRep/User (one branch for now),
+call-blocking **protection flags** on Lead (possibleMinor, hearingImpaired,
+legalThreatFreeze, complaintOpen), **per-channel consent** (consentCall/consentMarketing
++ DND cache), and an append-only **AuditLog** (prevHash/hash chain). Nothing wired to the
+flags/consent/audit yet — schema only.
+
+**Multi-quote layer:** per-lead **Quotes** panel — raise a quote (treatment/price/source),
+revise price (new version; old kept + marked replaced), advance through the lifecycle,
+convert (locks the quote, never the lead), admin-only unlock. Rules enforced in
+`lib/quotes.ts`: one OPEN quote per treatment, auto cycle numbering, lock-on-convert.
+Actions in `app/(dashboard)/leads/quoteActions.ts` (capability + lead-ownership checked).
+Caps: `quotes.view/manage/convert` for telecaller/branch_manager/sales_head;
+`quotes.unlock` → crm_admin only.
+
+**Pipeline cutover:** `converted` removed from the lead stage list — the person-track now
+ends at *Consultation Done*. Stuck-stage SLA is quote-aware (skips a lead with a WON
+quote). One-time idempotent backfill in `scripts/backfillConvertedQuotes.ts`; the prod run
+was a **no-op** (0 leads had reached the converted stage).
+
+Files: `prisma/schema.prisma`, `lib/{quotes,quoteStages,leadStages,stageSla,rbac}.ts`,
+`app/(dashboard)/leads/{quoteActions.ts,[id]/page.tsx}`, `components/QuotesPanel.tsx`,
+`scripts/backfillConvertedQuotes.ts`. Flow docs: see `flows/` (quote lifecycle to be
+expanded as the quote UI/reporting grows).
+
 ## 2026-07-14 — RBAC Phase 4: admin UI for users, roles & rep roster
 
 New **/users** screen (CRM-Admin only, `users.manage`): create staff logins, set roles,
