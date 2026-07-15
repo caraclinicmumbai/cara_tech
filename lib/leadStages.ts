@@ -3,6 +3,10 @@
 // by call outcomes/events and freely editable by staff via the dashboard.
 //
 // Stored as stable snake_case keys; STAGE_LABELS holds the display text.
+//
+// This is the PERSON-track only (§multi-quote): it ends at "consultation_done".
+// Conversion is NOT a lead stage any more — it lives on each Quote (a person
+// converts a treatment, not a lead). See lib/quoteStages.ts.
 
 export const LEAD_STAGES = [
   "ai_contacted",
@@ -12,7 +16,6 @@ export const LEAD_STAGES = [
   "in_consideration",
   "appointment_scheduled",
   "consultation_done",
-  "converted",
   "lost",
 ] as const;
 
@@ -26,7 +29,6 @@ export const STAGE_LABELS: Record<LeadStage, string> = {
   in_consideration: "In Consideration",
   appointment_scheduled: "Appointment Scheduled",
   consultation_done: "Consultation Done",
-  converted: "Converted",
   lost: "Lost",
 };
 
@@ -99,9 +101,11 @@ export function isPreConsultation(stage: string): boolean {
   return stageRank(stage) < RANK.consultation_done;
 }
 
-/// Stages excluded from the "stuck in stage" SLA scan — the won + terminal states
-/// where a lead legitimately rests (§3.1).
-export const STAGE_SLA_EXCLUDED: LeadStage[] = ["converted", "lost"];
+/// Stages excluded from the "stuck in stage" SLA scan — the terminal state where a
+/// lead legitimately rests (§3.1). Note: "consultation_done" is NOT excluded here
+/// (a consulted lead may still need a quote chased); instead the scan separately
+/// skips any lead that already has a WON quote (§multi-quote) — see stageSla.ts.
+export const STAGE_SLA_EXCLUDED: LeadStage[] = ["lost"];
 
 /// Forward-only auto-advance: returns `next` only if it's further along than the
 /// current stage; otherwise null (= leave the stage untouched). Manual edits in

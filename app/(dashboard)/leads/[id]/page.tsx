@@ -6,9 +6,12 @@ import { TagField } from "@/components/TagField";
 import { WhatsAppChat } from "@/components/WhatsAppChat";
 import { CallButton } from "@/components/CallButton";
 import { MergeLeadButton } from "@/components/MergeLeadButton";
+import { QuotesPanel } from "@/components/QuotesPanel";
 import { isServiceWindowOpen } from "@/lib/messages";
 import { formatIst } from "@/lib/datetime";
 import { currentUser, canSeeLead } from "@/lib/authz";
+import { can } from "@/lib/rbac";
+import { summariseQuotes } from "@/lib/quotes";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +60,7 @@ export default async function LeadDetailPage({
       duplicates: { orderBy: { createdAt: "desc" } },
       messages: { orderBy: { createdAt: "asc" } },
       assignedRep: true,
+      quotes: { orderBy: { createdAt: "desc" } },
     },
   });
 
@@ -68,6 +72,9 @@ export default async function LeadDetailPage({
   if (!viewer || !canSeeLead(viewer, lead)) notFound();
 
   const windowOpen = await isServiceWindowOpen(lead.id);
+  const canViewQuotes = can(viewer.role, "quotes.view");
+  const canManageQuotes = can(viewer.role, "quotes.manage");
+  const quoteSummary = summariseQuotes(lead.quotes);
 
   return (
     <div className="space-y-8">
@@ -82,6 +89,11 @@ export default async function LeadDetailPage({
           <h1 className="text-xl font-semibold">{lead.name}</h1>
           <Pill>{lead.status}</Pill>
           <StageSelect leadId={lead.id} stage={lead.stage} />
+          {canViewQuotes && lead.quotes.length > 0 && (
+            <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs text-black/60 dark:bg-white/10 dark:text-white/60">
+              {quoteSummary.label}
+            </span>
+          )}
         </div>
 
         {lead.optedOut && (
@@ -188,6 +200,32 @@ export default async function LeadDetailPage({
           <Field label="Updated" value={formatIst(lead.updatedAt)} />
         </dl>
       </section>
+
+      {canViewQuotes && (
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">Quotes ({lead.quotes.length})</h2>
+            <span className="text-sm text-black/50 dark:text-white/50">{quoteSummary.label}</span>
+          </div>
+          <QuotesPanel
+            leadId={lead.id}
+            canManage={canManageQuotes}
+            quotes={lead.quotes.map((q) => ({
+              id: q.id,
+              treatment: q.treatment,
+              status: q.status,
+              cycle: q.cycle,
+              price: q.price,
+              currency: q.currency,
+              source: q.source,
+              expiresAt: q.expiresAt?.toISOString() ?? null,
+              convertedAt: q.convertedAt?.toISOString() ?? null,
+              lockedAt: q.lockedAt?.toISOString() ?? null,
+              createdAt: q.createdAt.toISOString(),
+            }))}
+          />
+        </section>
+      )}
 
       <section className="space-y-4">
         <div className="flex items-center gap-2">

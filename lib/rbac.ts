@@ -36,6 +36,14 @@ export const CAPABILITIES = [
   "leads.softDelete",
   "leads.restore",
   "leads.permanentDelete",
+  // Quotes (Phase 2 §multi-quote): view the quotes on a lead; manage = create /
+  // revise price / send / reject / withdraw; convert = mark won (needs an invoice);
+  // unlock = reopen a converted (locked) quote — Admin-only, so it's granted to no
+  // role here and reaches only crm_admin's wildcard.
+  "quotes.view",
+  "quotes.manage",
+  "quotes.convert",
+  "quotes.unlock",
   "calls.view",
   "analytics.view",
   "templates.manage",
@@ -72,6 +80,9 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.whatsapp",
     "leads.merge",
     "leads.markLost",
+    "quotes.view",
+    "quotes.manage",
+    "quotes.convert",
     "calls.view",
   ],
   branch_manager: [
@@ -86,6 +97,9 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.markLost",
     "leads.softDelete",
     "leads.restore",
+    "quotes.view",
+    "quotes.manage",
+    "quotes.convert",
     "calls.view",
     "analytics.view",
     "templates.manage",
@@ -102,6 +116,9 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.softDelete",
     "leads.restore",
     "leads.permanentDelete",
+    "quotes.view",
+    "quotes.manage",
+    "quotes.convert",
     "calls.view",
     "analytics.view",
     "reps.manage",
