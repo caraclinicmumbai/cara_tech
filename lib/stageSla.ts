@@ -9,6 +9,7 @@
 import { prisma } from "@/lib/prisma";
 import { notifyCounsellor } from "@/lib/counsellor";
 import { stageLabel, STAGE_SLA_EXCLUDED } from "@/lib/leadStages";
+import { WON_QUOTE_STATUSES } from "@/lib/quoteStages";
 import { logger } from "@/lib/logger";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -33,6 +34,9 @@ export async function runStageSlaScan(limit = 200): Promise<number> {
         stageStuckNotifiedAt: null, // not yet alerted for this stall
         optedOut: false, // don't chase opted-out leads
         deletedAt: null,
+        // §multi-quote: a lead that already converted a treatment has realised
+        // value — don't nag it for person-track inactivity.
+        quotes: { none: { status: { in: WON_QUOTE_STATUSES } } },
       },
       select: { id: true, name: true, phone: true, stage: true, stageChangedAt: true },
       orderBy: { stageChangedAt: "asc" },

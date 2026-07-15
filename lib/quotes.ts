@@ -13,6 +13,7 @@ import type { Prisma } from "@prisma/client";
 import {
   DEFAULT_QUOTE_STATUS,
   QUOTE_DEFAULT_VALIDITY_DAYS,
+  WON_QUOTE_STATUSES,
   isQuoteOpen,
   isQuoteLocked,
   isQuoteStatus,
@@ -38,7 +39,7 @@ export function summariseQuotes(
 ): LeadQuoteSummary {
   const total = quotes.length;
   const converted = quotes.filter((q) =>
-    ["converted", "in_treatment", "completed"].includes(q.status),
+    (WON_QUOTE_STATUSES as string[]).includes(q.status),
   ).length;
   const open = quotes.filter((q) => isQuoteOpen(q.status)).length;
 

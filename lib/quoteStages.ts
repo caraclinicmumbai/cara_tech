@@ -49,11 +49,14 @@ export const OPEN_QUOTE_STATUSES: QuoteStatus[] = [
   "awaiting_payment",
 ];
 
-/// Closed = converted (won) OR a terminal non-won state. New-cycle gate + reporting.
+/// Won = the quote produced value (converted and beyond). Used where "did this
+/// person convert anything?" matters — e.g. the lead's stuck-stage SLA skips a lead
+/// that already has a won quote.
+export const WON_QUOTE_STATUSES: QuoteStatus[] = ["converted", "in_treatment", "completed"];
+
+/// Closed = won OR a terminal non-won state. New-cycle gate + reporting.
 export const CLOSED_QUOTE_STATUSES: QuoteStatus[] = [
-  "converted",
-  "in_treatment",
-  "completed",
+  ...WON_QUOTE_STATUSES,
   "rejected",
   "expired",
   "replaced",
