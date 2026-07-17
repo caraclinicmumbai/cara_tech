@@ -345,7 +345,12 @@ model Quote {
   price    Int? // whole rupees (no card/bank data ever stored here)
   currency String @default("INR")
 
-  rejectionReason String? // mandatory (from a list) when status=rejected
+  rejectionReason String? // mandatory (from QUOTE_REJECTION_REASONS) when status=rejected
+  // §multi-quote: "no quote is ever deleted — withdrawn quotes stay, with a reason
+  // and a name against them." Withdrawal reason is free-text; `closedById` is the
+  // user who rejected OR withdrew this quote (the name against it).
+  withdrawnReason String?
+  closedById      String?
   // What brought THIS quote about (attribution stops at the door they came through):
   // ad | asked_during_consultation | post_op_upsell | existing_patient_repeat
   source          String?

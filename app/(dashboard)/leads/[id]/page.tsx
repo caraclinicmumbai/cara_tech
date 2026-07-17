@@ -60,7 +60,7 @@ export default async function LeadDetailPage({
       duplicates: { orderBy: { createdAt: "desc" } },
       messages: { orderBy: { createdAt: "asc" } },
       assignedRep: true,
-      quotes: { orderBy: { createdAt: "desc" } },
+      quotes: { orderBy: { createdAt: "desc" }, include: { ownerRep: { select: { name: true } } } },
     },
   });
 
@@ -75,6 +75,14 @@ export default async function LeadDetailPage({
   const canViewQuotes = can(viewer.role, "quotes.view");
   const canManageQuotes = can(viewer.role, "quotes.manage");
   const quoteSummary = summariseQuotes(lead.quotes);
+  // Assignable owners for the per-quote owner picker (active, non-sales-head reps).
+  const quoteReps = canManageQuotes
+    ? await prisma.salesRep.findMany({
+        where: { active: true, salesHead: false },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      })
+    : [];
 
   return (
     <div className="space-y-8">
@@ -210,6 +218,7 @@ export default async function LeadDetailPage({
           <QuotesPanel
             leadId={lead.id}
             canManage={canManageQuotes}
+            reps={quoteReps}
             quotes={lead.quotes.map((q) => ({
               id: q.id,
               treatment: q.treatment,
@@ -218,6 +227,8 @@ export default async function LeadDetailPage({
               price: q.price,
               currency: q.currency,
               source: q.source,
+              ownerRepId: q.ownerRepId,
+              ownerName: q.ownerRep?.name ?? null,
               expiresAt: q.expiresAt?.toISOString() ?? null,
               convertedAt: q.convertedAt?.toISOString() ?? null,
               lockedAt: q.lockedAt?.toISOString() ?? null,
