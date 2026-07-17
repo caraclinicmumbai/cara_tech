@@ -11,6 +11,7 @@ import {
   reviseLeadQuotePrice,
   setLeadQuoteStatus,
   setLeadQuoteOwner,
+  sendLeadQuoteWhatsApp,
 } from "@/app/(dashboard)/leads/quoteActions";
 import {
   QUOTE_STATUS_LABELS,
@@ -88,11 +89,13 @@ export function QuotesPanel({
   quotes,
   reps,
   canManage,
+  windowOpen,
 }: {
   leadId: string;
   quotes: QuoteView[];
   reps: Rep[];
   canManage: boolean;
+  windowOpen: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -179,6 +182,34 @@ export function QuotesPanel({
                   <span>Created {formatIst(q.createdAt)}</span>
                   {isQuoteOpen(q.status) && q.expiresAt && <span>Expires {formatIst(q.expiresAt)}</span>}
                   {q.convertedAt && <span>Converted {formatIst(q.convertedAt)}</span>}
+                </div>
+
+                {/* PDF + send (§multi-quote: send from inside the lead record). */}
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+                  <a
+                    href={`/api/quotes/${q.id}/pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline dark:text-blue-400"
+                  >
+                    📄 PDF
+                  </a>
+                  {canManage && (
+                    <button
+                      disabled={pending || !windowOpen}
+                      title={windowOpen ? "Send this quote PDF on WhatsApp" : "WhatsApp 24h window is closed — send an approved template first"}
+                      onClick={() => {
+                        if (!window.confirm("Send this quote PDF to the lead on WhatsApp?")) return;
+                        run(() => sendLeadQuoteWhatsApp({ quoteId: q.id, leadId }));
+                      }}
+                      className="text-green-700 hover:underline disabled:cursor-not-allowed disabled:text-black/30 disabled:no-underline dark:text-green-400 dark:disabled:text-white/30"
+                    >
+                      Send on WhatsApp
+                    </button>
+                  )}
+                  {canManage && !windowOpen && (
+                    <span className="text-black/40 dark:text-white/40">(window closed)</span>
+                  )}
                 </div>
 
                 {canManage && !locked && (

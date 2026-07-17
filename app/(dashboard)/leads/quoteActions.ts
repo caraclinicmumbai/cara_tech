@@ -15,6 +15,8 @@ import {
   unlockQuote,
   QuoteError,
 } from "@/lib/quotes";
+import { buildQuotePdf, quoteRef } from "@/lib/quotePdf";
+import { sendLeadDocument } from "@/lib/messages";
 import { logger } from "@/lib/logger";
 
 type Result = { ok: boolean; error?: string };
@@ -151,6 +153,66 @@ export async function setLeadQuoteStatus(input: {
     return { ok: false, error: "Could not update the quote" };
   }
   logger.info(`Quote ${input.quoteId} → ${input.status} by ${user.email ?? "?"}`);
+  revalidatePath(`/leads/${input.leadId}`);
+  return { ok: true };
+}
+
+/// Generate the quote PDF and send it to the lead over WhatsApp (§multi-quote:
+/// "the counsellor sends it from inside the lead record"). Only works inside the
+/// 24h window; marks the quote as "sent" on success.
+export async function sendLeadQuoteWhatsApp(input: {
+  quoteId: string;
+  leadId: string;
+}): Promise<Result> {
+  const user = await requireCapability("quotes.manage");
+  const seen = await assertCanSeeLead(user, input.leadId);
+  if (!seen.ok) return seen;
+
+  const quote = await prisma.quote.findUnique({
+    where: { id: input.quoteId },
+    include: { lead: { select: { name: true, phone: true } } },
+  });
+  if (!quote || quote.leadId !== input.leadId) return { ok: false, error: "Quote not found" };
+
+  let pdf: Buffer;
+  try {
+    pdf = await buildQuotePdf({
+      quoteId: quote.id,
+      treatment: quote.treatment,
+      cycle: quote.cycle,
+      price: quote.price,
+      gstRate: quote.gstRate,
+      discountType: quote.discountType,
+      discountValue: quote.discountValue,
+      totalPayable: quote.totalPayable,
+      createdAt: quote.createdAt,
+      expiresAt: quote.expiresAt,
+      leadName: quote.lead.name,
+      leadPhone: quote.lead.phone,
+    });
+  } catch (err) {
+    logger.error(`Quote PDF build failed for ${input.quoteId}: ${String(err)}`);
+    return { ok: false, error: "Could not generate the quote PDF" };
+  }
+
+  const caption = `Your ${quote.treatment} quotation from our clinic. Total: Rs. ${(quote.totalPayable ?? 0).toLocaleString("en-IN")}.`;
+  const res = await sendLeadDocument(
+    input.leadId,
+    { buffer: pdf, filename: `${quoteRef(quote.id, quote.cycle)}.pdf`, mime: "application/pdf" },
+    caption,
+    { sentBy: user.email ?? undefined },
+  );
+  if (!res.ok) return { ok: false, error: res.error };
+
+  // Advance drafted → sent (don't regress a further-along quote).
+  if (quote.status === "drafted") {
+    try {
+      await transitionQuote({ quoteId: quote.id, status: "sent" });
+    } catch (err) {
+      logger.error(`Quote ${quote.id} sent on WhatsApp but status update failed: ${String(err)}`);
+    }
+  }
+  logger.info(`Quote ${quote.id} PDF sent on WhatsApp to lead ${input.leadId} by ${user.email ?? "?"}`);
   revalidatePath(`/leads/${input.leadId}`);
   return { ok: true };
 }
