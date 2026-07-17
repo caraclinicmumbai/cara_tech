@@ -7,6 +7,21 @@ Format: newest first.
 
 ---
 
+## 2026-07-17 — Quote pricing: base + GST − discount, auto-calculated total
+
+The New Quote form now captures a **discount** (percentage OR flat rupees) and shows
+a live breakdown. **GST is fixed at 5% (2.5% CGST + 2.5% SGST)** and calculated on the
+**base first**; the percentage discount then applies to the GST-inclusive subtotal —
+so GST is genuinely "calculated before the discount". **Total payable** is
+auto-computed and stored per quote, and each card shows Base · GST · Discount · Total.
+
+Schema additive (`gstRate` default 5, `discountType`, `discountValue`, `totalPayable`),
+applied to prod. New pure calculator `computeQuoteTotals()` (client + server) in
+`lib/quoteStages.ts`; `createQuote`/`reviseQuotePrice` compute + store the total (revise
+keeps the quote's existing GST + discount). Files: `prisma/schema.prisma`,
+`lib/{quotes,quoteStages}.ts`, `app/(dashboard)/leads/quoteActions.ts`,
+`components/QuotesPanel.tsx`, `app/(dashboard)/leads/[id]/page.tsx`.
+
 ## 2026-07-17 — Quote compliance fixes (§multi-quote hard requirements)
 
 Closes the 🔴 gaps from the quote spec:
