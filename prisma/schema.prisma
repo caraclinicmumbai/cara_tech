@@ -342,8 +342,18 @@ model Quote {
   // Cycle: 1 = first time we've quoted this person for this treatment, 2 = repeat, …
   cycle Int @default(1)
 
-  price    Int? // whole rupees (no card/bank data ever stored here)
+  price    Int? // BASE treatment price, whole rupees (no card/bank data here)
   currency String @default("INR")
+
+  // ── Pricing breakdown (§multi-quote) — GST is applied to the base FIRST, then the
+  //    discount. GST is fixed at 5% (2.5% CGST + 2.5% SGST) for now but stored per
+  //    quote so historical quotes keep their rate. Discount is either a percentage
+  //    (of the GST-inclusive subtotal) or a flat rupee amount. `totalPayable` is the
+  //    auto-computed final amount = base + GST − discount. See lib/quoteStages.ts. ──
+  gstRate       Float   @default(5) // total GST % (CGST + SGST)
+  discountType  String? // "percent" | "inr" | null
+  discountValue Float? // percent (e.g. 12.5) or rupee amount, per discountType
+  totalPayable  Int? // computed final amount in whole rupees
 
   rejectionReason String? // mandatory (from QUOTE_REJECTION_REASONS) when status=rejected
   // §multi-quote: "no quote is ever deleted — withdrawn quotes stay, with a reason
