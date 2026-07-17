@@ -7,6 +7,23 @@ Format: newest first.
 
 ---
 
+## 2026-07-17 — Quote compliance fixes (§multi-quote hard requirements)
+
+Closes the 🔴 gaps from the quote spec:
+- **Rejection reason is mandatory and from a fixed list** (`QUOTE_REJECTION_REASONS`) —
+  UI dropdown + server enforcement (off-list rejected). Was a free-text prompt.
+- **Withdrawal keeps a reason + the actor** — "no quote is ever deleted; withdrawn
+  quotes stay with a reason and a name against them." New `Quote.withdrawnReason`
+  (free-text) + `Quote.closedById` (who rejected/withdrew). Withdraw needs a reason.
+- **Acceptance ≠ conversion** — picking *Accepted* advances to `awaiting_payment`
+  ("Accepted — Awaiting Payment"); conversion stays the separate money step.
+- **Per-quote owner** — a quote's counsellor may differ from the lead's; picker on
+  each card, blocked once the quote is locked.
+
+Schema additive (`withdrawnReason`, `closedById`), applied to prod. Files:
+`prisma/schema.prisma`, `lib/quotes.ts`, `app/(dashboard)/leads/quoteActions.ts`,
+`components/QuotesPanel.tsx`, `app/(dashboard)/leads/[id]/page.tsx`.
+
 ## 2026-07-15 — Phase 2 foundations: multi-quote model + pipeline cutover
 
 **The structural change (§multi-quote):** a lead is the *person*; a **Quote** is the
