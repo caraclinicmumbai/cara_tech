@@ -11,6 +11,7 @@ import {
   createQuote,
   reviseQuotePrice,
   transitionQuote,
+  setQuoteOwner,
   unlockQuote,
   QuoteError,
 } from "@/lib/quotes";
@@ -107,11 +108,13 @@ export async function reviseLeadQuotePrice(input: {
 
 /// Move a quote through its lifecycle. `converted` needs the `quotes.convert`
 /// capability (it's the money step); everything else needs `quotes.manage`.
+/// Rejection needs a reason from the list; withdrawal needs a free-text reason.
 export async function setLeadQuoteStatus(input: {
   quoteId: string;
   leadId: string;
   status: string;
   rejectionReason?: string | null;
+  withdrawnReason?: string | null;
 }): Promise<Result> {
   const cap = input.status === "converted" ? "quotes.convert" : "quotes.manage";
   const user = await requireCapability(cap);
@@ -123,6 +126,8 @@ export async function setLeadQuoteStatus(input: {
       quoteId: input.quoteId,
       status: input.status,
       rejectionReason: input.rejectionReason ?? null,
+      withdrawnReason: input.withdrawnReason?.trim().slice(0, NOTE_MAX) ?? null,
+      actorId: user.id,
     });
   } catch (err) {
     if (err instanceof QuoteError) return { ok: false, error: err.message };
@@ -130,6 +135,28 @@ export async function setLeadQuoteStatus(input: {
     return { ok: false, error: "Could not update the quote" };
   }
   logger.info(`Quote ${input.quoteId} → ${input.status} by ${user.email ?? "?"}`);
+  revalidatePath(`/leads/${input.leadId}`);
+  return { ok: true };
+}
+
+/// Reassign a quote to a different counsellor (§multi-quote: a quote's owner may
+/// differ from the lead's owner).
+export async function setLeadQuoteOwner(input: {
+  quoteId: string;
+  leadId: string;
+  ownerRepId: string | null;
+}): Promise<Result> {
+  const user = await requireCapability("quotes.manage");
+  const seen = await assertCanSeeLead(user, input.leadId);
+  if (!seen.ok) return seen;
+
+  try {
+    await setQuoteOwner(input.quoteId, input.ownerRepId || null);
+  } catch (err) {
+    if (err instanceof QuoteError) return { ok: false, error: err.message };
+    logger.error(`setLeadQuoteOwner failed for ${input.quoteId}: ${String(err)}`);
+    return { ok: false, error: "Could not reassign the quote" };
+  }
   revalidatePath(`/leads/${input.leadId}`);
   return { ok: true };
 }

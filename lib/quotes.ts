@@ -13,6 +13,7 @@ import type { Prisma } from "@prisma/client";
 import {
   DEFAULT_QUOTE_STATUS,
   QUOTE_DEFAULT_VALIDITY_DAYS,
+  QUOTE_REJECTION_REASONS,
   WON_QUOTE_STATUSES,
   isQuoteOpen,
   isQuoteLocked,
@@ -145,11 +146,15 @@ export async function reviseQuotePrice(input: {
 }
 
 /// Move a quote to a new status. Enforces: locked quotes are read-only; rejection
-/// needs a reason; conversion stamps convertedAt + locks the quote (never the lead).
+/// needs a reason FROM THE LIST; withdrawal keeps a reason + the actor's name;
+/// acceptance means "awaiting payment" (acceptance ≠ conversion); conversion stamps
+/// convertedAt + locks the quote (never the lead).
 export async function transitionQuote(input: {
   quoteId: string;
   status: string;
   rejectionReason?: string | null;
+  withdrawnReason?: string | null;
+  actorId?: string | null;
   invoicedBranchId?: string | null;
 }): Promise<void> {
   if (!isQuoteStatus(input.status)) throw new QuoteError("Invalid quote status");
@@ -162,12 +167,33 @@ export async function transitionQuote(input: {
   if (isQuoteLocked(quote.status) && input.status !== quote.status) {
     throw new QuoteError("This quote is converted and locked — an Admin must unlock it first.");
   }
-  if (input.status === "rejected" && !input.rejectionReason?.trim()) {
-    throw new QuoteError("A rejection reason is required.");
+
+  // §multi-quote: rejection reason is mandatory AND from the fixed list.
+  if (input.status === "rejected") {
+    const reason = input.rejectionReason?.trim();
+    if (!reason) throw new QuoteError("A rejection reason is required.");
+    if (!(QUOTE_REJECTION_REASONS as readonly string[]).includes(reason)) {
+      throw new QuoteError("Rejection reason must be chosen from the list.");
+    }
+  }
+  // §multi-quote: a withdrawn quote is never deleted — it keeps a reason + a name.
+  if (input.status === "withdrawn" && !input.withdrawnReason?.trim()) {
+    throw new QuoteError("A withdrawal reason is required.");
   }
 
-  const data: Prisma.QuoteUpdateInput = { status: input.status };
-  if (input.status === "rejected") data.rejectionReason = input.rejectionReason!.trim();
+  // Acceptance sets "Accepted — Awaiting Payment": conversion is a separate step
+  // that needs money, so accepting advances straight to awaiting_payment.
+  const nextStatus = input.status === "accepted" ? "awaiting_payment" : input.status;
+
+  const data: Prisma.QuoteUpdateInput = { status: nextStatus };
+  if (input.status === "rejected") {
+    data.rejectionReason = input.rejectionReason!.trim();
+    if (input.actorId) data.closedById = input.actorId;
+  }
+  if (input.status === "withdrawn") {
+    data.withdrawnReason = input.withdrawnReason!.trim();
+    if (input.actorId) data.closedById = input.actorId;
+  }
   if (input.status === "converted") {
     data.convertedAt = new Date();
     data.lockedAt = new Date();
@@ -176,6 +202,20 @@ export async function transitionQuote(input: {
     }
   }
   await prisma.quote.update({ where: { id: input.quoteId }, data });
+}
+
+/// Reassign a quote to a different counsellor (§multi-quote: a quote's owner may
+/// differ from the lead's owner). Refuses on a locked quote.
+export async function setQuoteOwner(quoteId: string, ownerRepId: string | null): Promise<void> {
+  const quote = await prisma.quote.findUnique({
+    where: { id: quoteId },
+    select: { status: true },
+  });
+  if (!quote) throw new QuoteError("Quote not found");
+  if (isQuoteLocked(quote.status)) {
+    throw new QuoteError("This quote is converted and locked — an Admin must unlock it first.");
+  }
+  await prisma.quote.update({ where: { id: quoteId }, data: { ownerRepId } });
 }
 
 /// Reopen a converted (locked) quote — Admin only, always with a written reason
