@@ -43,6 +43,8 @@ export async function createLeadQuote(input: {
   leadId: string;
   treatment: string;
   price?: string | number | null;
+  discountType?: string | null;
+  discountValue?: string | number | null;
   source?: string | null;
 }): Promise<Result> {
   const user = await requireCapability("quotes.manage");
@@ -55,11 +57,25 @@ export async function createLeadQuote(input: {
   const price = parsePrice(input.price);
   if (price === "invalid") return { ok: false, error: "Price must be a whole number of rupees" };
 
+  // Discount: type "percent" | "inr", value a non-negative number (percent may be
+  // decimal, e.g. 12.5). Percent is capped at 100.
+  const discountType =
+    input.discountType === "percent" || input.discountType === "inr" ? input.discountType : null;
+  let discountValue: number | null = null;
+  if (discountType && input.discountValue != null && input.discountValue !== "") {
+    const n = typeof input.discountValue === "number" ? input.discountValue : Number(input.discountValue);
+    if (!Number.isFinite(n) || n < 0) return { ok: false, error: "Discount must be a non-negative number" };
+    if (discountType === "percent" && n > 100) return { ok: false, error: "Percentage discount can't exceed 100%" };
+    discountValue = n;
+  }
+
   try {
     await createQuote({
       leadId: input.leadId,
       treatment,
       price,
+      discountType: discountValue != null ? discountType : null,
+      discountValue,
       source: input.source ?? null,
       // Default this quote's owner to the lead's owner (may be re-assigned later).
       ownerRepId: user.salesRepId ?? null,

@@ -11,10 +11,12 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import {
+  DEFAULT_GST_RATE,
   DEFAULT_QUOTE_STATUS,
   QUOTE_DEFAULT_VALIDITY_DAYS,
   QUOTE_REJECTION_REASONS,
   WON_QUOTE_STATUSES,
+  computeQuoteTotals,
   isQuoteOpen,
   isQuoteLocked,
   isQuoteStatus,
@@ -63,6 +65,9 @@ export async function createQuote(input: {
   leadId: string;
   treatment: string;
   price?: number | null;
+  discountType?: string | null;
+  discountValue?: number | null;
+  gstRate?: number | null;
   source?: string | null;
   ownerRepId?: string | null;
   createdById?: string | null;
@@ -89,6 +94,15 @@ export async function createQuote(input: {
     Date.now() + (input.validityDays ?? QUOTE_DEFAULT_VALIDITY_DAYS) * 24 * 60 * 60 * 1000,
   );
 
+  // GST-before-discount total (whole rupees), stored for display + reporting.
+  const gstRate = input.gstRate ?? DEFAULT_GST_RATE;
+  const totals = computeQuoteTotals({
+    base: input.price ?? 0,
+    gstRate,
+    discountType: input.discountType,
+    discountValue: input.discountValue,
+  });
+
   const created = await prisma.quote.create({
     data: {
       leadId: input.leadId,
@@ -96,6 +110,10 @@ export async function createQuote(input: {
       status: DEFAULT_QUOTE_STATUS,
       cycle,
       price: input.price ?? null,
+      gstRate,
+      discountType: totals.discountType,
+      discountValue: totals.discountValue,
+      totalPayable: input.price != null ? totals.total : null,
       source: input.source ?? null,
       ownerRepId: input.ownerRepId ?? null,
       createdById: input.createdById ?? null,
@@ -121,12 +139,20 @@ export async function reviseQuotePrice(input: {
 }): Promise<void> {
   const quote = await prisma.quote.findUnique({
     where: { id: input.quoteId },
-    select: { status: true },
+    select: { status: true, gstRate: true, discountType: true, discountValue: true },
   });
   if (!quote) throw new QuoteError("Quote not found");
   if (isQuoteLocked(quote.status)) {
     throw new QuoteError("This quote is converted and locked — an Admin must unlock it first.");
   }
+
+  // Recompute the total off the new base, keeping the quote's existing GST + discount.
+  const totals = computeQuoteTotals({
+    base: input.price,
+    gstRate: quote.gstRate,
+    discountType: quote.discountType,
+    discountValue: quote.discountValue,
+  });
 
   await prisma.$transaction([
     prisma.quoteVersion.updateMany({
@@ -141,7 +167,10 @@ export async function reviseQuotePrice(input: {
         createdById: input.createdById ?? null,
       },
     }),
-    prisma.quote.update({ where: { id: input.quoteId }, data: { price: input.price } }),
+    prisma.quote.update({
+      where: { id: input.quoteId },
+      data: { price: input.price, totalPayable: totals.total },
+    }),
   ]);
 }
 

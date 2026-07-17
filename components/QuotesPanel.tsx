@@ -16,6 +16,10 @@ import {
   QUOTE_STATUS_LABELS,
   QUOTE_SOURCE_LABELS,
   QUOTE_REJECTION_REASONS,
+  CGST_RATE,
+  SGST_RATE,
+  DEFAULT_GST_RATE,
+  computeQuoteTotals,
   isQuoteLocked,
   isQuoteOpen,
   type QuoteStatus,
@@ -29,6 +33,10 @@ export type QuoteView = {
   cycle: number;
   price: number | null;
   currency: string;
+  gstRate: number;
+  discountType: string | null;
+  discountValue: number | null;
+  totalPayable: number | null;
   source: string | null;
   ownerRepId: string | null;
   ownerName: string | null;
@@ -89,7 +97,7 @@ export function QuotesPanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
-  const [nq, setNq] = useState({ treatment: "", price: "", source: "" });
+  const [nq, setNq] = useState({ treatment: "", price: "", discountValue: "", discountUnit: "percent", source: "" });
   // The quote+status awaiting a reason (reject → from list, withdraw → free text).
   const [reasonFor, setReasonFor] = useState<{ quoteId: string; status: "rejected" | "withdrawn" } | null>(null);
   const [reasonVal, setReasonVal] = useState("");
@@ -151,8 +159,19 @@ export function QuotesPanel({
                       🔒 locked
                     </span>
                   )}
-                  <span className="ml-auto font-medium">{inr(q.price, q.currency)}</span>
+                  <span className="ml-auto font-semibold">{inr(q.totalPayable ?? q.price, q.currency)}</span>
                 </div>
+
+                {/* Price breakdown: base → +GST → −discount → total. */}
+                {q.price != null && (
+                  <div className="mt-1 text-xs text-black/50 dark:text-white/50">
+                    Base {inr(q.price, q.currency)} · GST {q.gstRate}% {inr(computeQuoteTotals({ base: q.price, gstRate: q.gstRate }).gstAmount, q.currency)}
+                    {q.discountType && q.discountValue
+                      ? ` · Disc ${q.discountType === "percent" ? `${q.discountValue}%` : inr(q.discountValue, q.currency)} −${inr(computeQuoteTotals({ base: q.price, gstRate: q.gstRate, discountType: q.discountType, discountValue: q.discountValue }).discountAmount, q.currency)}`
+                      : ""}
+                    {" · "}<span className="font-medium text-black/70 dark:text-white/70">Total {inr(q.totalPayable, q.currency)}</span>
+                  </div>
+                )}
 
                 <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-black/50 dark:text-white/50">
                   {q.source && <span>{QUOTE_SOURCE_LABELS[q.source as keyof typeof QUOTE_SOURCE_LABELS] ?? q.source}</span>}
@@ -239,40 +258,85 @@ export function QuotesPanel({
 
       {canManage && (
         adding ? (
-          <div className="flex flex-wrap items-end gap-2 rounded border border-black/10 p-3 dark:border-white/15">
-            <input className={inputCls} placeholder="Treatment (e.g. Hair transplant)" value={nq.treatment}
-              onChange={(e) => setNq({ ...nq, treatment: e.target.value })} />
-            <input className={inputCls} placeholder="Price ₹ (optional)" value={nq.price}
-              onChange={(e) => setNq({ ...nq, price: e.target.value })} />
-            <select className={inputCls} value={nq.source} onChange={(e) => setNq({ ...nq, source: e.target.value })}>
-              <option value="">Source…</option>
-              {Object.entries(QUOTE_SOURCE_LABELS).map(([v, l]) => (
-                <option key={v} value={v}>{l}</option>
-              ))}
-            </select>
-            <button
-              disabled={pending}
-              className="rounded bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
-              onClick={() =>
-                run(() =>
-                  createLeadQuote({
-                    leadId,
-                    treatment: nq.treatment,
-                    price: nq.price || null,
-                    source: nq.source || null,
-                  }).then((r) => {
-                    if (r.ok) { setNq({ treatment: "", price: "", source: "" }); setAdding(false); }
-                    return r;
-                  }),
-                )
-              }
-            >
-              Add quote
-            </button>
-            <button className="text-sm text-black/50 hover:underline dark:text-white/50" onClick={() => setAdding(false)}>
-              Cancel
-            </button>
-          </div>
+          (() => {
+            const preview = computeQuoteTotals({
+              base: nq.price ? Number(nq.price.replace(/[,\s₹]/g, "")) : 0,
+              gstRate: DEFAULT_GST_RATE,
+              discountType: nq.discountValue ? nq.discountUnit : null,
+              discountValue: nq.discountValue ? Number(nq.discountValue) : null,
+            });
+            const reset = () => setNq({ treatment: "", price: "", discountValue: "", discountUnit: "percent", source: "" });
+            return (
+              <div className="space-y-3 rounded border border-black/10 p-3 dark:border-white/15">
+                <div className="flex flex-wrap items-end gap-2">
+                  <input className={inputCls} placeholder="Treatment (e.g. Hair transplant)" value={nq.treatment}
+                    onChange={(e) => setNq({ ...nq, treatment: e.target.value })} />
+                  <input className={inputCls} placeholder="Base price ₹" inputMode="numeric" value={nq.price}
+                    onChange={(e) => setNq({ ...nq, price: e.target.value })} />
+                  <div className="flex items-stretch">
+                    <input className={`${inputCls} w-28 rounded-r-none`} placeholder="Discount" inputMode="decimal" value={nq.discountValue}
+                      onChange={(e) => setNq({ ...nq, discountValue: e.target.value })} />
+                    <select className={`${inputCls} rounded-l-none border-l-0`} value={nq.discountUnit}
+                      onChange={(e) => setNq({ ...nq, discountUnit: e.target.value })}>
+                      <option value="percent">%</option>
+                      <option value="inr">₹</option>
+                    </select>
+                  </div>
+                  <select className={inputCls} value={nq.source} onChange={(e) => setNq({ ...nq, source: e.target.value })}>
+                    <option value="">Source…</option>
+                    {Object.entries(QUOTE_SOURCE_LABELS).map(([v, l]) => (
+                      <option key={v} value={v}>{l}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Live breakdown — GST (fixed) applied before the discount. */}
+                <div className="rounded bg-black/3 px-3 py-2 text-xs text-black/60 dark:bg-white/5 dark:text-white/60">
+                  <div className="flex justify-between"><span>Base price</span><span>{inr(preview.base, "INR")}</span></div>
+                  <div className="flex justify-between">
+                    <span>GST {DEFAULT_GST_RATE}% ({CGST_RATE}% CGST + {SGST_RATE}% SGST)</span>
+                    <span>+{inr(preview.gstAmount, "INR")}</span>
+                  </div>
+                  {preview.discountAmount > 0 && (
+                    <div className="flex justify-between">
+                      <span>Discount {nq.discountUnit === "percent" ? `${nq.discountValue}%` : inr(preview.discountValue ?? 0, "INR")}</span>
+                      <span>−{inr(preview.discountAmount, "INR")}</span>
+                    </div>
+                  )}
+                  <div className="mt-1 flex justify-between border-t border-black/10 pt-1 font-semibold text-black/80 dark:border-white/15 dark:text-white/80">
+                    <span>Total payable</span><span>{inr(preview.total, "INR")}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={pending}
+                    className="rounded bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
+                    onClick={() =>
+                      run(() =>
+                        createLeadQuote({
+                          leadId,
+                          treatment: nq.treatment,
+                          price: nq.price || null,
+                          discountType: nq.discountValue ? nq.discountUnit : null,
+                          discountValue: nq.discountValue || null,
+                          source: nq.source || null,
+                        }).then((r) => {
+                          if (r.ok) { reset(); setAdding(false); }
+                          return r;
+                        }),
+                      )
+                    }
+                  >
+                    Add quote
+                  </button>
+                  <button className="text-sm text-black/50 hover:underline dark:text-white/50" onClick={() => { reset(); setAdding(false); }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            );
+          })()
         ) : (
           <button
             onClick={() => setAdding(true)}
