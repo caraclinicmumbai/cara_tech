@@ -99,6 +99,23 @@ export async function duplicateFlow(id: string): Promise<Result> {
   return { ok: true, id: copy.id };
 }
 
+/// Persist the flow graph (nodes + edges) from the builder. Coerced through asGraph
+/// so only the expected shape is stored.
+export async function saveFlowGraph(
+  id: string,
+  graph: { nodes: unknown[]; edges: unknown[] },
+): Promise<Result> {
+  await requireCapability("chatbot.manage");
+  const clean = asGraph(graph);
+  await prisma.chatbotFlow.update({
+    where: { id },
+    data: { graph: clean as unknown as Prisma.InputJsonValue },
+  });
+  revalidatePath(`/chatbot/${id}`);
+  revalidatePath("/chatbot");
+  return { ok: true };
+}
+
 export async function deleteFlow(id: string): Promise<Result> {
   const user = await requireCapability("chatbot.manage");
   await prisma.chatbotFlow.delete({ where: { id } });
