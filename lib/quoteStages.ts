@@ -130,9 +130,9 @@ export const QUOTE_REJECTION_REASONS = [
 export const QUOTE_DEFAULT_VALIDITY_DAYS = 30;
 
 // ── Pricing (§multi-quote) ───────────────────────────────────────────
-// GST is fixed for now: 2.5% CGST + 2.5% SGST = 5% total, applied to the base
-// price BEFORE any discount. The discount is either a percentage (of the
-// GST-inclusive subtotal) or a flat rupee amount. Total = base + GST − discount.
+// Order of operations: the DISCOUNT is applied to the base FIRST, then GST (fixed
+// 2.5% CGST + 2.5% SGST = 5%) is charged on the discounted amount. A percentage
+// discount is a percentage of the base. Total = (base − discount) + GST.
 
 export const CGST_RATE = 2.5;
 export const SGST_RATE = 2.5;
@@ -142,18 +142,18 @@ export type DiscountType = "percent" | "inr";
 
 export type QuoteTotals = {
   base: number;
-  gstRate: number;
-  gstAmount: number;
-  subtotal: number; // base + GST (the amount GST is "calculated before the discount")
   discountType: DiscountType | null;
   discountValue: number | null;
   discountAmount: number;
-  total: number; // final payable
+  afterDiscount: number; // base − discount (the amount GST is charged on)
+  gstRate: number;
+  gstAmount: number; // GST on the discounted amount
+  total: number; // afterDiscount + GST
 };
 
 /// Pure price calculator (usable on client + server). Rounds to whole rupees.
-/// GST is on the base; the percentage discount is taken off the GST-inclusive
-/// subtotal (so GST is genuinely "calculated before the discount").
+/// Discount is applied to the base FIRST, then GST is charged on the discounted
+/// amount. A percentage discount is a percentage of the base.
 export function computeQuoteTotals(input: {
   base: number | null | undefined;
   gstRate?: number | null;
@@ -162,25 +162,26 @@ export function computeQuoteTotals(input: {
 }): QuoteTotals {
   const base = Math.max(0, Math.round(input.base ?? 0));
   const gstRate = input.gstRate ?? DEFAULT_GST_RATE;
-  const gstAmount = Math.round((base * gstRate) / 100);
-  const subtotal = base + gstAmount;
 
   const type: DiscountType | null =
     input.discountType === "percent" || input.discountType === "inr" ? input.discountType : null;
   const value = input.discountValue ?? null;
   let discountAmount = 0;
-  if (type === "percent" && value) discountAmount = Math.round((subtotal * value) / 100);
+  if (type === "percent" && value) discountAmount = Math.round((base * value) / 100);
   else if (type === "inr" && value) discountAmount = Math.round(value);
-  discountAmount = Math.max(0, Math.min(discountAmount, subtotal)); // never below zero
+  discountAmount = Math.max(0, Math.min(discountAmount, base)); // never below zero
+
+  const afterDiscount = base - discountAmount;
+  const gstAmount = Math.round((afterDiscount * gstRate) / 100);
 
   return {
     base,
-    gstRate,
-    gstAmount,
-    subtotal,
     discountType: type,
     discountValue: value,
     discountAmount,
-    total: subtotal - discountAmount,
+    afterDiscount,
+    gstRate,
+    gstAmount,
+    total: afterDiscount + gstAmount,
   };
 }

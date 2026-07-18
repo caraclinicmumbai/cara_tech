@@ -2,8 +2,18 @@
 // record"). Renders a one-page treatment quotation from a quote + its lead, using
 // pdfkit's built-in fonts (no browser, no external assets). Amounts use "Rs." rather
 // than the ₹ glyph, which pdfkit's standard WinAnsi fonts can't render.
+import { existsSync } from "fs";
+import { join } from "path";
 import PDFDocument from "pdfkit";
 import { computeQuoteTotals } from "@/lib/quoteStages";
+
+// Clinic bank details for payment (shown on the quote PDF).
+const BANK = {
+  accountName: "Cara Healthcare Private Limited",
+  accountNumber: "020905011291",
+  ifsc: "ICIC0000209",
+  branch: "Santacruz West, Linking Road, Mumbai",
+};
 
 export type QuotePdfData = {
   quoteId: string;
@@ -103,24 +113,53 @@ export function buildQuotePdf(d: QuotePdfData): Promise<Buffer> {
       y += opts?.sub ? 16 : rowH;
     };
 
+    // Order of operations: discount applied to the base FIRST, then GST on the net.
     doc.rect(left, y, width, rowH).fill("#f4f4f4");
     doc.fillColor("#111");
     row("Base treatment price", rs(totals.base), { bold: true });
     doc.moveTo(left, y).lineTo(right, y).strokeColor("#eee").stroke();
-    row(`GST (${d.gstRate}%)`, `+ ${rs(totals.gstAmount)}`);
-    row("incl. CGST 2.5% + SGST 2.5%", "", { sub: true });
     if (totals.discountAmount > 0) {
       const disc = d.discountType === "percent" ? `${d.discountValue}%` : rs(d.discountValue);
       row(`Discount (${disc})`, `- ${rs(totals.discountAmount)}`);
+      row("Amount after discount", rs(totals.afterDiscount), { sub: true });
     }
+    row(`GST (${d.gstRate}%) on ${rs(totals.afterDiscount)}`, `+ ${rs(totals.gstAmount)}`);
+    row("incl. CGST 2.5% + SGST 2.5%", "", { sub: true });
     doc.moveTo(left, y).lineTo(right, y).strokeColor("#ccc").stroke();
     y += 4;
     doc.rect(left, y, width, rowH + 4).fill("#f0f7ff");
     doc.fillColor("#111");
     row("Total payable", rs(totals.total), { bold: true });
 
+    // ── Payment: bank transfer + scan-to-pay QR ──
+    y += 20;
+    doc.font("Helvetica-Bold").fontSize(10).fillColor("#111").text("Payment", left, y);
+    y += 16;
+    const qrSize = 108;
+    const bankWidth = width - qrSize - 20;
+    const bankLines = [
+      ["Account Name", BANK.accountName],
+      ["Account Number", BANK.accountNumber],
+      ["IFSC Code", BANK.ifsc],
+      ["Branch", BANK.branch],
+    ];
+    let by = y;
+    for (const [label, val] of bankLines) {
+      doc.font("Helvetica").fontSize(8).fillColor("#888").text(label.toUpperCase(), left, by);
+      doc.font("Helvetica-Bold").fontSize(10).fillColor("#111").text(val, left, by + 10, { width: bankWidth });
+      by += 30;
+    }
+
+    // Razorpay / UPI QR — embedded from public/razorpay-qr.png if present.
+    const qrPath = join(process.cwd(), "public", "razorpay-qr.png");
+    if (existsSync(qrPath)) {
+      const qrX = right - qrSize;
+      doc.image(qrPath, qrX, y, { width: qrSize, height: qrSize });
+      doc.font("Helvetica").fontSize(8).fillColor("#666").text("Scan to pay", qrX, y + qrSize + 3, { width: qrSize, align: "center" });
+    }
+
     // ── Footer note ──
-    y += 24;
+    y = Math.max(by, y + qrSize) + 16;
     doc.font("Helvetica").fontSize(9).fillColor("#777").text(
       "This is a quotation, not an invoice. Amounts are inclusive of GST and valid until the date above. " +
         "Please contact the clinic to confirm and proceed with your treatment.",
@@ -128,7 +167,7 @@ export function buildQuotePdf(d: QuotePdfData): Promise<Buffer> {
     );
     doc.fontSize(8).fillColor("#aaa").text(
       `Generated ${istDate(d.createdAt)} · ${CLINIC_NAME}`,
-      left, doc.page.height - 60, { width, align: "center" },
+      left, doc.page.height - 50, { width, align: "center" },
     );
 
     doc.end();

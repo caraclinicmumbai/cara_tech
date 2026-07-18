@@ -170,16 +170,20 @@ export function QuotesPanel({
                   <span className="ml-auto font-semibold">{inr(q.totalPayable ?? q.price, q.currency)}</span>
                 </div>
 
-                {/* Price breakdown: base → +GST → −discount → total. */}
-                {q.price != null && (
-                  <div className="mt-1 text-xs text-black/50 dark:text-white/50">
-                    Base {inr(q.price, q.currency)} · GST {q.gstRate}% {inr(computeQuoteTotals({ base: q.price, gstRate: q.gstRate }).gstAmount, q.currency)}
-                    {q.discountType && q.discountValue
-                      ? ` · Disc ${q.discountType === "percent" ? `${q.discountValue}%` : inr(q.discountValue, q.currency)} −${inr(computeQuoteTotals({ base: q.price, gstRate: q.gstRate, discountType: q.discountType, discountValue: q.discountValue }).discountAmount, q.currency)}`
-                      : ""}
-                    {" · "}<span className="font-medium text-black/70 dark:text-white/70">Total {inr(q.totalPayable, q.currency)}</span>
-                  </div>
-                )}
+                {/* Price breakdown: base → −discount → +GST → total. */}
+                {q.price != null && (() => {
+                  const tt = computeQuoteTotals({ base: q.price, gstRate: q.gstRate, discountType: q.discountType, discountValue: q.discountValue });
+                  return (
+                    <div className="mt-1 text-xs text-black/50 dark:text-white/50">
+                      Base {inr(q.price, q.currency)}
+                      {q.discountType && q.discountValue
+                        ? ` · Disc ${q.discountType === "percent" ? `${q.discountValue}%` : inr(q.discountValue, q.currency)} −${inr(tt.discountAmount, q.currency)}`
+                        : ""}
+                      {` · GST ${q.gstRate}% ${inr(tt.gstAmount, q.currency)}`}
+                      {" · "}<span className="font-medium text-black/70 dark:text-white/70">Total {inr(q.totalPayable ?? tt.total, q.currency)}</span>
+                    </div>
+                  );
+                })()}
 
                 <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-black/50 dark:text-white/50">
                   {q.source && <span>{QUOTE_SOURCE_LABELS[q.source as keyof typeof QUOTE_SOURCE_LABELS] ?? q.source}</span>}
@@ -334,19 +338,22 @@ export function QuotesPanel({
                   </select>
                 </div>
 
-                {/* Live breakdown — GST (fixed) applied before the discount. */}
+                {/* Live breakdown — discount applied FIRST, then GST on the net. */}
                 <div className="rounded bg-black/3 px-3 py-2 text-xs text-black/60 dark:bg-white/5 dark:text-white/60">
                   <div className="flex justify-between"><span>Base price</span><span>{inr(preview.base, "INR")}</span></div>
-                  <div className="flex justify-between">
-                    <span>GST {DEFAULT_GST_RATE}% ({CGST_RATE}% CGST + {SGST_RATE}% SGST)</span>
-                    <span>+{inr(preview.gstAmount, "INR")}</span>
-                  </div>
                   {preview.discountAmount > 0 && (
                     <div className="flex justify-between">
                       <span>Discount {nq.discountUnit === "percent" ? `${nq.discountValue}%` : inr(preview.discountValue ?? 0, "INR")}</span>
                       <span>−{inr(preview.discountAmount, "INR")}</span>
                     </div>
                   )}
+                  {preview.discountAmount > 0 && (
+                    <div className="flex justify-between text-black/45 dark:text-white/45"><span>After discount</span><span>{inr(preview.afterDiscount, "INR")}</span></div>
+                  )}
+                  <div className="flex justify-between">
+                    <span>GST {DEFAULT_GST_RATE}% ({CGST_RATE}% CGST + {SGST_RATE}% SGST)</span>
+                    <span>+{inr(preview.gstAmount, "INR")}</span>
+                  </div>
                   <div className="mt-1 flex justify-between border-t border-black/10 pt-1 font-semibold text-black/80 dark:border-white/15 dark:text-white/80">
                     <span>Total payable</span><span>{inr(preview.total, "INR")}</span>
                   </div>
