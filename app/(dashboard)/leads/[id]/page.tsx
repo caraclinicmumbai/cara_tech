@@ -218,6 +218,8 @@ export default async function LeadDetailPage({
           <QuotesPanel
             leadId={lead.id}
             canManage={canManageQuotes}
+            windowOpen={windowOpen}
+            templateConfigured={!!process.env.QUOTE_DOC_TEMPLATE_NAME}
             reps={quoteReps}
             quotes={lead.quotes.map((q) => ({
               id: q.id,

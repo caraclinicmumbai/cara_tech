@@ -7,7 +7,13 @@
 // adds the lead lookup + persistence + window logic on top.
 import type { Message } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { sendWhatsAppText, sendWhatsAppTemplate } from "@/lib/providers/whatsapp";
+import {
+  sendWhatsAppText,
+  sendWhatsAppTemplate,
+  uploadWhatsAppMedia,
+  sendWhatsAppDocument,
+  sendWhatsAppDocumentTemplate,
+} from "@/lib/providers/whatsapp";
 import { logger } from "@/lib/logger";
 
 // Meta's customer-service window: once a lead messages us, we may send free-form
@@ -133,6 +139,64 @@ export async function sendLeadText(
   });
   if (!res.ok) {
     logger.error(`WhatsApp text to lead ${leadId} failed: ${res.error}`);
+    return { ok: false, error: res.error };
+  }
+  return { ok: true, message };
+}
+
+/// Send a PDF (or other document) to a lead over WhatsApp and log it. Like free
+/// text this is a session message — enforces the 24h window. Uploads the bytes to
+/// Meta, then sends by media id.
+export async function sendLeadDocument(
+  leadId: string,
+  file: { buffer: Buffer; filename: string; mime?: string },
+  caption?: string,
+  opts: SendOpts & {
+    /// Approved document-header template used to send PROACTIVELY when the 24h
+    /// window is closed. Omit to require an open window (fails otherwise).
+    fallbackTemplate?: { name: string; lang: string; bodyParams?: string[] };
+  } = {},
+): Promise<{ ok: true; message: Message } | { ok: false; error: string }> {
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!lead) return { ok: false, error: "Lead not found" };
+  if (lead.optedOut) return { ok: false, error: "Lead has opted out of messaging" };
+
+  const windowOpen = await isServiceWindowOpen(leadId);
+  if (!windowOpen && !opts.fallbackTemplate) {
+    return { ok: false, error: "Outside the 24h window — an approved document template is needed to send proactively" };
+  }
+
+  const mediaId = await uploadWhatsAppMedia(file.buffer, file.mime ?? "application/pdf", file.filename);
+  if (!mediaId) return { ok: false, error: "Could not upload the document to WhatsApp" };
+
+  // Inside the window → plain document message; outside → approved template.
+  const res = windowOpen
+    ? await sendWhatsAppDocument(lead.phone, mediaId, file.filename, caption)
+    : await sendWhatsAppDocumentTemplate(
+        lead.phone,
+        opts.fallbackTemplate!.name,
+        opts.fallbackTemplate!.lang,
+        mediaId,
+        file.filename,
+        opts.fallbackTemplate!.bodyParams,
+      );
+
+  const message = await prisma.message.create({
+    data: {
+      leadId,
+      direction: "outbound",
+      waId: res.ok ? res.waId : undefined,
+      type: windowOpen ? "document" : "template",
+      body: caption ? `[document] ${file.filename} — ${caption}` : `[document] ${file.filename}`,
+      templateName: windowOpen ? undefined : opts.fallbackTemplate!.name,
+      status: res.ok ? "sent" : "failed",
+      error: res.ok ? undefined : res.error,
+      automated: opts.automated ?? false,
+      sentBy: opts.sentBy,
+    },
+  });
+  if (!res.ok) {
+    logger.error(`WhatsApp document to lead ${leadId} failed: ${res.error}`);
     return { ok: false, error: res.error };
   }
   return { ok: true, message };

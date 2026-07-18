@@ -87,6 +87,85 @@ export async function sendWhatsAppText(to: string, body: string): Promise<WhatsA
   return postMessage({ to: normalizeNumber(to), type: "text", text: { preview_url: false, body } });
 }
 
+/// Upload a document/media to Meta and return its media id (valid ~30 days). The
+/// id is then referenced when sending a document message. Null on misconfig/error.
+export async function uploadWhatsAppMedia(
+  buffer: Buffer,
+  mime: string,
+  filename: string,
+): Promise<string | null> {
+  const token = process.env.WHATSAPP_TOKEN;
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (!token || !phoneId) {
+    logger.warn("WhatsApp media upload: not configured — skipping");
+    return null;
+  }
+  try {
+    // form-data is a transitive dep (axios uses it); dynamic import keeps it off the
+    // module top-level so client bundles never try to resolve it.
+    const FormData = (await import("form-data")).default;
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", mime);
+    form.append("file", buffer, { filename, contentType: mime });
+    const res = await axios.post(`${GRAPH}/${graphVersion()}/${phoneId}/media`, form, {
+      headers: { Authorization: `Bearer ${token}`, ...form.getHeaders() },
+      timeout: 20_000,
+      maxBodyLength: Infinity,
+    });
+    const id: string | undefined = res.data?.id;
+    if (!id) {
+      logger.error(`WhatsApp media upload returned no id: ${JSON.stringify(res.data)}`);
+      return null;
+    }
+    return id;
+  } catch (err) {
+    const detail = axios.isAxiosError(err) ? JSON.stringify(err.response?.data ?? err.message) : String(err);
+    logger.error(`WhatsApp media upload failed: ${detail}`);
+    return null;
+  }
+}
+
+/// Send a previously-uploaded document (by media id) as a document message. Like
+/// free text, this is a session message — valid only inside the 24h window.
+export async function sendWhatsAppDocument(
+  to: string,
+  mediaId: string,
+  filename: string,
+  caption?: string,
+): Promise<WhatsAppSendResult> {
+  return postMessage({
+    to: normalizeNumber(to),
+    type: "document",
+    document: { id: mediaId, filename, ...(caption ? { caption } : {}) },
+  });
+}
+
+/// Send an uploaded document via an APPROVED template that has a document header —
+/// the only way to push a document PROACTIVELY (outside the 24h window). The
+/// template must be pre-approved in Meta WhatsApp Manager with a document header
+/// and (optionally) {{1}}, {{2}}… body variables filled by `bodyParams`.
+export async function sendWhatsAppDocumentTemplate(
+  to: string,
+  templateName: string,
+  languageCode: string,
+  mediaId: string,
+  filename: string,
+  bodyParams: string[] = [],
+): Promise<WhatsAppSendResult> {
+  const components: unknown[] = [
+    { type: "header", parameters: [{ type: "document", document: { id: mediaId, filename } }] },
+  ];
+  if (bodyParams.length) {
+    components.push({ type: "body", parameters: bodyParams.map((t) => ({ type: "text", text: t })) });
+  }
+  return postMessage({
+    to: normalizeNumber(to),
+    type: "template",
+    template: { name: templateName, language: { code: languageCode }, components },
+  });
+}
+
 // ── Inbound media (Phase 2) ──────────────────────────────────────────
 // WhatsApp media arrives as an id; fetching it is two hops, both bearer-authed:
 // 1) GET /{media_id} → a short-lived download URL + mime type.
