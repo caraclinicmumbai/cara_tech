@@ -90,13 +90,18 @@ export function QuotesPanel({
   reps,
   canManage,
   windowOpen,
+  templateConfigured,
 }: {
   leadId: string;
   quotes: QuoteView[];
   reps: Rep[];
   canManage: boolean;
   windowOpen: boolean;
+  templateConfigured: boolean;
 }) {
+  // WhatsApp can send the PDF if the 24h window is open (plain document) OR an
+  // approved document template is configured (proactive send outside the window).
+  const canSendWhatsApp = windowOpen || templateConfigured;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -196,8 +201,14 @@ export function QuotesPanel({
                   </a>
                   {canManage && (
                     <button
-                      disabled={pending || !windowOpen}
-                      title={windowOpen ? "Send this quote PDF on WhatsApp" : "WhatsApp 24h window is closed — send an approved template first"}
+                      disabled={pending || !canSendWhatsApp}
+                      title={
+                        windowOpen
+                          ? "Send this quote PDF on WhatsApp"
+                          : templateConfigured
+                            ? "Window closed — will send via the approved document template"
+                            : "WhatsApp 24h window is closed and no document template is configured"
+                      }
                       onClick={() => {
                         if (!window.confirm("Send this quote PDF to the lead on WhatsApp?")) return;
                         run(() => sendLeadQuoteWhatsApp({ quoteId: q.id, leadId }));
@@ -208,7 +219,9 @@ export function QuotesPanel({
                     </button>
                   )}
                   {canManage && !windowOpen && (
-                    <span className="text-black/40 dark:text-white/40">(window closed)</span>
+                    <span className="text-black/40 dark:text-white/40">
+                      {templateConfigured ? "(via template)" : "(window closed)"}
+                    </span>
                   )}
                 </div>
 

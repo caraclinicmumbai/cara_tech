@@ -196,11 +196,22 @@ export async function sendLeadQuoteWhatsApp(input: {
   }
 
   const caption = `Your ${quote.treatment} quotation from our clinic. Total: Rs. ${(quote.totalPayable ?? 0).toLocaleString("en-IN")}.`;
+  // When the 24h window is closed, fall back to the approved document template
+  // (if one is configured in the environment) so the quote can go out proactively.
+  const tmplName = process.env.QUOTE_DOC_TEMPLATE_NAME;
+  const fallbackTemplate = tmplName
+    ? {
+        name: tmplName,
+        lang: process.env.QUOTE_DOC_TEMPLATE_LANG ?? "en",
+        bodyParams: [quote.lead.name], // fills the template's {{1}} (patient name)
+      }
+    : undefined;
+
   const res = await sendLeadDocument(
     input.leadId,
     { buffer: pdf, filename: `${quoteRef(quote.id, quote.cycle)}.pdf`, mime: "application/pdf" },
     caption,
-    { sentBy: user.email ?? undefined },
+    { sentBy: user.email ?? undefined, fallbackTemplate },
   );
   if (!res.ok) return { ok: false, error: res.error };
 

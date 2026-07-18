@@ -141,6 +141,31 @@ export async function sendWhatsAppDocument(
   });
 }
 
+/// Send an uploaded document via an APPROVED template that has a document header —
+/// the only way to push a document PROACTIVELY (outside the 24h window). The
+/// template must be pre-approved in Meta WhatsApp Manager with a document header
+/// and (optionally) {{1}}, {{2}}… body variables filled by `bodyParams`.
+export async function sendWhatsAppDocumentTemplate(
+  to: string,
+  templateName: string,
+  languageCode: string,
+  mediaId: string,
+  filename: string,
+  bodyParams: string[] = [],
+): Promise<WhatsAppSendResult> {
+  const components: unknown[] = [
+    { type: "header", parameters: [{ type: "document", document: { id: mediaId, filename } }] },
+  ];
+  if (bodyParams.length) {
+    components.push({ type: "body", parameters: bodyParams.map((t) => ({ type: "text", text: t })) });
+  }
+  return postMessage({
+    to: normalizeNumber(to),
+    type: "template",
+    template: { name: templateName, language: { code: languageCode }, components },
+  });
+}
+
 // ── Inbound media (Phase 2) ──────────────────────────────────────────
 // WhatsApp media arrives as an id; fetching it is two hops, both bearer-authed:
 // 1) GET /{media_id} → a short-lived download URL + mime type.

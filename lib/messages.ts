@@ -12,6 +12,7 @@ import {
   sendWhatsAppTemplate,
   uploadWhatsAppMedia,
   sendWhatsAppDocument,
+  sendWhatsAppDocumentTemplate,
 } from "@/lib/providers/whatsapp";
 import { logger } from "@/lib/logger";
 
@@ -150,26 +151,44 @@ export async function sendLeadDocument(
   leadId: string,
   file: { buffer: Buffer; filename: string; mime?: string },
   caption?: string,
-  opts: SendOpts = {},
+  opts: SendOpts & {
+    /// Approved document-header template used to send PROACTIVELY when the 24h
+    /// window is closed. Omit to require an open window (fails otherwise).
+    fallbackTemplate?: { name: string; lang: string; bodyParams?: string[] };
+  } = {},
 ): Promise<{ ok: true; message: Message } | { ok: false; error: string }> {
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) return { ok: false, error: "Lead not found" };
   if (lead.optedOut) return { ok: false, error: "Lead has opted out of messaging" };
-  if (!(await isServiceWindowOpen(leadId))) {
-    return { ok: false, error: "Outside the 24h window — send an approved template to re-open the chat first" };
+
+  const windowOpen = await isServiceWindowOpen(leadId);
+  if (!windowOpen && !opts.fallbackTemplate) {
+    return { ok: false, error: "Outside the 24h window — an approved document template is needed to send proactively" };
   }
 
   const mediaId = await uploadWhatsAppMedia(file.buffer, file.mime ?? "application/pdf", file.filename);
   if (!mediaId) return { ok: false, error: "Could not upload the document to WhatsApp" };
 
-  const res = await sendWhatsAppDocument(lead.phone, mediaId, file.filename, caption);
+  // Inside the window → plain document message; outside → approved template.
+  const res = windowOpen
+    ? await sendWhatsAppDocument(lead.phone, mediaId, file.filename, caption)
+    : await sendWhatsAppDocumentTemplate(
+        lead.phone,
+        opts.fallbackTemplate!.name,
+        opts.fallbackTemplate!.lang,
+        mediaId,
+        file.filename,
+        opts.fallbackTemplate!.bodyParams,
+      );
+
   const message = await prisma.message.create({
     data: {
       leadId,
       direction: "outbound",
       waId: res.ok ? res.waId : undefined,
-      type: "document",
+      type: windowOpen ? "document" : "template",
       body: caption ? `[document] ${file.filename} — ${caption}` : `[document] ${file.filename}`,
+      templateName: windowOpen ? undefined : opts.fallbackTemplate!.name,
       status: res.ok ? "sent" : "failed",
       error: res.ok ? undefined : res.error,
       automated: opts.automated ?? false,
