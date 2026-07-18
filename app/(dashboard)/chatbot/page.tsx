@@ -16,6 +16,7 @@ export default async function ChatbotPage() {
       id: true,
       name: true,
       triggerEvent: true,
+      triggerConfig: true,
       priority: true,
       active: true,
       expireOn: true,
@@ -33,14 +34,22 @@ export default async function ChatbotPage() {
         </p>
       </div>
       <ChatbotList
-        flows={flows.map((f) => ({
-          id: f.id,
-          name: f.name,
-          triggerEvent: f.triggerEvent,
-          priority: f.priority,
-          active: f.active,
-          expireOn: f.expireOn ? f.expireOn.toISOString() : null,
-        }))}
+        flows={flows.map((f) => {
+          const cfg = (f.triggerConfig && typeof f.triggerConfig === "object" ? f.triggerConfig : {}) as {
+            stage?: string;
+            campaign?: string;
+          };
+          return {
+            id: f.id,
+            name: f.name,
+            triggerEvent: f.triggerEvent,
+            triggerStage: cfg.stage ?? "",
+            triggerCampaign: cfg.campaign ?? "",
+            priority: f.priority,
+            active: f.active,
+            expireOn: f.expireOn ? f.expireOn.toISOString() : null,
+          };
+        })}
       />
     </div>
   );

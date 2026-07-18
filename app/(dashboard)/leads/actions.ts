@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isLeadStage, LOST_STAGE, isPreConsultation, stageLabel, isLostTag } from "@/lib/leadStages";
 import { notifyCounsellor } from "@/lib/counsellor";
+import { runStageChange } from "@/lib/chatbotRuntime";
 import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
 import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
 import { clickToCall, isTwilioConfigured } from "@/lib/providers/twilio";
@@ -62,6 +63,14 @@ export async function setLeadStage(
   logger.info(
     `Lead ${leadId} stage set to ${stage}${isLost ? ` (lost: ${lostSummary})` : ""} by ${user.email ?? "?"}`,
   );
+
+  // §matrix: a stage change may auto-fire a chatbot flow for the new stage
+  // (matched by stage × the lead's latest campaign). Best-effort; never blocks.
+  if (stageChanged) {
+    await runStageChange(leadId, stage).catch((err) =>
+      logger.error(`Stage-change chatbot trigger failed for ${leadId}: ${String(err)}`),
+    );
+  }
 
   // Premature lost (§3.1): the lead was marked Lost before ever completing a
   // consultation — alert the counsellor for a possible save.

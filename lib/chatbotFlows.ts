@@ -7,6 +7,7 @@ export const TRIGGER_EVENTS = [
   "template_message",
   "welcome",
   "keyword",
+  "stage_change",
 ] as const;
 
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number];
@@ -16,7 +17,13 @@ export const TRIGGER_EVENT_LABELS: Record<TriggerEvent, string> = {
   template_message: "Template message",
   welcome: "Welcome (first message)",
   keyword: "Keyword match",
+  stage_change: "Lead stage change",
 };
+
+/// Trigger config for a `stage_change` flow: fire when the lead reaches `stage`;
+/// if `campaign` is set, only for leads whose (latest) campaign matches. An empty
+/// campaign is a catch-all for that stage. See the matrix in lib/chatbotRuntime.ts.
+export type StageTriggerConfig = { stage?: string; campaign?: string };
 
 export function isTriggerEvent(v: string): v is TriggerEvent {
   return (TRIGGER_EVENTS as readonly string[]).includes(v);

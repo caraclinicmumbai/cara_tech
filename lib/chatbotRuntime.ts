@@ -60,6 +60,78 @@ export async function runChatbot(leadId: string, input: ChatInput): Promise<void
   }
 }
 
+// ── Stage-change trigger (proactive, §matrix) ────────────────────────
+
+/// Fire a chatbot flow when a lead's pipeline stage changes. Picks the best
+/// matching active `stage_change` flow using the (stage × campaign) matrix:
+/// a flow targeting BOTH the stage and the lead's latest campaign beats a
+/// stage-only catch-all; priority then recency break ties. Skipped if the lead
+/// opted out or is already mid-conversation (won't interrupt an active session).
+///
+/// NOTE: this is business-initiated — outside WhatsApp's 24h window the first
+/// message must be a template, so such flows should start with a Send Template node.
+export async function runStageChange(leadId: string, newStage: string): Promise<void> {
+  try {
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { id: true, name: true, phone: true, optedOut: true, campaign: true },
+    });
+    if (!lead || lead.optedOut) return;
+
+    const active = await prisma.chatbotSession.findFirst({
+      where: { leadId, status: "active" },
+      select: { id: true },
+    });
+    if (active) return; // don't talk over an ongoing conversation
+
+    const now = new Date();
+    const flows = await prisma.chatbotFlow.findMany({
+      where: { active: true, triggerEvent: "stage_change", OR: [{ expireOn: null }, { expireOn: { gt: now } }] },
+    });
+
+    const leadCampaign = lead.campaign ?? "";
+    const candidates = flows
+      .map((f) => {
+        const cfg = (f.triggerConfig && typeof f.triggerConfig === "object" ? f.triggerConfig : {}) as {
+          stage?: string;
+          campaign?: string;
+        };
+        const stageOk = !cfg.stage || cfg.stage === newStage;
+        const campSpecified = !!cfg.campaign;
+        const campOk = !campSpecified || cfg.campaign === leadCampaign;
+        if (!stageOk || !campOk) return null;
+        // Most-specific wins: campaign-matched (+2) beats stage-only; exact stage (+1).
+        const specificity = (cfg.stage === newStage ? 1 : 0) + (campSpecified ? 2 : 0);
+        return { f, specificity };
+      })
+      .filter((x): x is { f: (typeof flows)[number]; specificity: number } => x !== null);
+
+    if (candidates.length === 0) return;
+    candidates.sort(
+      (a, b) =>
+        b.specificity - a.specificity ||
+        priorityRank(b.f.priority) - priorityRank(a.f.priority) ||
+        +b.f.updatedAt - +a.f.updatedAt,
+    );
+    const flow = candidates[0].f;
+
+    const graph = asGraph(flow.graph);
+    const trigger = graph.nodes.find((n) => n.type === "trigger") ?? graph.nodes[0];
+    if (!trigger) return;
+    const firstId = nextTarget(graph, trigger.id, "out");
+    if (!firstId) return;
+
+    const vars: Vars = { stage: newStage, campaign: leadCampaign, message_text: "" };
+    const session = await prisma.chatbotSession.create({
+      data: { leadId: lead.id, flowId: flow.id, status: "active", variables: vars as Prisma.InputJsonValue },
+    });
+    logger.info(`Chatbot stage-change flow "${flow.name}" started for lead ${lead.id} (stage ${newStage})`);
+    await walk(session.id, graph, firstId, { leadId: lead.id, leadName: lead.name, leadPhone: lead.phone, vars });
+  } catch (err) {
+    logger.error(`Chatbot stage-change error for lead ${leadId}: ${String(err)}`);
+  }
+}
+
 // ── Start a new flow ─────────────────────────────────────────────────
 
 async function start(
