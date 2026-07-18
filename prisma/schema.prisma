@@ -135,9 +135,10 @@ model Lead {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  calls    Call[]
-  messages Message[]
-  quotes   Quote[]
+  calls           Call[]
+  messages        Message[]
+  quotes          Quote[]
+  chatbotSessions ChatbotSession[]
 
   @@index([status])
   @@index([phone])
@@ -327,8 +328,31 @@ model ChatbotFlow {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sessions ChatbotSession[]
+
   @@index([active])
   @@index([triggerEvent])
+}
+
+/// A running chatbot conversation (Phase 3 — runtime). One active session per lead:
+/// when the flow hits a wait node (ask / buttons / list) it pauses here with the
+/// node id, and the lead's next inbound message resumes it. `variables` holds the
+/// answers collected so far (used for {{placeholder}} interpolation + branching).
+model ChatbotSession {
+  id            String  @id @default(cuid())
+  leadId        String
+  lead          Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  flowId        String
+  flow          ChatbotFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  status        String  @default("active") // active (waiting for a reply) | ended
+  currentNodeId String? // the wait node we're paused at
+  waitKind      String? // ask | buttons | list — how to read the next reply
+  variables     Json    @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([leadId, status])
+  @@index([flowId])
 }
 
 // ── Phase 2 foundations ──────────────────────────────────────────────

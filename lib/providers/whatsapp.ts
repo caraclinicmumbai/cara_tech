@@ -166,6 +166,72 @@ export async function sendWhatsAppDocumentTemplate(
   });
 }
 
+/// Send interactive reply BUTTONS (max 3). Each button has a stable id we read back
+/// from the tap to branch the chatbot flow. Session message → 24h window only.
+export async function sendWhatsAppButtons(
+  to: string,
+  bodyText: string,
+  buttons: { id: string; title: string }[],
+): Promise<WhatsAppSendResult> {
+  return postMessage({
+    to: normalizeNumber(to),
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: bodyText.slice(0, 1024) },
+      action: {
+        buttons: buttons.slice(0, 3).map((b) => ({
+          type: "reply",
+          reply: { id: b.id, title: b.title.slice(0, 20) },
+        })),
+      },
+    },
+  });
+}
+
+/// Send an interactive LIST (single section). Rows carry stable ids read back on
+/// selection. Session message → 24h window only.
+export async function sendWhatsAppList(
+  to: string,
+  bodyText: string,
+  buttonText: string,
+  rows: { id: string; title: string; description?: string }[],
+): Promise<WhatsAppSendResult> {
+  return postMessage({
+    to: normalizeNumber(to),
+    type: "interactive",
+    interactive: {
+      type: "list",
+      body: { text: bodyText.slice(0, 1024) },
+      action: {
+        button: (buttonText || "Choose").slice(0, 20),
+        sections: [
+          {
+            rows: rows.slice(0, 10).map((r) => ({
+              id: r.id,
+              title: r.title.slice(0, 24),
+              ...(r.description ? { description: r.description.slice(0, 72) } : {}),
+            })),
+          },
+        ],
+      },
+    },
+  });
+}
+
+/// Send an image by public link, with an optional caption. Session message.
+export async function sendWhatsAppImageLink(
+  to: string,
+  link: string,
+  caption?: string,
+): Promise<WhatsAppSendResult> {
+  return postMessage({
+    to: normalizeNumber(to),
+    type: "image",
+    image: { link, ...(caption ? { caption } : {}) },
+  });
+}
+
 // ── Inbound media (Phase 2) ──────────────────────────────────────────
 // WhatsApp media arrives as an id; fetching it is two hops, both bearer-authed:
 // 1) GET /{media_id} → a short-lived download URL + mime type.

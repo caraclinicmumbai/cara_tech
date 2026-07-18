@@ -13,6 +13,9 @@ import {
   uploadWhatsAppMedia,
   sendWhatsAppDocument,
   sendWhatsAppDocumentTemplate,
+  sendWhatsAppButtons,
+  sendWhatsAppList,
+  sendWhatsAppImageLink,
 } from "@/lib/providers/whatsapp";
 import { logger } from "@/lib/logger";
 
@@ -200,6 +203,80 @@ export async function sendLeadDocument(
     return { ok: false, error: res.error };
   }
   return { ok: true, message };
+}
+
+/// Send interactive reply buttons to a lead and log it (chatbot runtime, Phase 3).
+/// 24h-window only, like free text.
+export async function sendLeadButtons(
+  leadId: string,
+  text: string,
+  buttons: { id: string; title: string }[],
+  opts: SendOpts = {},
+): Promise<{ ok: true; message: Message } | { ok: false; error: string }> {
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!lead) return { ok: false, error: "Lead not found" };
+  if (lead.optedOut) return { ok: false, error: "Lead has opted out of messaging" };
+  if (!(await isServiceWindowOpen(leadId))) return { ok: false, error: "Outside the 24h window" };
+
+  const res = await sendWhatsAppButtons(lead.phone, text, buttons);
+  const message = await prisma.message.create({
+    data: {
+      leadId, direction: "outbound", waId: res.ok ? res.waId : undefined,
+      type: "interactive", body: `${text}  [${buttons.map((b) => b.title).join(" / ")}]`,
+      status: res.ok ? "sent" : "failed", error: res.ok ? undefined : res.error,
+      automated: opts.automated ?? true, sentBy: opts.sentBy,
+    },
+  });
+  return res.ok ? { ok: true, message } : { ok: false, error: res.error };
+}
+
+/// Send an interactive list to a lead and log it (chatbot runtime). 24h-window only.
+export async function sendLeadList(
+  leadId: string,
+  text: string,
+  buttonText: string,
+  rows: { id: string; title: string; description?: string }[],
+  opts: SendOpts = {},
+): Promise<{ ok: true; message: Message } | { ok: false; error: string }> {
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!lead) return { ok: false, error: "Lead not found" };
+  if (lead.optedOut) return { ok: false, error: "Lead has opted out of messaging" };
+  if (!(await isServiceWindowOpen(leadId))) return { ok: false, error: "Outside the 24h window" };
+
+  const res = await sendWhatsAppList(lead.phone, text, buttonText, rows);
+  const message = await prisma.message.create({
+    data: {
+      leadId, direction: "outbound", waId: res.ok ? res.waId : undefined,
+      type: "interactive", body: `${text}  [list: ${rows.map((r) => r.title).join(", ")}]`,
+      status: res.ok ? "sent" : "failed", error: res.ok ? undefined : res.error,
+      automated: opts.automated ?? true, sentBy: opts.sentBy,
+    },
+  });
+  return res.ok ? { ok: true, message } : { ok: false, error: res.error };
+}
+
+/// Send an image (by link) to a lead and log it (chatbot runtime). 24h-window only.
+export async function sendLeadImage(
+  leadId: string,
+  url: string,
+  caption: string | undefined,
+  opts: SendOpts = {},
+): Promise<{ ok: true; message: Message } | { ok: false; error: string }> {
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!lead) return { ok: false, error: "Lead not found" };
+  if (lead.optedOut) return { ok: false, error: "Lead has opted out of messaging" };
+  if (!(await isServiceWindowOpen(leadId))) return { ok: false, error: "Outside the 24h window" };
+
+  const res = await sendWhatsAppImageLink(lead.phone, url, caption);
+  const message = await prisma.message.create({
+    data: {
+      leadId, direction: "outbound", waId: res.ok ? res.waId : undefined,
+      type: "image", body: caption ? `[image] ${caption}` : "[image]",
+      status: res.ok ? "sent" : "failed", error: res.ok ? undefined : res.error,
+      automated: opts.automated ?? true, sentBy: opts.sentBy,
+    },
+  });
+  return res.ok ? { ok: true, message } : { ok: false, error: res.error };
 }
 
 /// Send an approved template to a lead and log it. Templates may be sent any time

@@ -7,28 +7,38 @@
 // consent ("YES") keywords. Persisting opt-out and wiring the consent/fallback
 // flows is the next step.
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { verifyMetaSignature } from "@/lib/providers/meta";
 import { optOutLeadsByPhone } from "@/lib/leadIntake";
 import { findLeadByPhone, findOrCreateLeadByPhone, recordInbound, updateMessageStatus } from "@/lib/messages";
+import { runChatbot } from "@/lib/chatbotRuntime";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
 import { logger } from "@/lib/logger";
 
 const OPT_OUT_KEYWORDS = ["stop", "stop messages", "unsubscribe"];
 const CONSENT_KEYWORDS = ["yes", "y"];
 
-// Flatten a WhatsApp inbound message into {type, body, mediaId} for storage.
-function parseInbound(msg: any): { type: string; body: string; mediaId?: string } {
+// Flatten a WhatsApp inbound message into a storable + routable shape. For button /
+// list replies we also surface the reply id + title so the chatbot can branch.
+function parseInbound(msg: any): {
+  type: string;
+  body: string;
+  mediaId?: string;
+  interactiveId?: string;
+  interactiveTitle?: string;
+} {
   const type: string = msg.type ?? "text";
   switch (type) {
     case "text":
       return { type, body: msg.text?.body ?? "" };
     case "button":
-      return { type, body: msg.button?.text ?? "" };
-    case "interactive":
-      return {
-        type,
-        body: msg.interactive?.button_reply?.title ?? msg.interactive?.list_reply?.title ?? "",
-      };
+      return { type, body: msg.button?.text ?? "", interactiveId: msg.button?.payload, interactiveTitle: msg.button?.text };
+    case "interactive": {
+      const br = msg.interactive?.button_reply;
+      const lr = msg.interactive?.list_reply;
+      const title = br?.title ?? lr?.title ?? "";
+      return { type, body: title, interactiveId: br?.id ?? lr?.id, interactiveTitle: title };
+    }
     case "image":
       return { type, body: msg.image?.caption ?? "[image]", mediaId: msg.image?.id };
     case "document":
@@ -90,8 +100,14 @@ export async function POST(req: Request) {
 
         for (const msg of value.messages ?? []) {
           const from = msg.from;
-          const { type, body, mediaId } = parseInbound(msg);
+          const { type, body, mediaId, interactiveId, interactiveTitle } = parseInbound(msg);
           const norm = body.trim().toLowerCase();
+
+          // Dedup chatbot execution across Meta's webhook retries: if we've already
+          // stored this message id, don't re-run the flow (it would double-reply).
+          const alreadySeen = msg.id
+            ? await prisma.message.findUnique({ where: { waId: msg.id }, select: { id: true } })
+            : null;
 
           // Opt-out keyword (§3.1.10): suppress all outreach for this number.
           if (OPT_OUT_KEYWORDS.includes(norm)) {
@@ -113,6 +129,12 @@ export async function POST(req: Request) {
             await recordInbound({ leadId: lead.id, waId: msg.id, type, body, mediaId });
             await notifyInbound(lead.id, lead.name, body);
             logger.info(`WhatsApp inbound stored for lead ${lead.id} (${type})`);
+
+            // Drive the chatbot flow — but not for opt-out messages, and only once
+            // per message id (dedup above), so retries don't double-fire.
+            if (!isOptOut && !alreadySeen) {
+              await runChatbot(lead.id, { text: body, interactiveId, interactiveTitle });
+            }
           } else {
             logger.warn(`WhatsApp opt-out from unknown number ${from} — nothing to suppress`);
           }
