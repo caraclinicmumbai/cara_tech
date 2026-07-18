@@ -302,6 +302,35 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+/// A WhatsApp chatbot flow (Phase 2 — chatbot builder). A visual node graph that
+/// runs against inbound WhatsApp messages: on a matching trigger, the runtime walks
+/// the nodes (send messages, ask questions, branch, assign) node-by-node. The graph
+/// itself is stored as JSON (React Flow nodes + edges); see lib/chatbotFlows.ts.
+model ChatbotFlow {
+  id           String    @id @default(cuid())
+  name         String
+  // What starts the flow: inbound_message | template_message | … (TRIGGER_EVENTS).
+  triggerEvent String    @default("inbound_message")
+  // Optional trigger match config (e.g. { field: "message_text", op: "not_equals", value: "XYZ" }).
+  triggerConfig Json?
+  priority     String    @default("high") // high | medium | low
+  active       Boolean   @default(false)
+  expireOn     DateTime? // null = never expires
+  // The flow definition: { nodes: [...], edges: [...] } (React Flow shape).
+  graph        Json      @default("{\"nodes\":[],\"edges\":[]}")
+
+  // Branch scaffold (per-branch flows later) + who created it.
+  branchId    String?
+  branch      Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@index([triggerEvent])
+}
+
 // ── Phase 2 foundations ──────────────────────────────────────────────
 
 /// A clinic branch (Phase 2). Nullable scaffold for now — the clinic runs one
@@ -317,7 +346,8 @@ model Branch {
   leads          Lead[]
   reps           SalesRep[]
   users          User[]
-  invoicedQuotes Quote[]    @relation("QuoteInvoicedBranch")
+  invoicedQuotes Quote[]       @relation("QuoteInvoicedBranch")
+  chatbotFlows   ChatbotFlow[]
 }
 
 /// A treatment quote (Phase 2 §multi-quote). THE structural change: a lead is the

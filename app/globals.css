@@ -1,26 +1,286 @@
 @import "tailwindcss";
 
+/* ───────────────────────────────────────────────────────────────────────
+   CARA DESIGN TOKENS — v2.0 (editorial white)
+   Ported from the CARA consultation / enquiry prototypes.
+   ─────────────────────────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Surfaces */
+  --cara-page:         #ffffff;
+  --cara-surface:      #ffffff;
+  --cara-surface-2:    #fafaf7;
+  --cara-tint:         #f7f4ed;
+
+  /* Borders & rules */
+  --cara-rule:         #e0d9c8;
+  --cara-rule-strong:  #c8c2b3;
+  --cara-rule-soft:    #efebe1;
+
+  /* Brand & accent */
+  --cara-ink:          #1a1410;
+  --cara-ink-soft:     #3a3530;
+  --cara-beige:        #a0926a;
+  --cara-beige-deep:   #8a7340;
+
+  /* Text */
+  --cara-text:         #1a1410;
+  --cara-text-muted:   #6e6c66;
+  --cara-text-faint:   #a8a59c;
+  --cara-text-on-dark: #ffffff;
+
+  /* Semantic pastels — 3-stop ramps */
+  --state-info-bg:      #eef2f8;
+  --state-info-bd:      #c8d4e6;
+  --state-info-tx:      #3a5a82;
+
+  --state-success-bg:   #ecf3ec;
+  --state-success-bd:   #c4d7c4;
+  --state-success-tx:   #3d6b3d;
+
+  --state-warning-bg:   #f8f1e1;
+  --state-warning-bd:   #e0cfa0;
+  --state-warning-tx:   #7a5e1a;
+
+  --state-danger-bg:    #f6e6e6;
+  --state-danger-bd:    #dfb8b8;
+  --state-danger-tx:    #7a3a3a;
+
+  /* Pathway tints */
+  --path-hair-bg:       #ecf2ec;
+  --path-hair-accent:   #5c8470;
+  --path-skin-bg:       #f6ebee;
+  --path-skin-accent:   #9c5872;
+  --path-nsr-bg:        #ebebf3;
+  --path-nsr-accent:    #5e5c8a;
+
+  /* Base aliases used by existing utilities (background / foreground). */
+  --background: var(--cara-page);
+  --foreground: var(--cara-ink);
 }
 
+/* Map CARA tokens into the Tailwind theme so utilities resolve to the
+   editorial palette and the CARA fonts are available as font-sans/serif. */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background:   var(--background);
+  --color-foreground:   var(--foreground);
+
+  --color-cara-page:    var(--cara-page);
+  --color-cara-surface: var(--cara-surface);
+  --color-cara-surface-2: var(--cara-surface-2);
+  --color-cara-tint:    var(--cara-tint);
+  --color-cara-rule:    var(--cara-rule);
+  --color-cara-rule-strong: var(--cara-rule-strong);
+  --color-cara-rule-soft: var(--cara-rule-soft);
+  --color-cara-ink:     var(--cara-ink);
+  --color-cara-ink-soft: var(--cara-ink-soft);
+  --color-cara-beige:   var(--cara-beige);
+  --color-cara-beige-deep: var(--cara-beige-deep);
+  --color-cara-muted:   var(--cara-text-muted);
+  --color-cara-faint:   var(--cara-text-faint);
+
+  --color-info:    var(--state-info-tx);
+  --color-success: var(--state-success-tx);
+  --color-warning: var(--state-warning-tx);
+  --color-danger:  var(--state-danger-tx);
+
+  --font-sans:  var(--font-sans), "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-serif), "Cormorant Garamond", Georgia, "Times New Roman", serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* Editorial white is light-only — neutralise the dark: variant so the
+   dark-mode utilities scattered through the existing components stay inert. */
+@variant dark (&:where(.__cara-never-dark));
+
+/* ─── Base ─── */
+html { color-scheme: light; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--cara-page);
+  color: var(--cara-text);
+  font-family: var(--font-sans), "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+h1, h2, h3 {
+  font-family: var(--font-serif), "Cormorant Garamond", Georgia, serif;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--cara-ink);
+}
+
+::selection { background: var(--cara-tint); }
+
+/* ───────────────────────────────────────────────────────────────────────
+   CARA COMPONENT CLASSES — reusable across the dashboard
+   ─────────────────────────────────────────────────────────────────────── */
+
+/* Editorial section header */
+.cara-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--cara-beige);
+}
+.cara-title {
+  font-family: var(--font-serif), "Cormorant Garamond", Georgia, serif;
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--cara-ink);
+}
+.cara-note { font-size: 13px; color: var(--cara-text-muted); }
+.cara-sec-hd {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 0.5px solid var(--cara-rule-soft);
+}
+
+/* Surface card */
+.cara-card {
+  background: var(--cara-surface);
+  border: 0.5px solid var(--cara-rule);
+  border-radius: 0;
+}
+.cara-tint { background: var(--cara-tint); }
+
+/* Buttons */
+.cara-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--cara-surface);
+  border: 0.5px solid var(--cara-ink);
+  color: var(--cara-ink);
+  padding: 10px 18px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .15s;
+}
+.cara-btn:hover { background: var(--cara-surface-2); }
+.cara-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.cara-btn-primary { background: var(--cara-ink); color: var(--cara-text-on-dark); }
+.cara-btn-primary:hover { background: var(--cara-ink-soft); }
+.cara-btn-pdf { background: var(--cara-beige-deep); border-color: var(--cara-beige-deep); color: var(--cara-text-on-dark); }
+.cara-btn-pdf:hover { background: #6d5b34; border-color: #6d5b34; }
+.cara-btn-save { background: var(--state-success-tx); border-color: var(--state-success-tx); color: var(--cara-text-on-dark); }
+.cara-btn-save:hover { background: #2f5530; border-color: #2f5530; }
+
+/* Inputs */
+.cara-input, .cara-textarea, .cara-select {
+  width: 100%;
+  background: var(--cara-surface);
+  border: 0.5px solid var(--cara-rule);
+  color: var(--cara-ink);
+  padding: 9px 11px;
+  font-family: inherit;
+  font-size: 14px;
+  border-radius: 0;
+  outline: none;
+  transition: border-color .15s;
+}
+.cara-input::placeholder, .cara-textarea::placeholder { color: var(--cara-text-faint); }
+.cara-input:focus, .cara-textarea:focus, .cara-select:focus { border-color: var(--cara-beige); }
+.cara-textarea { min-height: 80px; resize: vertical; line-height: 1.5; }
+.cara-label {
+  display: block;
+  font-size: 13px;
+  color: var(--cara-text-muted);
+  margin-bottom: 8px;
+}
+
+/* Multi-select chip */
+.cara-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--cara-surface);
+  border: 0.5px solid var(--cara-rule);
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--cara-text);
+  cursor: pointer;
+  user-select: none;
+  transition: all .15s;
+  border-radius: 999px;
+}
+.cara-chip:hover { border-color: var(--cara-beige); }
+.cara-chip.on {
+  background: var(--cara-tint);
+  border-color: var(--cara-beige);
+  color: var(--cara-beige-deep);
+  font-weight: 500;
+}
+
+/* Radio / segmented pill */
+.cara-pill {
+  background: var(--cara-surface);
+  border: 0.5px solid var(--cara-rule);
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--cara-text);
+  cursor: pointer;
+  user-select: none;
+  transition: all .15s;
+  border-radius: 4px;
+}
+.cara-pill:hover { border-color: var(--cara-beige); }
+.cara-pill.on {
+  background: var(--cara-ink);
+  color: var(--cara-text-on-dark);
+  border-color: var(--cara-ink);
+}
+
+/* Status badge */
+.cara-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 0.5px solid var(--cara-rule);
+  background: var(--cara-tint);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--cara-beige-deep);
+}
+.cara-badge-info    { background: var(--state-info-bg);    border-color: var(--state-info-bd);    color: var(--state-info-tx); }
+.cara-badge-success { background: var(--state-success-bg); border-color: var(--state-success-bd); color: var(--state-success-tx); }
+.cara-badge-warning { background: var(--state-warning-bg); border-color: var(--state-warning-bd); color: var(--state-warning-tx); }
+.cara-badge-danger  { background: var(--state-danger-bg);  border-color: var(--state-danger-bd);  color: var(--state-danger-tx); }
+
+/* Callout */
+.cara-callout {
+  padding: 12px 16px;
+  font-size: 13px;
+  border: 0.5px solid;
+}
+.cara-callout-info    { background: var(--state-info-bg);    border-color: var(--state-info-bd);    color: var(--state-info-tx); }
+.cara-callout-success { background: var(--state-success-bg); border-color: var(--state-success-bd); color: var(--state-success-tx); }
+.cara-callout-warning { background: var(--state-warning-bg); border-color: var(--state-warning-bd); color: var(--state-warning-tx); }
+.cara-callout-danger  { background: var(--state-danger-bg);  border-color: var(--state-danger-bd);  color: var(--state-danger-tx); }
+
+/* Editorial table */
+.cara-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cara-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--cara-text-muted);
+  padding: 10px 12px;
+  border-bottom: 0.5px solid var(--cara-rule);
+  background: var(--cara-surface-2);
+}
+.cara-table td {
+  padding: 10px 12px;
+  border-bottom: 0.5px solid var(--cara-rule-soft);
+  vertical-align: top;
+  color: var(--cara-ink);
+}
+.cara-table tbody tr:hover { background: var(--cara-surface-2); }

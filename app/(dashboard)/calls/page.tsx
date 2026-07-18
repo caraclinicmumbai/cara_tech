@@ -17,43 +17,46 @@ export default async function CallsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Call history ({calls.length})</h1>
-      <div className="overflow-x-auto rounded border border-black/10 dark:border-white/15">
-        <table className="w-full text-sm">
-          <thead className="bg-black/5 dark:bg-white/10 text-left">
+      <header className="cara-sec-hd">
+        <div className="cara-eyebrow">History</div>
+        <h1 className="cara-title">Call history ({calls.length})</h1>
+      </header>
+      <div className="cara-card overflow-x-auto">
+        <table className="cara-table">
+          <thead>
             <tr>
-              <th className="px-3 py-2">Lead</th>
-              <th className="px-3 py-2">Type</th>
-              <th className="px-3 py-2">Handled by</th>
-              <th className="px-3 py-2">Outcome</th>
-              <th className="px-3 py-2">Sentiment</th>
-              <th className="px-3 py-2">Duration</th>
-              <th className="px-3 py-2">When</th>
+              <th>Lead</th>
+              <th>Type</th>
+              <th>Handled by</th>
+              <th>Outcome</th>
+              <th>Sentiment</th>
+              <th>Duration</th>
+              <th>When</th>
             </tr>
           </thead>
           <tbody>
             {calls.map((call) => (
-              <tr key={call.id} className="border-t border-black/5 dark:border-white/10">
-                <td className="px-3 py-2">
-                  <Link href={`/leads/${call.leadId}`} className="font-medium hover:underline">
+              <tr key={call.id}>
+                <td>
+                  <Link href={`/leads/${call.leadId}`} className="font-medium text-cara-ink hover:underline">
                     {call.lead.name}
                   </Link>
                 </td>
-                <td className="px-3 py-2">{call.callType}</td>
-                <td className="px-3 py-2">
+                <td>{call.callType}</td>
+                <td>
                   {call.callType === "human_handover"
                     ? `👤 ${call.handledBy?.name ?? "—"}`
                     : "🤖 AI"}
                 </td>
-                <td className="px-3 py-2">{call.outcome ?? "—"}</td>
-                <td className="px-3 py-2">{call.sentiment ?? "—"}</td>
-                <td className="px-3 py-2">{call.duration ? `${call.duration}s` : "—"}</td>
-                <td className="px-3 py-2">{formatIst(call.createdAt)}</td>
+                <td>{call.outcome ?? "—"}</td>
+                <td>{call.sentiment ?? "—"}</td>
+                <td>{call.duration ? `${call.duration}s` : "—"}</td>
+                <td className="text-cara-muted">{formatIst(call.createdAt)}</td>
               </tr>
             ))}
             {calls.length === 0 && (
               <tr>
-                <td className="px-3 py-6 text-center text-black/50" colSpan={7}>
+                <td className="text-center text-cara-faint" colSpan={7}>
                   No calls yet.
                 </td>
               </tr>

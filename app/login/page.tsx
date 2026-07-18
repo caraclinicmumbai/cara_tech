@@ -14,13 +14,14 @@ export default async function LoginPage({
   const { callbackUrl } = await searchParams;
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-6">
-      <div className="w-full max-w-sm space-y-6 rounded-lg border border-black/10 p-8 dark:border-white/15">
+    <div className="flex min-h-screen items-center justify-center bg-cara-page px-6">
+      <div className="cara-card w-full max-w-sm space-y-6 p-8">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold">Cara Clinic</h1>
-          <p className="text-sm text-black/60 dark:text-white/60">
-            Sign in to continue.
-          </p>
+          <div className="font-serif text-3xl font-medium leading-none text-cara-ink">
+            CARA
+          </div>
+          <p className="cara-eyebrow">Clinic CRM</p>
+          <p className="pt-2 text-sm text-cara-muted">Sign in to continue.</p>
         </div>
         <LoginForm callbackUrl={callbackUrl ?? "/dashboard"} />
       </div>
