@@ -7,6 +7,26 @@ Format: newest first.
 
 ---
 
+## 2026-07-18 — Quote: discount-before-GST, bank details + Razorpay QR on the PDF
+
+- **Calculation corrected**: the discount is now applied to the base **first**, then GST
+  (5%) is charged on the discounted (net) amount — `total = (base − discount) + GST`. A
+  percentage discount is a % of the base. (Reverses the earlier GST-then-discount order.)
+  `computeQuoteTotals` updated; UI preview + card breakdown reordered Base → Discount →
+  GST → Total. Note: for a % discount the total is unchanged (commutes), but the GST
+  figure and any flat-₹ discount now compute correctly.
+- **Quote PDF** gains a **Payment** section: the clinic's bank details (Cara Healthcare
+  Pvt Ltd, A/C 020905011291, IFSC ICIC0000209, Santacruz West) + a scan-to-pay
+  **Razorpay QR** (`public/razorpay-qr.png`). Files: `lib/quoteStages.ts`,
+  `lib/quotePdf.ts`, `components/QuotesPanel.tsx`.
+
+## 2026-07-18 — Chatbot: log blocked sends for visibility
+
+A chatbot reply that couldn't send (24h window closed) used to return early and log
+nothing — the flow looked like it did nothing. `sendLeadText/Buttons/List/Image` now
+log a failed outbound with the reason ("Outside the 24h window — needs a template"), so
+the lead's thread shows exactly what was blocked. File: `lib/messages.ts`.
+
 ## 2026-07-18 — Chatbot: stage-change trigger (stage × campaign matrix)
 
 Chatbot flows can now fire **proactively when a lead's pipeline stage changes**, routed
