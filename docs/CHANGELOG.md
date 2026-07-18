@@ -7,6 +7,30 @@ Format: newest first.
 
 ---
 
+## 2026-07-18 — WhatsApp chatbot builder (list + visual builder + runtime)
+
+New **Chatbot** nav section (`chatbot.manage` — Branch Manager / CRM Admin) to build
+automated WhatsApp reply flows, modeled on 11Za. Three parts:
+
+- **Flow list** (`/chatbot`): table of flows — name, trigger event, priority, expire-on,
+  active toggle, edit/duplicate/delete + search + create. `ChatbotFlow` model.
+- **Visual builder** (`/chatbot/[id]`): React Flow (`@xyflow/react`) canvas with a
+  trigger start node, a grouped palette (Send a Message / Ask Questions / Utilities /
+  Actions) of the core node set, a per-node config panel, branching outputs
+  (Condition → Yes/No, Send Buttons → per-button, Switch, Business Hours), and Save.
+  Node specs in `components/flow/nodeConfig.ts`; graph stored on `ChatbotFlow.graph`.
+- **Runtime** (`lib/chatbotRuntime.ts`): on inbound WhatsApp, matches an active flow's
+  trigger (inbound_message / keyword / welcome, by priority), starts a `ChatbotSession`,
+  and walks the graph — sending text/media/buttons/list/template, pausing at ask/buttons/
+  list nodes until the reply, storing answers, and branching. `{{name}}`/`{{var}}`
+  interpolation. Hooked into `app/api/webhooks/whatsapp` (parses interactive reply ids;
+  dedups on message id).
+
+Provider: `sendWhatsAppButtons` / `sendWhatsAppList` / `sendWhatsAppImageLink` +
+`sendLeadButtons/List/Image` (logged to the thread). Schema additive (`ChatbotFlow`,
+`ChatbotSession`), applied to prod. v1 limits: Delay is pass-through, Jump To ends the
+branch, Assign Label is a no-op, and there's no human-handoff node yet.
+
 ## 2026-07-18 — Quote PDF + send over WhatsApp
 
 Quotes can now be turned into a **one-page PDF** and sent to the lead from inside the
