@@ -7,6 +7,24 @@ Format: newest first.
 
 ---
 
+## 2026-07-18 — Quote PDF + send over WhatsApp
+
+Quotes can now be turned into a **one-page PDF** and sent to the lead from inside the
+lead record (§multi-quote). PDF built with pdfkit (no browser) — clinic header, quote
+ref/date/validity, patient, treatment, and the Base · GST · Discount · Total breakdown;
+served via a session + ownership-gated route `GET /api/quotes/[id]/pdf` (the "📄 PDF"
+link). **Send on WhatsApp** on each quote card: inside the 24h window it sends a plain
+document message; outside it, it uses an **approved document-header template**
+(`QUOTE_DOC_TEMPLATE_NAME` / `_LANG`, `{{1}}` = patient name) so a quote can go out
+proactively. Button enabled when the window is open OR a template is configured.
+
+Files: `lib/quotePdf.ts`, `app/api/quotes/[id]/pdf/route.ts`, `lib/providers/whatsapp.ts`
+(uploadWhatsAppMedia / sendWhatsAppDocument / sendWhatsAppDocumentTemplate),
+`lib/messages.ts` (sendLeadDocument + template fallback), `app/(dashboard)/leads/
+quoteActions.ts`, `components/QuotesPanel.tsx`, `next.config.ts` (pdfkit external).
+No schema change. Email delivery is a separate follow-up (provider TBD). The proactive
+template path is inert until the template is approved + env var set on Railway.
+
 ## 2026-07-17 — Quote pricing: base + GST − discount, auto-calculated total
 
 The New Quote form now captures a **discount** (percentage OR flat rupees) and shows
