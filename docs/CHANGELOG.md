@@ -7,6 +7,21 @@ Format: newest first.
 
 ---
 
+## 2026-07-18 — Chatbot: stage-change trigger (stage × campaign matrix)
+
+Chatbot flows can now fire **proactively when a lead's pipeline stage changes**, routed
+by the lead's campaign. New trigger event `stage_change` with `triggerConfig { stage,
+campaign }` (configured from the flow list: a stage dropdown + optional campaign — no
+schema change, the column already existed). `runStageChange(leadId, newStage)` picks the
+best active flow via the matrix: a flow matching the stage AND the lead's **latest**
+campaign beats a stage-only catch-all; priority then recency break ties. Skips opted-out
+leads and won't interrupt an active session. Hooked into both stage-change paths — manual
+`setLeadStage` and the call auto-advance in `callIntake` (post-commit, best-effort).
+Business-initiated caveat: outside the 24h window the first message needs a template, so
+stage flows should start with a Send Template node. Files: `lib/chatbotRuntime.ts`,
+`lib/chatbotFlows.ts`, `app/(dashboard)/chatbot/{actions.ts,page.tsx}`,
+`components/ChatbotList.tsx`, `app/(dashboard)/leads/actions.ts`, `lib/callIntake.ts`.
+
 ## 2026-07-18 — WhatsApp chatbot builder (list + visual builder + runtime)
 
 New **Chatbot** nav section (`chatbot.manage` — Branch Manager / CRM Admin) to build
