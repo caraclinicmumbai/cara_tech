@@ -112,6 +112,28 @@ type SendOpts = {
   sentBy?: string;
 };
 
+/// Log a blocked/undelivered outbound so it's VISIBLE in the thread instead of
+/// silently vanishing (e.g. a chatbot reply that couldn't go out because the 24h
+/// window was closed). Returns the standard error result.
+async function logBlocked(
+  leadId: string,
+  type: string,
+  body: string,
+  error: string,
+  opts: SendOpts,
+): Promise<{ ok: false; error: string }> {
+  await prisma.message
+    .create({
+      data: {
+        leadId, direction: "outbound", type, body,
+        status: "failed", error,
+        automated: opts.automated ?? false, sentBy: opts.sentBy,
+      },
+    })
+    .catch(() => {});
+  return { ok: false, error };
+}
+
 /// Send a free-form text to a lead and log it. Enforces the 24h window — returns
 /// an error result (no send) if the window is closed; use a template instead.
 export async function sendLeadText(
@@ -123,7 +145,7 @@ export async function sendLeadText(
   if (!lead) return { ok: false, error: "Lead not found" };
   if (lead.optedOut) return { ok: false, error: "Lead has opted out of messaging" };
   if (!(await isServiceWindowOpen(leadId))) {
-    return { ok: false, error: "Outside the 24h window — send an approved template to re-open the chat" };
+    return logBlocked(leadId, "text", body, "Outside the 24h window — needs an approved template", opts);
   }
 
   const res = await sendWhatsAppText(lead.phone, body);
@@ -216,7 +238,8 @@ export async function sendLeadButtons(
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) return { ok: false, error: "Lead not found" };
   if (lead.optedOut) return { ok: false, error: "Lead has opted out of messaging" };
-  if (!(await isServiceWindowOpen(leadId))) return { ok: false, error: "Outside the 24h window" };
+  if (!(await isServiceWindowOpen(leadId)))
+    return logBlocked(leadId, "interactive", `${text}  [${buttons.map((x) => x.title).join(" / ")}]`, "Outside the 24h window — needs an approved template", opts);
 
   const res = await sendWhatsAppButtons(lead.phone, text, buttons);
   const message = await prisma.message.create({
@@ -241,7 +264,8 @@ export async function sendLeadList(
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) return { ok: false, error: "Lead not found" };
   if (lead.optedOut) return { ok: false, error: "Lead has opted out of messaging" };
-  if (!(await isServiceWindowOpen(leadId))) return { ok: false, error: "Outside the 24h window" };
+  if (!(await isServiceWindowOpen(leadId)))
+    return logBlocked(leadId, "interactive", `${text}  [list: ${rows.map((r) => r.title).join(", ")}]`, "Outside the 24h window — needs an approved template", opts);
 
   const res = await sendWhatsAppList(lead.phone, text, buttonText, rows);
   const message = await prisma.message.create({
@@ -265,7 +289,8 @@ export async function sendLeadImage(
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) return { ok: false, error: "Lead not found" };
   if (lead.optedOut) return { ok: false, error: "Lead has opted out of messaging" };
-  if (!(await isServiceWindowOpen(leadId))) return { ok: false, error: "Outside the 24h window" };
+  if (!(await isServiceWindowOpen(leadId)))
+    return logBlocked(leadId, "image", caption ? `[image] ${caption}` : "[image]", "Outside the 24h window — needs an approved template", opts);
 
   const res = await sendWhatsAppImageLink(lead.phone, url, caption);
   const message = await prisma.message.create({
