@@ -23,6 +23,7 @@
     "@anthropic-ai/sdk": "^0.105.0",
     "@auth/prisma-adapter": "^2.11.2",
     "@prisma/client": "^6.19.3",
+    "@xyflow/react": "^12.11.2",
     "axios": "^1.17.0",
     "bullmq": "^5.78.0",
     "date-fns": "^4.4.0",

@@ -47,6 +47,7 @@ export const CAPABILITIES = [
   "calls.view",
   "analytics.view",
   "templates.manage",
+  "chatbot.manage",
   "reps.manage",
   "settings.manage",
   "users.manage",
@@ -103,6 +104,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "calls.view",
     "analytics.view",
     "templates.manage",
+    "chatbot.manage",
     "reps.manage",
   ],
   sales_head: [
@@ -156,6 +158,7 @@ export function leadScope(role: string | undefined | null): "own" | "all" {
 export function routeCapability(pathname: string): Capability | null {
   if (pathname.startsWith("/dashboard") || pathname.startsWith("/cqs")) return "analytics.view";
   if (pathname.startsWith("/templates")) return "templates.manage";
+  if (pathname.startsWith("/chatbot")) return "chatbot.manage";
   if (pathname.startsWith("/settings")) return "settings.manage";
   if (pathname.startsWith("/users")) return "users.manage";
   if (pathname.startsWith("/leads/deleted")) return "leads.restore";

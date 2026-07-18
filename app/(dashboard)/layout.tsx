@@ -12,14 +12,21 @@ export default async function DashboardLayout({
   const role = (session?.user as { role?: string })?.role;
 
   const navLink =
-    "rounded px-3 py-2 text-sm text-black/70 hover:bg-black/5 dark:text-white/70 dark:hover:bg-white/10";
+    "px-3 py-2 text-[13px] text-cara-muted transition-colors hover:bg-cara-surface-2 hover:text-cara-ink";
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-black/10 dark:border-white/15">
-        <div className="px-4 py-4 text-base font-semibold">Cara Clinic</div>
+    <div className="flex min-h-screen bg-cara-page">
+      <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r-[0.5px] border-cara-rule bg-cara-tint">
+        <div className="border-b-[0.5px] border-cara-rule px-5 py-5">
+          <div className="font-serif text-2xl font-medium leading-none text-cara-ink">
+            CARA
+          </div>
+          <div className="mt-1 text-[10px] uppercase tracking-[1.5px] text-cara-muted">
+            Clinic CRM
+          </div>
+        </div>
 
-        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2">
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-3">
           {can(role, "analytics.view") && (
             <Link href="/dashboard" className={navLink}>Dashboard</Link>
           )}
@@ -36,6 +43,9 @@ export default async function DashboardLayout({
           {can(role, "templates.manage") && (
             <Link href="/templates" className={navLink}>Templates</Link>
           )}
+          {can(role, "chatbot.manage") && (
+            <Link href="/chatbot" className={navLink}>Chatbot</Link>
+          )}
           {can(role, "leads.restore") && (
             <Link href="/leads/deleted" className={navLink}>Deleted</Link>
           )}
@@ -47,14 +57,12 @@ export default async function DashboardLayout({
           )}
         </nav>
 
-        <div className="space-y-2 border-t border-black/10 px-4 py-3 text-sm dark:border-white/15">
+        <div className="space-y-2 border-t-[0.5px] border-cara-rule px-4 py-4 text-sm">
           {session?.user?.email && (
-            <div className="text-black/60 dark:text-white/60">
+            <div className="text-cara-muted">
               <div className="truncate">{session.user.email}</div>
               {isRole(role) && (
-                <span className="mt-1 inline-block rounded-full bg-black/5 px-2 py-0.5 text-xs dark:bg-white/10">
-                  {ROLE_LABELS[role]}
-                </span>
+                <span className="cara-badge mt-2">{ROLE_LABELS[role]}</span>
               )}
             </div>
           )}
@@ -64,7 +72,10 @@ export default async function DashboardLayout({
               await signOut({ redirectTo: "/login" });
             }}
           >
-            <button type="submit" className="text-black/70 hover:underline dark:text-white/70">
+            <button
+              type="submit"
+              className="text-cara-muted hover:text-cara-ink hover:underline"
+            >
               Sign out
             </button>
           </form>
@@ -72,7 +83,7 @@ export default async function DashboardLayout({
       </aside>
 
       <div className="min-w-0 flex-1">
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+        <main className="mx-auto max-w-6xl px-8 py-8">{children}</main>
       </div>
     </div>
   );

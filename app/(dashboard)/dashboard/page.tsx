@@ -40,14 +40,14 @@ function StatCard({
   sub?: string;
 }) {
   return (
-    <div className="rounded-lg border border-black/10 p-4 dark:border-white/15">
-      <div className="text-xs uppercase tracking-wide text-black/40 dark:text-white/40">
+    <div className="cara-card p-4">
+      <div className="text-[10px] uppercase tracking-[1.5px] text-cara-muted">
         {label}
       </div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
-      {sub && (
-        <div className="mt-0.5 text-xs text-black/45 dark:text-white/45">{sub}</div>
-      )}
+      <div className="mt-1 font-serif text-3xl font-medium tabular-nums text-cara-ink">
+        {value}
+      </div>
+      {sub && <div className="mt-0.5 text-xs text-cara-faint">{sub}</div>}
     </div>
   );
 }
@@ -63,21 +63,19 @@ function BarList({
       {items.map((i) => (
         <div key={i.label} className="space-y-1">
           <div className="flex justify-between text-sm">
-            <span className="capitalize">{i.label.replace(/_/g, " ")}</span>
-            <span className="tabular-nums text-black/60 dark:text-white/60">
-              {i.value}
-            </span>
+            <span className="capitalize text-cara-ink">{i.label.replace(/_/g, " ")}</span>
+            <span className="tabular-nums text-cara-muted">{i.value}</span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-black/5 dark:bg-white/10">
+          <div className="h-2 overflow-hidden rounded-full bg-cara-surface-2">
             <div
-              className="h-full rounded-full bg-foreground/80"
+              className="h-full rounded-full bg-cara-beige"
               style={{ width: `${(i.value / max) * 100}%` }}
             />
           </div>
         </div>
       ))}
       {items.length === 0 && (
-        <p className="text-sm text-black/40 dark:text-white/40">No data yet.</p>
+        <p className="text-sm text-cara-faint">No data yet.</p>
       )}
     </div>
   );
@@ -91,8 +89,8 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-4 rounded-lg border border-black/10 p-5 dark:border-white/15">
-      <h2 className="text-sm font-semibold">{title}</h2>
+    <section className="cara-card space-y-4 p-5">
+      <h2 className="cara-eyebrow">{title}</h2>
       {children}
     </section>
   );
@@ -154,7 +152,10 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-xl font-semibold">Dashboard</h1>
+      <header className="cara-sec-hd">
+        <div className="cara-eyebrow">Overview</div>
+        <h1 className="cara-title">Dashboard</h1>
+      </header>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard label="Total leads" value={totalLeads} />
@@ -187,46 +188,38 @@ export default async function DashboardPage() {
       </div>
 
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold">Recent calls</h2>
-        <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/15">
-          <table className="w-full text-sm">
-            <thead className="bg-black/5 text-left dark:bg-white/10">
+        <h2 className="cara-eyebrow">Recent calls</h2>
+        <div className="cara-card overflow-x-auto">
+          <table className="cara-table">
+            <thead>
               <tr>
-                <th className="px-3 py-2">Lead</th>
-                <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Outcome</th>
-                <th className="px-3 py-2">Sentiment</th>
-                <th className="px-3 py-2">When</th>
+                <th>Lead</th>
+                <th>Type</th>
+                <th>Outcome</th>
+                <th>Sentiment</th>
+                <th>When</th>
               </tr>
             </thead>
             <tbody>
               {recentCalls.map((call) => (
-                <tr
-                  key={call.id}
-                  className="border-t border-black/5 dark:border-white/10"
-                >
-                  <td className="px-3 py-2">
+                <tr key={call.id}>
+                  <td>
                     <Link
                       href={`/leads/${call.leadId}`}
-                      className="font-medium hover:underline"
+                      className="font-medium text-cara-ink hover:underline"
                     >
                       {call.lead.name}
                     </Link>
                   </td>
-                  <td className="px-3 py-2">{call.callType}</td>
-                  <td className="px-3 py-2">{call.outcome ?? "—"}</td>
-                  <td className="px-3 py-2">{call.sentiment ?? "—"}</td>
-                  <td className="px-3 py-2 text-black/60 dark:text-white/60">
-                    {formatIst(call.createdAt)}
-                  </td>
+                  <td>{call.callType}</td>
+                  <td>{call.outcome ?? "—"}</td>
+                  <td>{call.sentiment ?? "—"}</td>
+                  <td className="text-cara-muted">{formatIst(call.createdAt)}</td>
                 </tr>
               ))}
               {recentCalls.length === 0 && (
                 <tr>
-                  <td
-                    className="px-3 py-6 text-center text-black/50"
-                    colSpan={5}
-                  >
+                  <td className="text-center text-cara-faint" colSpan={5}>
                     No calls yet.
                   </td>
                 </tr>

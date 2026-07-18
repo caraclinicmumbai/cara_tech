@@ -14,7 +14,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
       <input type="hidden" name="callbackUrl" value={callbackUrl} />
 
       <div className="space-y-1">
-        <label htmlFor="email" className="text-sm font-medium">
+        <label htmlFor="email" className="cara-label">
           Email
         </label>
         <input
@@ -23,12 +23,12 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
           type="email"
           autoComplete="email"
           required
-          className="w-full rounded border border-black/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50"
+          className="cara-input"
         />
       </div>
 
       <div className="space-y-1">
-        <label htmlFor="password" className="text-sm font-medium">
+        <label htmlFor="password" className="cara-label">
           Password
         </label>
         <input
@@ -37,19 +37,15 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
           type="password"
           autoComplete="current-password"
           required
-          className="w-full rounded border border-black/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50"
+          className="cara-input"
         />
       </div>
 
       {errorMessage && (
-        <p className="text-sm text-red-600 dark:text-red-400">{errorMessage}</p>
+        <p className="cara-callout cara-callout-danger">{errorMessage}</p>
       )}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded bg-foreground px-3 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
-      >
+      <button type="submit" disabled={pending} className="cara-btn cara-btn-primary w-full">
         {pending ? "Signing in…" : "Sign in"}
       </button>
     </form>

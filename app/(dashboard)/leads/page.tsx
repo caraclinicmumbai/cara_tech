@@ -60,13 +60,16 @@ export default async function LeadsPage() {
     <div className="space-y-8">
       {can(role, "leads.create") && (
         <section className="space-y-4">
-          <h1 className="text-xl font-semibold">New lead</h1>
+          <header className="cara-sec-hd">
+            <div className="cara-eyebrow">Intake</div>
+            <h1 className="cara-title">New lead</h1>
+          </header>
           <LeadForm />
         </section>
       )}
 
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Leads ({rows.length})</h2>
+        <h2 className="cara-eyebrow">Leads ({rows.length})</h2>
         <LeadsTable
           leads={rows}
           sourceLabels={SOURCE_LABELS}
