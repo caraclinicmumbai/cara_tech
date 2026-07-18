@@ -11,6 +11,7 @@ import {
   setFlowActive,
   setFlowPriority,
   setFlowTrigger,
+  setFlowTriggerConfig,
   duplicateFlow,
   deleteFlow,
 } from "@/app/(dashboard)/chatbot/actions";
@@ -22,11 +23,14 @@ import {
   type TriggerEvent,
   type FlowPriority,
 } from "@/lib/chatbotFlows";
+import { LEAD_STAGES, STAGE_LABELS } from "@/lib/leadStages";
 
 type FlowRow = {
   id: string;
   name: string;
   triggerEvent: string;
+  triggerStage: string;
+  triggerCampaign: string;
   priority: string;
   active: boolean;
   expireOn: string | null;
@@ -152,6 +156,32 @@ export function ChatbotList({ flows }: { flows: FlowRow[] }) {
                       <option key={t} value={t}>{TRIGGER_EVENT_LABELS[t as TriggerEvent]}</option>
                     ))}
                   </select>
+                  {/* Stage-change flows carry the matrix: which stage + optional campaign. */}
+                  {f.triggerEvent === "stage_change" && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <select
+                        className={`${inputCls} text-xs`}
+                        defaultValue={f.triggerStage}
+                        disabled={pending}
+                        onChange={(e) => run(() => setFlowTriggerConfig(f.id, { stage: e.target.value, campaign: f.triggerCampaign }))}
+                      >
+                        <option value="">Any stage…</option>
+                        {LEAD_STAGES.map((sg) => (
+                          <option key={sg} value={sg}>{STAGE_LABELS[sg]}</option>
+                        ))}
+                      </select>
+                      <input
+                        className={`${inputCls} w-32 text-xs`}
+                        placeholder="Campaign (opt.)"
+                        defaultValue={f.triggerCampaign}
+                        disabled={pending}
+                        onBlur={(e) => {
+                          if (e.target.value !== f.triggerCampaign)
+                            run(() => setFlowTriggerConfig(f.id, { stage: f.triggerStage, campaign: e.target.value }));
+                        }}
+                      />
+                    </div>
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   <select

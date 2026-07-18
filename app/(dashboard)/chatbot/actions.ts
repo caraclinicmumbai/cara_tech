@@ -78,6 +78,25 @@ export async function setFlowTrigger(id: string, triggerEvent: string): Promise<
   return { ok: true };
 }
 
+/// Set the trigger matching config — for `stage_change` flows this is the target
+/// stage + optional campaign (the matrix). Stored on ChatbotFlow.triggerConfig.
+export async function setFlowTriggerConfig(
+  id: string,
+  config: { stage?: string; campaign?: string },
+): Promise<Result> {
+  await requireCapability("chatbot.manage");
+  const clean = {
+    stage: config.stage?.trim() || undefined,
+    campaign: config.campaign?.trim() || undefined,
+  };
+  await prisma.chatbotFlow.update({
+    where: { id },
+    data: { triggerConfig: clean as Prisma.InputJsonValue },
+  });
+  revalidatePath("/chatbot");
+  return { ok: true };
+}
+
 /// Duplicate a flow (name + " (copy)"), inactive, graph copied verbatim.
 export async function duplicateFlow(id: string): Promise<Result> {
   const user = await requireCapability("chatbot.manage");

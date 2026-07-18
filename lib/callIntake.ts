@@ -15,6 +15,7 @@ import { notifyCounsellor, type CounsellorAlertKind } from "@/lib/counsellor";
 import { notifySalesHead } from "@/lib/salesHead";
 import { sendAutomatedTemplate, outreachTemplate, firstName, istTime } from "@/lib/outreach";
 import { scoreCQS } from "@/lib/cqs";
+import { runStageChange } from "@/lib/chatbotRuntime";
 import { logger } from "@/lib/logger";
 
 // Outcomes that END the attempt ladder — the lead was reached and a decision
@@ -253,6 +254,10 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     // measures time in the NEW stage (§3.1).
     leadData.stageChangedAt = new Date();
     leadData.stageStuckNotifiedAt = null;
+    // §matrix: auto-advancing the stage may fire a stage_change chatbot flow too.
+    afterCommit.push(async () => {
+      await runStageChange(lead.id, nextStage);
+    });
   }
 
   // Sales-head CQS-extreme ping (§3.1) — independent of any handover: fires for
