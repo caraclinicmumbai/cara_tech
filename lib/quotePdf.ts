@@ -158,16 +158,18 @@ export function buildQuotePdf(d: QuotePdfData): Promise<Buffer> {
       doc.font("Helvetica").fontSize(8).fillColor("#666").text("Scan to pay", qrX, y + qrSize + 3, { width: qrSize, align: "center" });
     }
 
-    // ── Footer note ──
-    y = Math.max(by, y + qrSize) + 16;
+    // ── Footer note ── (flows after the payment block; NOT pinned to the page
+    //    bottom, which would cross the margin and spill onto a 2nd page).
+    y = Math.max(by, y + qrSize + 14) + 14;
     doc.font("Helvetica").fontSize(9).fillColor("#777").text(
       "This is a quotation, not an invoice. Amounts are inclusive of GST and valid until the date above. " +
         "Please contact the clinic to confirm and proceed with your treatment.",
       left, y, { width },
     );
+    y = doc.y + 8;
     doc.fontSize(8).fillColor("#aaa").text(
       `Generated ${istDate(d.createdAt)} · ${CLINIC_NAME}`,
-      left, doc.page.height - 50, { width, align: "center" },
+      left, y, { width, align: "center" },
     );
 
     doc.end();
