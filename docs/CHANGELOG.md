@@ -7,6 +7,17 @@ Format: newest first.
 
 ---
 
+## 2026-07-20 — Template builder: buttons + WhatsApp-style preview
+
+The /templates builder now composes richer WhatsApp templates (closer to 11Za): add
+**Quick Reply / URL / Phone** buttons (submitted as a BUTTONS component), a header-type
+selector (None / Text), an "Add variable" helper, character counters, and a live
+**WhatsApp-style bubble preview** of header/body/footer/buttons. Backend `createTemplate`
++ new `TemplateButton` type build/validate the buttons; template actions gated on
+`templates.manage`. Media headers (image / video / document) are a follow-up — they need
+a sample-media resumable upload + a Meta app id. Files: `lib/whatsappTemplates.ts`,
+`components/TemplateBuilder.tsx`, `app/(dashboard)/templates/actions.ts`.
+
 ## 2026-07-18 — Quote: discount-before-GST, bank details + Razorpay QR on the PDF
 
 - **Calculation corrected**: the discount is now applied to the base **first**, then GST
