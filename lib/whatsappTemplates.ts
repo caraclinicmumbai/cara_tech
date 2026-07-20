@@ -122,6 +122,12 @@ export async function listAllTemplates(): Promise<WhatsAppTemplateRow[]> {
   }
 }
 
+/// A template call-to-action / quick-reply button (§template builder).
+export type TemplateButton =
+  | { type: "QUICK_REPLY"; text: string }
+  | { type: "URL"; text: string; url: string }
+  | { type: "PHONE_NUMBER"; text: string; phone_number: string };
+
 export type CreateTemplateInput = {
   name: string;
   language: string;
@@ -130,6 +136,7 @@ export type CreateTemplateInput = {
   body: string; // required; may contain {{1}}..{{n}}
   bodyExamples?: string[]; // example values for the body vars, in order (Meta requires these)
   footer?: string;
+  buttons?: TemplateButton[]; // quick-reply / URL / phone buttons (optional)
 };
 
 export type CreateTemplateResult =
@@ -164,6 +171,26 @@ export async function createTemplate(input: CreateTemplateInput): Promise<Create
   if (varCount > 0) bodyComp.example = { body_text: [examples.slice(0, varCount)] };
   components.push(bodyComp);
   if (input.footer?.trim()) components.push({ type: "FOOTER", text: input.footer.trim() });
+
+  // Buttons (quick-reply / URL / phone). Meta validates the exact mix + limits on
+  // submission; we do light per-button checks and let it surface the rest.
+  const buttons = (input.buttons ?? []).filter((b) => b.text?.trim());
+  if (buttons.length > 0) {
+    for (const b of buttons) {
+      if (b.type === "URL" && !b.url?.trim()) return { ok: false, error: `URL button "${b.text}" needs a URL` };
+      if (b.type === "PHONE_NUMBER" && !b.phone_number?.trim())
+        return { ok: false, error: `Call button "${b.text}" needs a phone number` };
+    }
+    components.push({
+      type: "BUTTONS",
+      buttons: buttons.map((b) => {
+        const text = b.text.trim().slice(0, 25);
+        if (b.type === "URL") return { type: "URL", text, url: b.url.trim() };
+        if (b.type === "PHONE_NUMBER") return { type: "PHONE_NUMBER", text, phone_number: b.phone_number.trim() };
+        return { type: "QUICK_REPLY", text };
+      }),
+    });
+  }
 
   try {
     const res = await axios.post(
