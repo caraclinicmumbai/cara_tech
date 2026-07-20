@@ -128,16 +128,61 @@ export type TemplateButton =
   | { type: "URL"; text: string; url: string }
   | { type: "PHONE_NUMBER"; text: string; phone_number: string };
 
+export type HeaderFormat = "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT";
+
 export type CreateTemplateInput = {
   name: string;
   language: string;
   category: "MARKETING" | "UTILITY";
-  header?: string; // static text header (optional)
+  header?: string; // static TEXT header (optional)
+  headerFormat?: HeaderFormat; // TEXT (uses `header`) or a media format (uses `headerHandle`)
+  headerHandle?: string; // resumable-upload handle for a media header (see uploadSampleMedia)
   body: string; // required; may contain {{1}}..{{n}}
   bodyExamples?: string[]; // example values for the body vars, in order (Meta requires these)
   footer?: string;
   buttons?: TemplateButton[]; // quick-reply / URL / phone buttons (optional)
 };
+
+/// Upload a SAMPLE media file to Meta's resumable-upload API and return its
+/// `header_handle` — required to create an IMAGE/VIDEO/DOCUMENT-header template.
+/// Two steps: create an upload session, then upload the bytes. Needs META_APP_ID.
+export async function uploadSampleMedia(
+  buffer: Buffer,
+  mime: string,
+  filename: string,
+): Promise<{ ok: true; handle: string } | { ok: false; error: string }> {
+  const token = process.env.WHATSAPP_TOKEN;
+  const appId = process.env.META_APP_ID;
+  if (!token) return { ok: false, error: "WhatsApp token not configured" };
+  if (!appId) return { ok: false, error: "META_APP_ID not set — add your Meta App ID to enable media headers" };
+
+  try {
+    // Step 1 — create an upload session.
+    const session = await axios.post(`${GRAPH}/${graphVersion()}/${appId}/uploads`, null, {
+      params: { file_name: filename, file_length: buffer.length, file_type: mime },
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 20_000,
+    });
+    const sessionId: string | undefined = session.data?.id;
+    if (!sessionId) return { ok: false, error: "No upload session id returned" };
+
+    // Step 2 — upload the bytes; response carries the file handle `h`.
+    const up = await axios.post(`${GRAPH}/${graphVersion()}/${sessionId}`, buffer, {
+      headers: { Authorization: `OAuth ${token}`, file_offset: "0", "Content-Type": "application/octet-stream" },
+      maxBodyLength: Infinity,
+      timeout: 60_000,
+    });
+    const handle: string | undefined = up.data?.h;
+    if (!handle) return { ok: false, error: "No file handle returned from upload" };
+    return { ok: true, handle };
+  } catch (err) {
+    const detail = axios.isAxiosError(err)
+      ? (err.response?.data?.error?.error_user_msg ?? err.response?.data?.error?.message ?? JSON.stringify(err.response?.data ?? err.message))
+      : String(err);
+    logger.error(`WhatsApp uploadSampleMedia failed: ${detail}`);
+    return { ok: false, error: String(detail) };
+  }
+}
 
 export type CreateTemplateResult =
   | { ok: true; id: string; status: string }
@@ -164,7 +209,11 @@ export async function createTemplate(input: CreateTemplateInput): Promise<Create
   }
 
   const components: Record<string, unknown>[] = [];
-  if (input.header?.trim()) {
+  // Header: a media header (uses the resumable-upload handle) or a plain TEXT header.
+  if (input.headerFormat && input.headerFormat !== "TEXT") {
+    if (!input.headerHandle) return { ok: false, error: "Upload a sample file for the media header" };
+    components.push({ type: "HEADER", format: input.headerFormat, example: { header_handle: [input.headerHandle] } });
+  } else if (input.header?.trim()) {
     components.push({ type: "HEADER", format: "TEXT", text: input.header.trim() });
   }
   const bodyComp: Record<string, unknown> = { type: "BODY", text: body };

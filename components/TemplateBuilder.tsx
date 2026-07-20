@@ -34,8 +34,9 @@ export function TemplateBuilder() {
   const [name, setName] = useState("");
   const [language, setLanguage] = useState("en_US");
   const [category, setCategory] = useState<"MARKETING" | "UTILITY">("UTILITY");
-  const [headerType, setHeaderType] = useState<"NONE" | "TEXT">("NONE");
+  const [headerType, setHeaderType] = useState<"NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT">("NONE");
   const [header, setHeader] = useState("");
+  const [headerFile, setHeaderFile] = useState<File | null>(null);
   const [body, setBody] = useState("");
   const [footer, setFooter] = useState("");
   const [examples, setExamples] = useState<string[]>([]);
@@ -58,9 +59,23 @@ export function TemplateBuilder() {
     setButtons((bs) => bs.map((b, idx) => (idx === i ? { ...b, ...patch } : b)));
   const removeButton = (i: number) => setButtons((bs) => bs.filter((_, idx) => idx !== i));
 
+  const isMediaHeader = headerType === "IMAGE" || headerType === "VIDEO" || headerType === "DOCUMENT";
+
   function submit() {
     setResult(null);
     startTransition(async () => {
+      // Media headers: upload the sample file first to get a header handle.
+      let headerHandle: string | undefined;
+      if (isMediaHeader) {
+        if (!headerFile) { setResult({ ok: false, msg: "Pick a sample file for the media header" }); return; }
+        const fd = new FormData();
+        fd.append("file", headerFile);
+        const up = await fetch("/api/templates/upload-sample", { method: "POST", body: fd });
+        const j = await up.json().catch(() => ({}));
+        if (!up.ok) { setResult({ ok: false, msg: j.error ?? "Sample upload failed" }); return; }
+        headerHandle = j.handle;
+      }
+
       const cleanButtons: TemplateButton[] = buttons
         .filter((b) => b.text.trim())
         .map((b) =>
@@ -75,6 +90,8 @@ export function TemplateBuilder() {
         language,
         category,
         header: headerType === "TEXT" ? header || undefined : undefined,
+        headerFormat: headerType === "NONE" ? undefined : headerType,
+        headerHandle,
         body,
         bodyExamples: examples.slice(0, varCount),
         footer: footer || undefined,
@@ -83,6 +100,7 @@ export function TemplateBuilder() {
       if (res.ok) {
         setResult({ ok: true, msg: `Submitted for review — status ${res.status}.` });
         setName(""); setHeader(""); setBody(""); setFooter(""); setExamples([]); setButtons([]);
+        setHeaderType("NONE"); setHeaderFile(null);
         router.refresh();
       } else {
         setResult({ ok: false, msg: res.error });
@@ -126,9 +144,13 @@ export function TemplateBuilder() {
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <label className="text-xs font-medium text-black/60 dark:text-white/60">Header (optional)</label>
-            <select className={input} value={headerType} onChange={(e) => setHeaderType(e.target.value as "NONE" | "TEXT")}>
+            <select className={input} value={headerType}
+              onChange={(e) => { setHeaderType(e.target.value as typeof headerType); setHeaderFile(null); }}>
               <option value="NONE">None</option>
               <option value="TEXT">Text</option>
+              <option value="IMAGE">Image</option>
+              <option value="VIDEO">Video</option>
+              <option value="DOCUMENT">Document</option>
             </select>
           </div>
           {headerType === "TEXT" && (
@@ -137,8 +159,23 @@ export function TemplateBuilder() {
               <input className={input} value={header} placeholder="Cara Clinic" maxLength={60} onChange={(e) => setHeader(e.target.value)} />
             </div>
           )}
+          {isMediaHeader && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-black/60 dark:text-white/60">Sample {headerType.toLowerCase()}</label>
+              <input
+                type="file"
+                className="w-full text-xs"
+                accept={headerType === "IMAGE" ? "image/*" : headerType === "VIDEO" ? "video/*" : ".pdf,application/pdf"}
+                onChange={(e) => setHeaderFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+          )}
         </div>
-        <p className="text-[11px] text-black/40 dark:text-white/40">Image / Video / Document headers — coming soon (need a sample-media upload).</p>
+        {isMediaHeader && (
+          <p className="text-[11px] text-black/40 dark:text-white/40">
+            Meta needs a sample {headerType.toLowerCase()} to approve the template. Each message you send later swaps in the real file.
+          </p>
+        )}
 
         {/* Body */}
         <div className="space-y-1">
@@ -211,6 +248,11 @@ export function TemplateBuilder() {
         <div className="rounded-2xl bg-[#e5ddd5] p-3 dark:bg-neutral-800">
           <div className="max-w-[85%] rounded-lg rounded-tl-none bg-white p-2.5 text-sm shadow dark:bg-neutral-900">
             {headerType === "TEXT" && header && <div className="mb-1 font-semibold">{header}</div>}
+            {isMediaHeader && (
+              <div className="mb-1.5 flex items-center justify-center rounded bg-black/5 py-4 text-xs text-black/50 dark:bg-white/10 dark:text-white/50">
+                {headerType === "IMAGE" ? "🖼️ Image" : headerType === "VIDEO" ? "🎬 Video" : `📄 ${headerFile?.name ?? "Document"}`}
+              </div>
+            )}
             <div className="whitespace-pre-wrap break-words text-black/90 dark:text-white/90">
               {preview || "Your message preview appears here…"}
             </div>
