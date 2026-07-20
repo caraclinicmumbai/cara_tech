@@ -7,6 +7,19 @@ Format: newest first.
 
 ---
 
+## 2026-07-20 — Template builder: media headers (Image / Video / Document)
+
+Completes the header options. Pick Image / Video / Document, attach a sample file, and
+it's submitted as a media HEADER. `uploadSampleMedia()` runs Meta's 2-step resumable
+upload (create session → upload bytes → `header_handle`); `createTemplate` builds a media
+HEADER with `example.header_handle`. New gated proxy `POST /api/templates/upload-sample`
+takes the file and returns the handle. Builder gains a file picker + media preview
+placeholder. **Requires `META_APP_ID`** (Meta App Dashboard → Settings → Basic → App ID)
+to be set on Railway; until then media-header uploads return a clear error. This unlocks
+building the document-header template used to send the quote PDF proactively. Files:
+`lib/whatsappTemplates.ts`, `app/api/templates/upload-sample/route.ts`,
+`components/TemplateBuilder.tsx`.
+
 ## 2026-07-20 — Template builder: buttons + WhatsApp-style preview
 
 The /templates builder now composes richer WhatsApp templates (closer to 11Za): add
