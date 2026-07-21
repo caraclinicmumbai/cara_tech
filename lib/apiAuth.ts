@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { can, type Capability } from "@/lib/rbac";
+import { ensurePermissions } from "@/lib/permissions";
 
 /// Returns a 401 response when there is no authenticated user session, else null.
 /// Usage:  const denied = await requireSession(); if (denied) return denied;
@@ -26,6 +27,7 @@ export async function requireApiCapability(
   const session = await auth();
   const user = session?.user as { id?: string; role?: string } | undefined;
   if (!user) return { denied: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  await ensurePermissions(); // resolve admin overrides into the effective matrix
   if (!can(user.role, cap)) {
     return { denied: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }

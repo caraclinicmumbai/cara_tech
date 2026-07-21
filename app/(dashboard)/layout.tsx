@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { auth, signOut } from "@/auth";
 import { can, isRole, ROLE_LABELS } from "@/lib/rbac";
+import { ensurePermissions } from "@/lib/permissions";
 
 export default async function DashboardLayout({
   children,
@@ -9,6 +10,7 @@ export default async function DashboardLayout({
   children: ReactNode;
 }) {
   const session = await auth();
+  await ensurePermissions(); // warm the effective matrix so nav reflects admin overrides
   const role = (session?.user as { role?: string })?.role;
 
   const navLink =
@@ -51,6 +53,9 @@ export default async function DashboardLayout({
           )}
           {can(role, "users.manage") && (
             <Link href="/users" className={navLink}>Users</Link>
+          )}
+          {can(role, "hierarchy.manage") && (
+            <Link href="/hierarchy" className={navLink}>Hierarchy</Link>
           )}
           {can(role, "settings.manage") && (
             <Link href="/settings" className={navLink}>Settings</Link>
