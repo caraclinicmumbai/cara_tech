@@ -268,6 +268,21 @@ model User {
   sessions Session[]
 }
 
+/// Admin-editable role → capability overrides (§3.1 Hierarchy settings). One row per
+/// editable role (front_desk | telecaller | branch_manager | sales_head). crm_admin is
+/// always all-access and is never stored here. NO ROW for a role = fall back to the
+/// built-in defaults in lib/rbac.ts. `capabilities` is a JSON string[] of granted
+/// capability keys. Edited only from /hierarchy by a crm_admin; the effective matrix is
+/// cached in-process and rebuilt on save (see lib/permissions.ts).
+model RolePermission {
+  id           String   @id @default(cuid())
+  role         String   @unique
+  capabilities Json     @default("[]")
+  updatedById  String? // User.id of the admin who last edited (no FK, like AuditLog.actorId)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model Account {
   id                String  @id @default(cuid())
   userId            String

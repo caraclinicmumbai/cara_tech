@@ -10,6 +10,7 @@ import { verifyPassword } from "@/lib/password";
 import { getClientIp } from "@/lib/rateLimit";
 import { isLoginLocked, recordLoginFailure, clearLoginFailures } from "@/lib/loginThrottle";
 import { can, routeCapability } from "@/lib/rbac";
+import { ensurePermissions } from "@/lib/permissions";
 import { logger } from "@/lib/logger";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -60,7 +61,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // Route gating for proxy.ts (Auth.js invokes this when `auth` runs as Proxy).
     // Returning false redirects unauthenticated users to `pages.signIn` (/login)
     // with a callbackUrl; returning a Response performs an explicit redirect.
-    authorized({ auth: session, request: { nextUrl } }) {
+    async authorized({ auth: session, request: { nextUrl } }) {
       const isLoggedIn = !!session?.user;
       const isOnLogin = nextUrl.pathname === "/login";
       if (isOnLogin) {
@@ -72,8 +73,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // (reachable by everyone). Defense-in-depth alongside per-action checks.
       const role = (session!.user as { role?: string }).role;
       const cap = routeCapability(nextUrl.pathname);
-      if (cap && !can(role, cap)) {
-        return Response.redirect(new URL("/leads", nextUrl));
+      if (cap) {
+        await ensurePermissions(); // respect admin overrides on the route matrix
+        if (!can(role, cap)) return Response.redirect(new URL("/leads", nextUrl));
       }
       return true;
     },

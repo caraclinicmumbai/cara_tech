@@ -7,6 +7,35 @@ Format: newest first.
 
 ---
 
+## 2026-07-21 — Admin-editable role hierarchy / capability matrix (§3.1)
+
+CRM Admin can now control which features each role below them can access, from a new
+**Hierarchy** screen in the nav — the RBAC matrix moved from hardcoded to admin-editable.
+
+- **Data**: new `RolePermission` table (one row per customized role, `capabilities` JSON).
+  No row = the built-in defaults in `lib/rbac.ts`; `crm_admin` is always all-access and is
+  never stored (can't be locked out). "Reset to default" deletes the role's row.
+- **Resolver**: `lib/rbac.ts` keeps the old matrix as `ROLE_CAPABILITIES` (the default /
+  fallback) and adds a `globalThis`-backed *effective* matrix that `can()` reads.
+  `lib/permissions.ts` merges DB overrides over defaults and caches the result on
+  `globalThis` — shared across the proxy (route-guard) and app (RSC/action) module graphs
+  in one Node process — with a 15s TTL safety net. `ensurePermissions()` warms it;
+  `reloadPermissions()` refreshes immediately on save.
+- **Enforcement**: `ensurePermissions()` wired into `requireCapability`,
+  `requireApiCapability`, the proxy route guard, and the dashboard layout, so nav items,
+  in-page action buttons, and route access all reflect the live matrix. **No re-login
+  needed** — the JWT carries only `role`; capabilities resolve live per request.
+- **UI**: `/hierarchy` page + server actions (`saveRolePermissions` / `resetRolePermissions`,
+  both audit-logged as `role.permissions.change` / `.reset`) + `HierarchyMatrix` client
+  (4 editable roles × capabilities grouped by feature, per-role reset, batched save). New
+  `hierarchy.manage` capability (admin-only default) gates the screen. Files:
+  `prisma/schema.prisma`, `lib/rbac.ts`, `lib/permissions.ts`, `lib/authz.ts`,
+  `lib/apiAuth.ts`, `auth.ts`, `app/(dashboard)/layout.tsx`,
+  `app/(dashboard)/hierarchy/{page,actions}.ts(x)`, `components/HierarchyMatrix.tsx`.
+- **Deploy note**: additive schema change — run `prisma db push` against prod so the
+  `RolePermission` table exists (until then the app falls back to defaults and the
+  Hierarchy screen errors).
+
 ## 2026-07-20 — Template builder: media headers (Image / Video / Document)
 
 Completes the header options. Pick Image / Video / Document, attach a sample file, and

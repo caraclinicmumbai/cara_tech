@@ -4,6 +4,7 @@
 import type { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { can, leadScope, type Capability } from "@/lib/rbac";
+import { ensurePermissions } from "@/lib/permissions";
 
 export type SessionUser = {
   id?: string;
@@ -29,6 +30,7 @@ export async function requireUser(): Promise<SessionUser> {
 /// Throw unless the signed-in user has `cap`. Returns the user for convenience.
 export async function requireCapability(cap: Capability): Promise<SessionUser> {
   const u = await requireUser();
+  await ensurePermissions(); // resolve admin overrides into the effective matrix
   if (!can(u.role, cap)) throw new Error("Forbidden");
   return u;
 }

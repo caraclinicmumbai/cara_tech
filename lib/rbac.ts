@@ -51,9 +51,81 @@ export const CAPABILITIES = [
   "reps.manage",
   "settings.manage",
   "users.manage",
+  // Hierarchy settings (§3.1): edit the role → capability matrix itself. Admin-only by
+  // default (granted to no role below, so it reaches only crm_admin's wildcard).
+  "hierarchy.manage",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
+
+/// The roles a CRM Admin may edit in the Hierarchy screen — everyone below Admin.
+/// crm_admin is always all-access and cannot be edited (can't lock yourself out).
+export const EDITABLE_ROLES = ROLES.filter((r) => r !== "crm_admin") as Exclude<Role, "crm_admin">[];
+
+/// Capabilities grouped by feature area, with human labels — drives the Hierarchy
+/// matrix UI and any capability picker. Every capability in CAPABILITIES appears once.
+export const CAPABILITY_GROUPS: {
+  key: string;
+  label: string;
+  capabilities: { key: Capability; label: string }[];
+}[] = [
+  {
+    key: "leads",
+    label: "Leads",
+    capabilities: [
+      { key: "leads.view", label: "View leads" },
+      { key: "leads.create", label: "Create leads" },
+      { key: "leads.walkin", label: "Walk-in entry" },
+      { key: "leads.editStage", label: "Move pipeline stage" },
+      { key: "leads.editTag", label: "Edit tag / interest" },
+      { key: "leads.call", label: "Click-to-call" },
+      { key: "leads.whatsapp", label: "Send WhatsApp" },
+      { key: "leads.merge", label: "Merge duplicates" },
+      { key: "leads.markLost", label: "Mark lost" },
+      { key: "leads.softDelete", label: "Move to trash" },
+      { key: "leads.restore", label: "Restore from trash" },
+      { key: "leads.permanentDelete", label: "Permanently delete" },
+    ],
+  },
+  {
+    key: "quotes",
+    label: "Quotes",
+    capabilities: [
+      { key: "quotes.view", label: "View quotes" },
+      { key: "quotes.manage", label: "Create / revise / send" },
+      { key: "quotes.convert", label: "Convert (mark won)" },
+      { key: "quotes.unlock", label: "Reopen locked quote" },
+    ],
+  },
+  {
+    key: "calls",
+    label: "Calls",
+    capabilities: [{ key: "calls.view", label: "View call history" }],
+  },
+  {
+    key: "analytics",
+    label: "Analytics",
+    capabilities: [{ key: "analytics.view", label: "Dashboard & CQS" }],
+  },
+  {
+    key: "messaging",
+    label: "Messaging & Automation",
+    capabilities: [
+      { key: "templates.manage", label: "WhatsApp templates" },
+      { key: "chatbot.manage", label: "Chatbot flows" },
+    ],
+  },
+  {
+    key: "admin",
+    label: "Team & Access",
+    capabilities: [
+      { key: "reps.manage", label: "Manage sales reps" },
+      { key: "users.manage", label: "Manage staff logins" },
+      { key: "hierarchy.manage", label: "Manage role hierarchy" },
+      { key: "settings.manage", label: "System settings" },
+    ],
+  },
+];
 
 // Per the owner's access matrix. CRM Admin is a super-user (all capabilities) and
 // is handled as a wildcard in `can()`, so it's omitted here.
@@ -127,6 +199,9 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
   ],
 };
 
+/// The built-in DEFAULT matrix — the fallback used when a role has no admin override
+/// row, and the "Reset to default" target in the Hierarchy screen. The live, possibly
+/// admin-overridden matrix is `effectiveCapabilities` below.
 export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
   front_desk: new Set(CAPS.front_desk),
   telecaller: new Set(CAPS.telecaller),
@@ -135,15 +210,37 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
   crm_admin: new Set(CAPABILITIES), // super-user
 };
 
+// The effective (admin-overridden) matrix, hydrated from the DB by lib/permissions.ts.
+// Null until warmed; while cold, `can()` falls back to the built-in defaults above so
+// gating is never *more* permissive than intended. crm_admin is always all-access and
+// is not represented here.
+//
+// Stored on globalThis so the value is SHARED between module graphs in a single Node
+// process — critically the proxy/route-guard graph and the app (RSC/action) graph.
+// Without this, an admin save would refresh the app graph (nav updates instantly) but
+// leave the proxy's route guard stale (see lib/permissions.ts for the TTL safety net).
+type EffectiveMatrix = Record<Exclude<Role, "crm_admin">, ReadonlySet<Capability>> | null;
+const globalForCaps = globalThis as unknown as { __caraEffectiveCaps?: EffectiveMatrix };
+
+/// Install the live matrix (called by lib/permissions.ts after loading DB overrides).
+/// Pass null to revert to defaults. crm_admin is intentionally excluded — it is always
+/// all-access via the wildcard in `can()` and can never be edited.
+export function setEffectiveCapabilities(matrix: EffectiveMatrix): void {
+  globalForCaps.__caraEffectiveCaps = matrix;
+}
+
 export function isRole(v: string | undefined | null): v is Role {
   return !!v && (ROLES as readonly string[]).includes(v);
 }
 
-/// The single access question. Unknown roles get nothing.
+/// The single access question. Unknown roles get nothing. crm_admin is the super-user
+/// (all capabilities, never editable). Everyone else is checked against the live
+/// effective matrix when warmed, otherwise the built-in defaults.
 export function can(role: string | undefined | null, capability: Capability): boolean {
   if (!isRole(role)) return false;
   if (role === "crm_admin") return true;
-  return ROLE_CAPABILITIES[role].has(capability);
+  const matrix = globalForCaps.__caraEffectiveCaps ?? ROLE_CAPABILITIES;
+  return matrix[role].has(capability);
 }
 
 /// Lead visibility scope for a role: "own" = only leads they own; "all" = everything.
@@ -160,6 +257,7 @@ export function routeCapability(pathname: string): Capability | null {
   if (pathname.startsWith("/templates")) return "templates.manage";
   if (pathname.startsWith("/chatbot")) return "chatbot.manage";
   if (pathname.startsWith("/settings")) return "settings.manage";
+  if (pathname.startsWith("/hierarchy")) return "hierarchy.manage";
   if (pathname.startsWith("/users")) return "users.manage";
   if (pathname.startsWith("/leads/deleted")) return "leads.restore";
   if (pathname.startsWith("/leads/walk-in")) return "leads.walkin";
