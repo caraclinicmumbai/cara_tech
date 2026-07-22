@@ -1,0 +1,42 @@
+type,category,code,name,base_price,gst,package_price,discount_pct
+service,Trichometric Sapphire FUE,HT,Trichometric Sapphire Scalp HT x .5 day,90000,5,,
+service,Trichometric Sapphire FUE,HT,Trichometric Sapphire Scalp HT x1 day,187500,5,,
+service,Trichometric Sapphire FUE,BT,Trichometric Sapphire Beard Transplant x .5 day,150000,5,,
+service,Trichometric Sapphire FUE,BT,Trichometric Sapphire Beard Transplant x 1 day,250000,5,,
+service,Trichometric Sapphire FUE,ET,Trichometric Sapphire Eyebrow Transplant x 1 day,100000,5,,
+service,Trichometric Sapphire FUE,ET,Trichometric Sapphire Eyebrow Transplant x .5 day,50000,5,,
+service,Trichometric Sapphire FUE,NSHT,Trichometric Sapphire Non-Shaven HT x 1 day,212500,5,,
+service,Trichometric Sapphire FUE,NSHT,Trichometric Sapphire Non-Shaven HT x .5 day,127500,5,,
+service,Trichometric Sapphire FUE,HW,Post HT Hair wash,1500,5,,
+service,Trichometric Sapphire FUE,HTR,Trichometric Sapphire HT Refresh 0.5 Day,30000,5,,
+service,Hair Loss Regenerative Treatment,HPRP,Trichometric Hair PRP x 1,12000,5,,
+service,Hair Loss Regenerative Treatment,HIPRF,Hair i-PRF treatment x 1,12000,5,,
+service,Hair Loss Regenerative Treatment,HCPRF,Hair c-PRF treatment x 1,12000,5,,
+service,Hair Loss Regenerative Treatment,Hex,RCHE Therapy x1,18000,5,,
+service,Hair Loss Regenerative Treatment,HPRP+Hex,Trichometric Hair PRP + RCHE Therapy x 1,22000,5,,
+service,Analysis,TRAN,Trichoanalysis,2500,5,,
+service,Analysis,PRETX,Pre Hair Transplant Blood Test Package (Basic),7000,0,,
+service,Analysis,MAGA,Male Pattern Hair Loss Diagnostic Panel,7000,0,,
+service,Consultation,HCON,Hair Consultation,2000,0,,
+service,Consultation,SCON,Skin Consultation,2000,0,,
+service,Consultation,NSRC,NSR Consultation,2000,0,,
+service,Consultation,ENTC,ENT Consultation,2000,0,,
+service,Filler,FLR,J. Voluma x1,32000,5,,
+service,Filler,FLR,J. Volux x1,32000,5,,
+service,Filler,FLR,Hyalase x1,2000,0,,
+service,Wrinkle Relaxer,BTX,Botox,450,5,,
+service,Wrinkle Relaxer,BTX,Dysport,400,5,,
+service,NextGen Hifu Treatment,HIFU,NextGen Hifu Treatment Face and Neck x 1,25000,5,,
+service,Non-Surgical Rhinoplasty,NSR,Non-Surgical Rhinoplasty Cure,40000,5,,
+package,Trichometric Sapphire FUE & Hair regenerative treatment,,Trichometric Sapphire Scalp HT x .5 day + Trichometric Hair PRP x1,102000,5,96900,5
+package,Trichometric Sapphire FUE & Hair regenerative treatment,,Trichometric Sapphire Scalp HT x .5 day + Trichometric Hair PRP x2,114000,5,107160,6
+package,Trichometric Sapphire FUE & Hair regenerative treatment,,Trichometric Sapphire Scalp HT x .5 day + Trichometric Hair PRP x3,126000,5,116280,8
+package,Trichometric Sapphire FUE & Hair regenerative treatment,,Trichometric Sapphire Scalp HT x .5 day + Trichometric Hair PRP x4,138000,5,121980,12
+package,Hair Loss Regenerative Treatment,,Trichometric Hair PRP x2,24000,5,22800,5
+package,Hair Loss Regenerative Treatment,,Trichometric Hair PRP x3,36000,5,32400,10
+package,Hair Loss Regenerative Treatment,,Trichometric Hair PRP x4,48000,5,38400,20
+package,Hair Loss Regenerative Treatment,,Trichometric Hair PRP x5,60000,5,45000,25
+package,Hair Loss Regenerative Treatment,,Trichometric Hair PRP x6,72000,5,50400,30
+package,Laser Hair Removal,,Full body laser hair reduction x 5,100000,5,90000,10
+package,Laser Hair Removal,,Full body laser hair reduction x 6,120000,5,96000,20
+package,Laser Hair Removal,,Full Face laser hair reduction x 6,60000,5,24000,60
