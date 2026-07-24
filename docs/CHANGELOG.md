@@ -7,6 +7,17 @@ Format: newest first.
 
 ---
 
+## 2026-07-24 — Light/dark theme toggle (no-flash, persisted)
+
+Opt-in dark mode via a `.dark` class on `<html>`. A no-flash inline script in the root
+layout applies the saved (or system) theme before paint; a ThemeToggle button (dashboard
+header + login page) flips it and persists to localStorage. `globals.css` swaps the old
+"never dark" neutraliser for a real `@custom-variant dark` + a warm-dark CARA palette and
+button accent tweaks. `ThemeToggle` reads the live theme via `useSyncExternalStore`
+(light server snapshot during hydration → no mismatch). Front-end only — no DB/schema
+change. Files: `app/layout.tsx`, `app/globals.css`, `app/(dashboard)/layout.tsx`,
+`app/login/page.tsx`, `components/ThemeToggle.tsx`.
+
 ## 2026-07-24 — Quote treatment catalog: dropdown auto-fills price + GST (§quote generation)
 
 A new quote's treatment is now picked from the clinic's Master Data List instead of
