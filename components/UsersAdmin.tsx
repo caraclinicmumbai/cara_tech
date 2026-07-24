@@ -6,6 +6,8 @@ import {
   createUser,
   setUserRole,
   setUserRep,
+  setUserBranch,
+  setRepBranch,
   resetUserPassword,
   deleteUser,
   createRep,
@@ -19,6 +21,7 @@ type UserRow = {
   name: string | null;
   role: string;
   salesRepId: string | null;
+  branchId: string | null;
 };
 type RepRow = {
   id: string;
@@ -27,9 +30,11 @@ type RepRow = {
   slackUserId: string | null;
   active: boolean;
   salesHead: boolean;
+  branchId: string | null;
   userEmail: string | null;
 };
 type Opt = { value: string; label: string };
+type BranchOpt = { id: string; label: string };
 
 const inputCls =
   "rounded border border-black/15 bg-background px-2 py-1.5 text-sm dark:border-white/20";
@@ -38,10 +43,12 @@ export function UsersAdmin({
   users,
   reps,
   roleOptions,
+  branchOptions,
 }: {
   users: UserRow[];
   reps: RepRow[];
   roleOptions: Opt[];
+  branchOptions: BranchOpt[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -102,6 +109,7 @@ export function UsersAdmin({
                 <th className="px-3 py-2">Name</th>
                 <th className="px-3 py-2">Role</th>
                 <th className="px-3 py-2">Linked rep</th>
+                <th className="px-3 py-2">Branch</th>
                 <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
@@ -121,6 +129,13 @@ export function UsersAdmin({
                       onChange={(e) => run(() => setUserRep(u.id, e.target.value || null))}>
                       <option value="">—</option>
                       {reps.map((r) => <option key={r.id} value={r.id}>{repLabel(r)}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-3 py-2">
+                    <select className={inputCls} defaultValue={u.branchId ?? ""} disabled={pending}
+                      onChange={(e) => run(() => setUserBranch(u.id, e.target.value || null))}>
+                      <option value="">—</option>
+                      {branchOptions.map((bopt) => <option key={bopt.id} value={bopt.id}>{bopt.label}</option>)}
                     </select>
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right">
@@ -181,6 +196,7 @@ export function UsersAdmin({
                 <th className="px-3 py-2">Phone</th>
                 <th className="px-3 py-2">Slack</th>
                 <th className="px-3 py-2">Linked login</th>
+                <th className="px-3 py-2">Branch</th>
                 <th className="px-3 py-2">Active</th>
                 <th className="px-3 py-2">Sales head</th>
               </tr>
@@ -192,6 +208,13 @@ export function UsersAdmin({
                   <td className="px-3 py-2">{r.phone || "—"}</td>
                   <td className="px-3 py-2">{r.slackUserId ?? "—"}</td>
                   <td className="px-3 py-2">{r.userEmail ?? "—"}</td>
+                  <td className="px-3 py-2">
+                    <select className={inputCls} defaultValue={r.branchId ?? ""} disabled={pending}
+                      onChange={(e) => run(() => setRepBranch(r.id, e.target.value || null))}>
+                      <option value="">—</option>
+                      {branchOptions.map((bopt) => <option key={bopt.id} value={bopt.id}>{bopt.label}</option>)}
+                    </select>
+                  </td>
                   <td className="px-3 py-2">
                     <input type="checkbox" checked={r.active} disabled={pending}
                       onChange={(e) => run(() => setRepActive(r.id, e.target.checked))} />

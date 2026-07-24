@@ -90,6 +90,22 @@ export async function setUserRep(userId: string, salesRepId: string | null): Pro
   return { ok: true };
 }
 
+/// Set a staff login's home branch (§branches) — a quote they raise inherits it.
+export async function setUserBranch(userId: string, branchId: string | null): Promise<Result> {
+  await requireCapability("users.manage");
+  await prisma.user.update({ where: { id: userId }, data: { branchId: branchId || null } });
+  revalidatePath("/users");
+  return { ok: true };
+}
+
+/// Set a sales rep's home branch (§branches) — used later for branch-scoped routing.
+export async function setRepBranch(repId: string, branchId: string | null): Promise<Result> {
+  await requireCapability("reps.manage");
+  await prisma.salesRep.update({ where: { id: repId }, data: { branchId: branchId || null } });
+  revalidatePath("/users");
+  return { ok: true };
+}
+
 export async function resetUserPassword(userId: string, password: string): Promise<Result> {
   await requireCapability("users.manage");
   if (!password || password.length < 8)

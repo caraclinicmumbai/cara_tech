@@ -16,6 +16,7 @@ import {
   QuoteError,
 } from "@/lib/quotes";
 import { buildQuotePdf, quoteRef } from "@/lib/quotePdf";
+import { branchIdForUser, getBranchQuoteInfo } from "@/lib/branches";
 import { sendLeadDocument } from "@/lib/messages";
 import { logger } from "@/lib/logger";
 
@@ -81,6 +82,10 @@ export async function createLeadQuote(input: {
     discountValue = n;
   }
 
+  // The quote belongs to the creating user's home branch (→ default branch). Drives
+  // which legal entity / GSTIN / bank / address the PDF renders (§branches).
+  const branchId = await branchIdForUser(user.id);
+
   try {
     await createQuote({
       leadId: input.leadId,
@@ -92,6 +97,7 @@ export async function createLeadQuote(input: {
       source: input.source ?? null,
       // Default this quote's owner to the lead's owner (may be re-assigned later).
       ownerRepId: user.salesRepId ?? null,
+      branchId,
       createdById: user.id,
     });
   } catch (err) {
@@ -200,6 +206,7 @@ export async function sendLeadQuoteWhatsApp(input: {
       expiresAt: quote.expiresAt,
       leadName: quote.lead.name,
       leadPhone: quote.lead.phone,
+      branch: await getBranchQuoteInfo(quote.branchId),
     });
   } catch (err) {
     logger.error(`Quote PDF build failed for ${input.quoteId}: ${String(err)}`);

@@ -15,7 +15,8 @@
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "db:seed": "dotenv -e .env.local -- tsx prisma/seed.ts",
     "seed": "tsx prisma/seed.ts",
-    "import:catalog": "dotenv -e .env.local -- tsx scripts/importCatalog.ts"
+    "import:catalog": "dotenv -e .env.local -- tsx scripts/importCatalog.ts",
+    "seed:branch": "dotenv -e .env.local -- tsx scripts/seedDefaultBranch.ts"
   },
   "engines": {
     "node": "22.x"

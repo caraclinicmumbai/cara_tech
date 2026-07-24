@@ -54,6 +54,9 @@ export const CAPABILITIES = [
   // Hierarchy settings (§3.1): edit the role → capability matrix itself. Admin-only by
   // default (granted to no role below, so it reaches only crm_admin's wildcard).
   "hierarchy.manage",
+  // Branches (§branches): create / edit clinic branches. Admin-only by default (grant it
+  // to a CEO/owner login via the Hierarchy screen if needed).
+  "branches.manage",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -122,6 +125,7 @@ export const CAPABILITY_GROUPS: {
       { key: "reps.manage", label: "Manage sales reps" },
       { key: "users.manage", label: "Manage staff logins" },
       { key: "hierarchy.manage", label: "Manage role hierarchy" },
+      { key: "branches.manage", label: "Manage branches" },
       { key: "settings.manage", label: "System settings" },
     ],
   },
@@ -258,6 +262,7 @@ export function routeCapability(pathname: string): Capability | null {
   if (pathname.startsWith("/chatbot")) return "chatbot.manage";
   if (pathname.startsWith("/settings")) return "settings.manage";
   if (pathname.startsWith("/hierarchy")) return "hierarchy.manage";
+  if (pathname.startsWith("/branches")) return "branches.manage";
   if (pathname.startsWith("/users")) return "users.manage";
   if (pathname.startsWith("/leads/deleted")) return "leads.restore";
   if (pathname.startsWith("/leads/walk-in")) return "leads.walkin";

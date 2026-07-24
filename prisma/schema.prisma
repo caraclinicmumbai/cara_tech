@@ -257,15 +257,18 @@ model User {
   salesRepId String?   @unique
   salesRep   SalesRep? @relation(fields: [salesRepId], references: [id], onDelete: SetNull)
 
-  // Branch (Phase 2) — nullable scaffold; the login's home branch for scoping.
+  // Home branch (§branches) — the login's clinic; a quote they raise inherits it.
   branchId String?
-  branch   Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  branch   Branch? @relation("UserHomeBranch", fields: [branchId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   accounts Account[]
   sessions Session[]
+
+  // Branches this user manages (Branch.managerId points here).
+  managedBranches Branch[] @relation("BranchManager")
 }
 
 /// Admin-editable role → capability overrides (§3.1 Hierarchy settings). One row per
@@ -404,21 +407,54 @@ model ChatbotSession {
 
 // ── Phase 2 foundations ──────────────────────────────────────────────
 
-/// A clinic branch (Phase 2). Nullable scaffold for now — the clinic runs one
-/// branch, so leads/reps/users may have a null branchId. Everything branch-scoped
-/// (routing, dashboards, ad attribution, per-branch feature toggles, invoicing
-/// credit) hangs off this once multi-branch is switched on.
+/// A clinic branch (§branches). A CRM Admin creates one per physical clinic (e.g.
+/// Santacruz, Juhu). It carries everything a quote/invoice needs to render for THAT
+/// location — legal entity + GSTIN, address, bank + UPI/QR — so a quote raised at a
+/// branch shows the branch's own details. `isDefault` is the fallback used when a
+/// user/quote has no branch yet (keeps single-branch behaviour working). Lead routing
+/// by branch is not wired yet (round-robin is still global — see lib/salesReps.ts).
 model Branch {
-  id        String   @id @default(cuid())
-  name      String
-  active    Boolean  @default(true)
+  id       String  @id @default(cuid())
+  code     String  @unique // short code, e.g. "SCZ", "JUH" — used in quote refs
+  name     String // display name, e.g. "Cara Santacruz"
+  active   Boolean @default(true)
+  isDefault Boolean @default(false) // the fallback branch (exactly one should be true)
+
+  // Legal / tax identity (per branch — each may invoice under its own GSTIN).
+  legalName String? // registered entity, e.g. "Cara Healthcare Private Limited"
+  gstin     String?
+
+  // Location + contact (rendered on quotes; also the walk-in clinic address).
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  pincode      String?
+  phone        String?
+  email        String?
+
+  // Payment details for quotes/invoices (the "pay to" block on the quote PDF).
+  bankAccountName   String?
+  bankAccountNumber String?
+  bankIfsc          String?
+  bankName          String? // bank + branch, e.g. "ICICI Bank, Santacruz West"
+  upiId             String?
+  qrImage           Bytes? // Razorpay/UPI QR PNG bytes (stored here so it survives redeploys)
+
+  // Branch manager (a staff login). SetNull so deleting the user doesn't drop the branch.
+  managerId String?
+  manager   User?   @relation("BranchManager", fields: [managerId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   leads          Lead[]
   reps           SalesRep[]
-  users          User[]
+  users          User[]        @relation("UserHomeBranch")
+  quotes         Quote[]       @relation("QuoteBranch")
   invoicedQuotes Quote[]       @relation("QuoteInvoicedBranch")
   chatbotFlows   ChatbotFlow[]
+
+  @@index([active])
 }
 
 /// A treatment quote (Phase 2 §multi-quote). THE structural change: a lead is the
@@ -467,6 +503,12 @@ model Quote {
   source          String?
   expiresAt       DateTime? // default 30 days from send; nudge 48h before
 
+  // The branch this quote was raised at (§branches) — set at creation from the
+  // creating user's home branch (→ default branch). Drives which legal entity / GSTIN
+  // / bank / address the quote PDF renders. Distinct from invoicedBranchId (billing).
+  branchId String?
+  branch   Branch? @relation("QuoteBranch", fields: [branchId], references: [id], onDelete: SetNull)
+
   // Populated by the billing system — never typed. "Converted" means a real invoice
   // exists for THIS quote; the invoicing branch earns the credit.
   invoicedBranchId String?
@@ -490,6 +532,7 @@ model Quote {
   @@index([leadId])
   @@index([status])
   @@index([ownerRepId])
+  @@index([branchId])
   @@index([invoicedBranchId])
 }
 

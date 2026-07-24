@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { currentUser, canSeeLead } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { buildQuotePdf, quoteRef } from "@/lib/quotePdf";
+import { getBranchQuoteInfo } from "@/lib/branches";
 
 export async function GET(
   _req: Request,
@@ -37,6 +38,7 @@ export async function GET(
     expiresAt: quote.expiresAt,
     leadName: quote.lead.name,
     leadPhone: quote.lead.phone,
+    branch: await getBranchQuoteInfo(quote.branchId),
   });
 
   return new NextResponse(new Uint8Array(pdf), {
