@@ -12,6 +12,7 @@ import { formatIst } from "@/lib/datetime";
 import { currentUser, canSeeLead } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { summariseQuotes } from "@/lib/quotes";
+import { listCatalogGroups } from "@/lib/catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +84,8 @@ export default async function LeadDetailPage({
         orderBy: { name: "asc" },
       })
     : [];
+  // Treatment catalog for the quote picker (Services + Packages, grouped by category).
+  const catalog = canManageQuotes ? await listCatalogGroups() : [];
 
   return (
     <div className="space-y-8">
@@ -221,6 +224,7 @@ export default async function LeadDetailPage({
             windowOpen={windowOpen}
             templateConfigured={!!process.env.QUOTE_DOC_TEMPLATE_NAME}
             reps={quoteReps}
+            catalog={catalog}
             quotes={lead.quotes.map((q) => ({
               id: q.id,
               treatment: q.treatment,

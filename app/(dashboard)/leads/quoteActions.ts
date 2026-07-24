@@ -47,6 +47,7 @@ export async function createLeadQuote(input: {
   price?: string | number | null;
   discountType?: string | null;
   discountValue?: string | number | null;
+  gstRate?: string | number | null;
   source?: string | null;
 }): Promise<Result> {
   const user = await requireCapability("quotes.manage");
@@ -58,6 +59,15 @@ export async function createLeadQuote(input: {
 
   const price = parsePrice(input.price);
   if (price === "invalid") return { ok: false, error: "Price must be a whole number of rupees" };
+
+  // GST rate comes from the chosen catalog item (5% or 0% for "NA" items). Clamp to a
+  // sane range; fall back to the default when unset so manual quotes are unaffected.
+  let gstRate: number | null = null;
+  if (input.gstRate != null && input.gstRate !== "") {
+    const g = typeof input.gstRate === "number" ? input.gstRate : Number(input.gstRate);
+    if (!Number.isFinite(g) || g < 0 || g > 100) return { ok: false, error: "GST rate must be between 0 and 100" };
+    gstRate = g;
+  }
 
   // Discount: type "percent" | "inr", value a non-negative number (percent may be
   // decimal, e.g. 12.5). Percent is capped at 100.
@@ -78,6 +88,7 @@ export async function createLeadQuote(input: {
       price,
       discountType: discountValue != null ? discountType : null,
       discountValue,
+      gstRate,
       source: input.source ?? null,
       // Default this quote's owner to the lead's owner (may be re-assigned later).
       ownerRepId: user.salesRepId ?? null,

@@ -1,0 +1,372 @@
+type,category,code,name,base_price,gst,package_price,discount_pct
+service,Trichometric Sapphire FUE,HT,Trichometric Sapphire Scalp HT x .5 day,90000,5,,
+service,Trichometric Sapphire FUE,HT,Trichometric Sapphire Scalp HT x1 day,187500,5,,
+service,Trichometric Sapphire FUE,BT,Trichometric Sapphire Beard Transplant x .5 day,150000,5,,
+service,Trichometric Sapphire FUE,BT,Trichometric Sapphire Beard Transplant x 1 day,250000,5,,
+service,Trichometric Sapphire FUE,ET,Trichometric Sapphire Eyebrow Transplant x 1 day,100000,5,,
+service,Trichometric Sapphire FUE,ET,Trichometric Sapphire Eyebrow Transplant x .5 day,50000,5,,
+service,Trichometric Sapphire FUE,NSHT,Trichometric Sapphire Non-Shaven HT x 1 day,212500,5,,
+service,Trichometric Sapphire FUE,NSHT,Trichometric Sapphire Non-Shaven HT x .5 day,127500,5,,
+service,Trichometric Sapphire FUE,HW,Post HT Hair wash,1500,5,,
+service,Trichometric Sapphire FUE,HTR,Trichometric Sapphire HT Refresh 0.5 Day,30000,5,,
+service,Hair Loss Regenerative Treatment,HPRP,Trichometric Hair PRP x 1,12000,5,,
+service,Hair Loss Regenerative Treatment,HIPRF,Hair i-PRF treatment x 1,12000,5,,
+service,Hair Loss Regenerative Treatment,HCPRF,Hair c-PRF treatment x 1,12000,5,,
+service,Hair Loss Regenerative Treatment,Hex,RCHE Therapy x1,18000,5,,
+service,Hair Loss Regenerative Treatment,HPRP+Hex,Trichometric Hair PRP + RCHE Therapy x 1,22000,5,,
+service,Hair Loss Regenerative Treatment,LLLTH,Laser Hair Stimulation Therapy x 1,1500,5,,
+service,Hair Loss Regenerative Treatment,HMESO,Hair meso x 1,7500,5,,
+service,Hair Loss Regenerative Treatment,HGFC,Growth Factor Concentrate (GFC) Therapy x 1,12000,5,,
+service,Scalp Peel Therapy,SPT,Scalp Resurfacing Treatment x 1,7000,5,,
+service,Analysis,TRAN,Trichoanalysis,2500,5,,
+service,Analysis,PLAN,Platelets Analysis,2000,5,,
+service,Analysis,SWBT,Swab Test,5000,5,,
+service,Analysis,SKBX,Skin Biopsy,7000,5,,
+service,Analysis,PRETX,Pre Hair Transplant Blood Test Package (Advance),7000,0,,
+service,Analysis,PRETX,Pre Hair Transplant Blood Test Package (Basic),7000,0,,
+service,Analysis,MAGA,Male Pattern Hair Loss Diagnostic Panel,7000,0,,
+service,Analysis,FHDX,Female Pattern Hair Loss Diagnostic Panel,7000,0,,
+service,Analysis,TETID,Telogen Effluvium — Trigger Identification Panel,7000,0,,
+service,Analysis,AADX,Alopecia Areata — Immune & Autoimmune Panel,7000,0,,
+service,Analysis,SDINF,Seborrhoeic Dermatitis — Scalp Inflammation Panel,7000,0,,
+service,Analysis,PCOSDX,PCOS & Hormonal Hair Loss — Female Panel,7000,0,,
+service,Analysis,NUTRS,Advanced Nutritional Hair Loss Panel,7000,0,,
+service,Analysis,TSCN,Trichoscopy & Digital Scalp Analysis,7000,0,,
+service,Analysis,SBXWK,Scalp Biopsy — Scarring Alopecia Workup,7000,0,,
+service,Analysis,TGNDX,TrichoGenie™ Hair Genetic Test,24000,0,,
+service,Analysis,SKWB,Basic Skin Wellness Panel,7000,0,,
+service,Analysis,ACHDX,Acne & Hormonal Panel,7000,0,,
+service,Analysis,MPDX,Melasma & Pigmentation Panel,7000,0,,
+service,Analysis,AADMG,Anti-Ageing & Sun Damage Panel,7000,0,,
+service,Analysis,PODX,Periorbital & Sunken Eyes Panel,7000,0,,
+service,Analysis,DLMDX,Dark Lips & Mucosal Pigmentation Panel,7000,0,,
+service,Analysis,ANDX,Acanthosis Nigricans Panel,7000,0,,
+service,Analysis,COMPX,Comprehensive Aesthetic Panel,7000,0,,
+service,Analysis,GSDX,Advanced Genetic Skin Panel,7000,0,,
+service,Analysis,SBPDX,Skin Biopsy Panel,7000,0,,
+service,Analysis,ALSDX,Allergy & Skin Sensitivity Panel,7000,0,,
+service,FUE Extraction,HRX,FUE Hair Extraction Basic,15000,5,,
+service,FUE Extraction,HRX,FUE Hair Extraction Essential,22500,5,,
+service,FUE Extraction,HRX,FUE Hair Extraction Advance,30000,5,,
+service,Laser hair reduction,LHR,Full body laser hair reduction x1,20000,5,,
+service,Laser hair reduction,LHR,Full Face laser hair reduction x 1 (by doctor),10000,5,,
+service,Laser hair reduction,LHR,Full Face laser hair reduction x 1,5000,5,,
+service,Laser hair reduction,LHR,Lower Face Laser Hair Reduction x 1,4000,5,,
+service,Laser hair reduction,LHR,Full Neck LHR x1,3000,5,,
+service,Laser hair reduction,LHR,Full Forehead laser hair reduction x1,3000,5,,
+service,Laser hair reduction,LHR,Earlobe Laser hair removal x1,2000,5,,
+service,Laser hair reduction,LHR,Beard reshaping laser hair reduction x1,5000,5,,
+service,Laser hair reduction,LHR,Upper Lip laser hair removal x1,2000,5,,
+service,Laser hair reduction,LHR,Lower Lip laser hair removal x1,2000,5,,
+service,Laser hair reduction,LHR,Chin laser hair reduction x1,2000,5,,
+service,Laser hair reduction,LHR,Sideburn laser hair reduction x1,2000,5,,
+service,Laser hair reduction,LHR,Shoulders Laser hair reduction x1,5000,5,,
+service,Laser hair reduction,LHR,Chest laser hair reduction x1,7000,5,,
+service,Laser hair reduction,LHR,Upper back LHR x1,6000,5,,
+service,Laser hair reduction,LHR,Lower back LHR x1,6000,5,,
+service,Laser hair reduction,LHR,Complete back laser hair reduction x1,7000,5,,
+service,Laser hair reduction,LHR,Underarm laser hair reduction x1,3500,5,,
+service,Laser hair reduction,LHR,Full arms laser hair reduction x1,7000,5,,
+service,Laser hair reduction,LHR,Brazilian Laser hair removal x1,7000,5,,
+service,Laser hair reduction,LHR,Brazilian Laser hair removal x1 (By Doctor),10000,5,,
+service,Laser hair reduction,LHR,Full Abdomen LHR x1,7000,5,,
+service,Laser hair reduction,LHR,Buttocks laser hair reduction x1,6000,5,,
+service,Laser hair reduction,LHR,Brazilian + underarm laser hair reduction x1,9000,5,,
+service,Laser hair reduction,LHR,Brazilian +legs laser hair removal x1,12000,5,,
+service,Laser hair reduction,LHR,Thighs laser hair removal x1,7000,5,,
+service,Laser hair reduction,LHR,Lower legs laser hair removal x1,7000,5,,
+service,Laser hair reduction,LHR,Full legs laser hair removal x1,10000,5,,
+service,Laser hair reduction,LHR,Arms + legs LHR x1,12000,5,,
+service,Medical Peels,CosmPEEL,Cosmelan Peel x1,45000,5,,
+service,Medical Peels,YPEEL,Yellow Peel x1,7000,5,,
+service,Medical Peels,YTRX,Yellow TREX Peel x 1,8000,5,,
+service,Medical Peels,SALPEEL,Salicylic peel x 1,7000,5,,
+service,Medical Peels,ACNPEEL,Black Peel x 1,5000,0,,
+service,Medical Peels,AHAPEEL,Glycolic Face Peel x 1,5000,5,,
+service,Medical Peels,AHAPEEL,Undereye Peel x 1,3500,5,,
+service,Medical Peels,DULPEEL,Dubai Lip Peel x 1,7000,5,,
+service,Medical Peels,BDYPEEL,Arms Peel x 1,7000,5,,
+service,Medical Peels,BDYPEEL,Legs Peel x 1,7000,5,,
+service,Medical Peels,BDYPEEL,Back Peel x 1,7000,5,,
+service,Medical Peels,BDYPEEL,Abs Peel x 1,7000,5,,
+service,Medical Peels,BDYPEEL,Underarm Peel x 1,7000,5,,
+service,Medical Peels,BDYPEEL,Bikini Peel x 1,7000,5,,
+service,Medical Peels,BDYPEEL,Buttocks x 1,7000,5,,
+service,Medical Peels,PRTYPEEL,Party Peel x 1,7000,5,,
+service,Medical Peels,TCAX,TCA Cross single session x 1,5000,5,,
+service,Medical Peels,PHNPL,Knuckle Peel x1,5000,5,,
+service,Medical Peels,ELBPL,Elbow Peel x1,5000,5,,
+service,Medical Peels,KNEPL,Knee Peel x1,5000,5,,
+service,Medical Facials,FCL7X,Cara Splendeur 7 in 1 Personalised Advance Facial Treatment,30000,5,,
+service,Medical Facials,FCLRDN,Cara Luxuria Radiance (Anti-pigmentation) x 1,7000,5,,
+service,Medical Facials,FCLACN,Cara Luxuria Porcelain (Acne removal) x 1,7000,5,,
+service,Medical Facials,FCLAG,Cara Luxuria Everyoung (Anti-Aging) x 1,9000,5,,
+service,Medical Facials,HYDRFCL,Cara Charmant EMS Oxyfuse Hydrafacial x 1,7000,5,,
+service,Medical Facials,VPFCL,Cara Charmant Vampire Facial Treatment x 1,10000,5,,
+service,Medical Facials,HIFUFCL,Cara Charmant NextGen HiFu Facial,30000,5,,
+service,Medical Facials,PPFCL,Cara Pumpkin Peel facial x 1,8000,5,,
+service,Medical Facials,SKExFCL,Cara Charmant RCSE (Regenerative Cellular Skin Exosomes) x 1,15000,5,,
+service,Ultravac MnRF Treatment,MNRF,UltraVac MnRF Face x 1,12000,0,,
+service,Ultravac MnRF Treatment,MnRF,Ultravac MnRF Stretch Marks Cure Abs x1,12000,5,,
+service,Ultravac MnRF Treatment,MnRF,Ultravac MnRF Stretch Marks Cure Arms x 1,12000,5,,
+service,Ultravac MnRF Treatment,MnRF,Ultravac MnRF Stretch Marks Cure Thighs x 1,12000,5,,
+service,Non-Surgical Rhinoplasty,NSR,Non-Surgical Rhinoplasty Cure,40000,5,,
+service,Non-Surgical Rhinoplasty,NSRMNI,Non-Surgical Rhinoplasty Mini,17000,5,,
+service,Non-Surgical Rhinoplasty,NSRTU,NSR TU 1 (addons),0,0,,
+service,Non-Surgical Rhinoplasty,NSRTU,NSR TU 2 (addons),0,0,,
+service,Non-Surgical Rhinoplasty,SKIPRP,Skin PRP Treatment x 1,12000,5,,
+service,Skin Regenerative Treatment,SKIPRF,Skin i-PRF Treatment x 1,12000,5,,
+service,Skin Regenerative Treatment,SKCPRF,Skin c-PRF Treatment x 1,12000,5,,
+service,Skin Regenerative Treatment,SKEEX,RCSE Therapy (exosome) x1,18000,5,,
+service,Skin Regenerative Treatment,SMESO,Skin Peptide Treatment x1,7500,5,,
+service,Wrinkle Relaxer,BTX,Botox,450,5,,
+service,Wrinkle Relaxer,BTX,Mini Botox,500,5,,
+service,Wrinkle Relaxer,BTX,Dysport,400,5,,
+service,Wrinkle Relaxer,BTX,Mini Dysport,5000,5,,
+service,Wrinkle Relaxer,BTX,Xeomin,400,5,,
+service,Wrinkle Relaxer,BTX,Mini Xeomin,5000,5,,
+service,Lipolysis,GEO,Geo Treatment 5ml x 1,10000,5,,
+service,Lipolysis,GEO,Geo Treatment 10ml x 1,15000,5,,
+service,RF Spot Reduction,RF,RF Spot Reduction Basic (less than 10 spots),10000,0,,
+service,RF Spot Reduction,RF,RF Spot Reduction Essential (10-25 spots),15000,0,,
+service,RF Spot Reduction,RF,RF Spot Reduction Advance (25-50 spots),20000,0,,
+service,NextGen Hifu Treatment,HIFU,NextGen Hifu Treatment Face and Neck x 1,25000,5,,
+service,NextGen Hifu Treatment,HIFU,NextGen Hifu Treatment Arms x 1,25000,5,,
+service,NextGen Hifu Treatment,HIFU,NextGen Hifu Treatment Glute x 1,25000,5,,
+service,NextGen Hifu Treatment,HIFU,NextGen Hifu Treatment Thighs x 1,25000,5,,
+service,NextGen Hifu Treatment,HIFU,NextGen Hifu Treatment Abs x 1,25000,5,,
+service,Pico Laser Treatment,PICO,Full Body Optibeam Pico Laser x1,18000,5,,
+service,Pico Laser Treatment,PICO,Brazillian Optibeam Pico Laser x1,5000,5,,
+service,Pico Laser Treatment,PICO,Brazillian + Underarms Optibeam Pico laser x1,7000,5,,
+service,Pico Laser Treatment,PICO,Brazillian + Legs Optibeam Pico laser x1,10000,5,,
+service,Pico Laser Treatment,PICO,Arms & Legs Optibeam Pico Laser x1,10000,5,,
+service,Pico Laser Treatment,PICO,Full Legs Optibeam Pico Laser x1,7000,5,,
+service,Pico Laser Treatment,PICO,Full Arms Optibeam Pico Laser x1,7000,5,,
+service,Pico Laser Treatment,PICO,Full Face Optibeam Pico Laser x1,5000,5,,
+service,Pico Laser Treatment,PICO,Laser Tatoo Removal mini x1,5000,5,,
+service,Pico Laser Treatment,PICO,Laser Tatoo Removal average x1,7000,5,,
+service,Pico Laser Treatment,PICO,Laser Tatoo Removal Large x1,10000,5,,
+service,Pico Laser Treatment,PICO,Optibeam Pico For Neavus x1,7000,0,,
+service,Pico Laser Treatment,PICO,Full Face Carbon Peel x1,7000,5,,
+service,Pico Laser Treatment,PICO,Pico Spot Reduction Basic (less than 10 spots) x1,10000,0,,
+service,Pico Laser Treatment,PICO,Pico Spot Reduction Essential (10-25 spots) x1,15000,0,,
+service,Pico Laser Treatment,PICO,Pico Spot Reduction Advance (25-50 spots) x1,20000,0,,
+service,Consultation,HCON,Hair Consultation,2000,0,,
+service,Consultation,SCON,Skin Consultation,2000,0,,
+service,Consultation,NSRC,NSR Consultation,2000,0,,
+service,Consultation,ENTC,ENT Consultation,2000,0,,
+service,Filler,FLR,J. Voluma x1,32000,5,,
+service,Filler,FLR,J. Volux x1,32000,5,,
+service,Filler,FLR,J. Volbella x1,32000,5,,
+service,Filler,FLR,J. Volift x1,32000,5,,
+service,Filler,FLR,R. Define x1,30000,5,,
+service,Filler,FLR,R. lIFT x1,30000,5,,
+service,Filler,FLR,R. Kysse x1,30000,5,,
+service,Filler,FLR,Hyalase x1,2000,0,,
+service,Threads,THRD,Mono x 1U,1200,5,,
+service,Threads,THRD,Double screw x 1U,1500,5,,
+service,Threads,THRD,Mono x 10U,20000,5,,
+service,Threads,THRD,Double screw x 10U,22000,5,,
+service,Threads,THRD,Nose threads x1U,9000,5,,
+service,Threads,THRD,Brow threads x1U,9000,5,,
+service,Threads,THRD,Face lift threads x1U,12000,5,,
+service,Skin boosters,SKBOOST,J. Volite x1 Unit,16000,5,,
+service,Skin boosters,SKBOOST,Vital x1 Unit,16000,5,,
+service,Skin boosters,SKBOOST,Profhilo x1 Unit,16000,5,,
+service,Skin boosters,SKBOSTX,Micro Botox Face,15000,5,,
+service,IV Therapy,IVGLUT,Cara Skin Illumination Booster x 1 (6000 U),20000,5,,
+service,IV Therapy,IVGLUT,Cara Skin Illumination Booster x 1 (3600 U),12000,5,,
+service,IV Therapy,IVGLUT,Cara Hair Revival Booster x 1 (3600 U),12000,5,,
+service,IV Therapy,IVGLUT,Cara Fatloss Accelerator Booster x 1 (3600 U),12000,5,,
+service,IV Therapy,IVGLUT,Cara Immunity Booster x 1 (2400 U),10000,5,,
+service,IV Therapy,ILS,ILS X 1,2000,0,,
+service,IV Therapy,SBCSN,Subcision x 1,3000,5,,
+package,Trichometric Sapphire FUE & Hair regenrative treatment,,Trichometric Sapphire Scalp HT x .5 day + Trichometric Hair PRP x1,102000,5,96900,5
+package,Trichometric Sapphire FUE & Hair regenrative treatment,,Trichometric Sapphire Scalp HT x .5 day + Trichometric Hair PRP x2,114000,5,107160,6
+package,Trichometric Sapphire FUE & Hair regenrative treatment,,Trichometric Sapphire Scalp HT x .5 day + Trichometric Hair PRP x3,126000,5,116280,8
+package,Trichometric Sapphire FUE & Hair regenrative treatment,,Trichometric Sapphire Scalp HT x .5 day + Trichometric Hair PRP x4,138000,5,121980,12
+package,Trichometric Sapphire FUE & Hair regenrative treatment,,Trichometric Sapphire Scalp HT x1 day + Trichometric Hair PRP x1,199500,5,199500,
+package,Trichometric Sapphire FUE & Hair regenrative treatment,,Trichometric Sapphire Scalp HT x1 day + Trichometric Hair PRP x2,211500,5,206094,3
+package,Trichometric Sapphire FUE & Hair regenrative treatment,,Trichometric Sapphire Scalp HT x1 day + Trichometric Hair PRP x3,223500,5,212200,5
+package,Trichometric Sapphire FUE & Hair regenrative treatment,,Trichometric Sapphire Scalp HT x1 day + Trichometric Hair PRP x4,235500,5,214605,9
+package,Hair Loss Regenerative Treatment,,Trichometric Hair PRP x2,24000,5,22800,5
+package,Hair Loss Regenerative Treatment,,Trichometric Hair PRP x3,36000,5,32400,10
+package,Hair Loss Regenerative Treatment,,Trichometric Hair PRP x4,48000,5,38400,20
+package,Hair Loss Regenerative Treatment,,Trichometric Hair PRP x5,60000,5,45000,25
+package,Hair Loss Regenerative Treatment,,Trichometric Hair PRP x6,72000,5,50400,30
+package,Hair Loss Regenerative Treatment,,RCHE Therapy x 2,36000,5,32400,10
+package,Hair Loss Regenerative Treatment,,RCHE Therapy x 4,72000,5,57600,20
+package,Hair Loss Regenerative Treatment,,Hair PRP x 4 + RCHE Therapy x 2,84000,5,63720,24
+package,Hair Loss Regenerative Treatment,,Hair PRP x 4 + RCHE Therapy x 4,120000,5,81600,32
+package,Hair Loss Regenerative Treatment,,Hair PRP x 2 + RCHE Therapy x 2,60000,5,49680,17
+package,Hair Loss Regenerative Treatment,,Laser Hair Stimulation Therapy x 12,18000,5,13500,25
+package,Hair Loss Regenerative Treatment,,Hair meso x 4,30000,5,24000,20
+package,Hair Loss Regenerative Treatment,,Growth Factor Concentrate (GFC) Therapy x 2,24000,5,22800,5
+package,Hair Loss Regenerative Treatment,,Growth Factor Concentrate (GFC) Therapy x 4,48000,5,38400,20
+package,Hair Loss Regenerative Treatment,,Hair i-PRF treatment x 4,48000,5,38400,20
+package,Hair Loss Regenerative Treatment,,Hair c-PRF treatment x 4,48000,5,38400,20
+package,Scalp Peel Therapy,,Scalp Resurfacing Treatment x 4,28000,5,22400,20
+package,Laser Hair Removal,,Full body laser hair reduction x 5,100000,5,90000,10
+package,Laser Hair Removal,,Full body laser hair reduction x 6,120000,5,96000,20
+package,Laser Hair Removal,,Full Face laser hair reduction (BY DOCTOR) x 6,60000,5,45000,25
+package,Laser Hair Removal,,Full Face laser hair reduction x 6,60000,5,24000,60
+package,Laser Hair Removal,,Full Face laser hair reduction x 8,80000,5,30000,63
+package,Laser Hair Removal,,Lower Face Laser Hair Reduction x 6,24000,5,18000,25
+package,Laser Hair Removal,,Full Neck LHR x 6,18000,5,13500,25
+package,Laser Hair Removal,,Full Forehead laser hair reduction x 6,18000,5,12000,33
+package,Laser Hair Removal,,Earlobe Laser hair removal x 6,12000,5,10000,17
+package,Laser Hair Removal,,Beard reshaping laser hair reduction x 6,30000,5,24000,20
+package,Laser Hair Removal,,Upper Lip laser hair removal x 6,12000,5,10000,17
+package,Laser Hair Removal,,Lower Lip laser hair removal x 6,12000,5,10000,17
+package,Laser Hair Removal,,Chin laser hair reduction x 6,12000,5,10000,17
+package,Laser Hair Removal,,Sideburn laser hair reduction x 6,12000,5,10000,17
+package,Laser Hair Removal,,Shoulders Laser hair reduction x 6,30000,5,24000,20
+package,Laser Hair Removal,,Chest laser hair reduction x 6,42000,5,31500,25
+package,Laser Hair Removal,,Upper back LHR x 6,36000,5,27000,25
+package,Laser Hair Removal,,Lower back LHR x 6,36000,5,27000,25
+package,Laser Hair Removal,,Complete back laser hair reduction x 6,42000,5,31500,25
+package,Laser Hair Removal,,Underarm laser hair reduction x 6,21000,5,15750,25
+package,Laser Hair Removal,,Full arms laser hair reduction x 6,42000,5,31500,25
+package,Laser Hair Removal,,Brazilian Laser hair removal x 6,42000,5,31500,25
+package,Laser Hair Removal,,Full Abdomen LHR x 6,42000,5,21500,49
+package,Laser Hair Removal,,Buttocks laser hair reduction x 6,36000,5,24000,33
+package,Laser Hair Removal,,Brazilian + underarm laser hair reduction x 6,54000,5,40500,25
+package,Laser Hair Removal,,Brazilian +legs laser hair removal x 6,72000,5,54000,25
+package,Laser Hair Removal,,Thighs laser hair removal x 6,42000,5,31500,25
+package,Laser Hair Removal,,Lower legs laser hair removal x 6,42000,5,31500,25
+package,Laser Hair Removal,,Full legs laser hair removal x 6,60000,5,45000,25
+package,Laser Hair Removal,,Arms + legs LHR x 6,72000,5,54000,25
+package,Medical Peels,,Yellow Peel x2,14000,5,12600,10
+package,Medical Peels,,Yellow Peel x3,21000,5,17325,18
+package,Medical Peels,,Yellow Peel x4,28000,5,21000,25
+package,Medical Peels,,Yellow TREX Peel x 2,16000,5,14400,10
+package,Medical Peels,,Yellow TREX Peel x 3,24000,5,19800,18
+package,Medical Peels,,Yellow TREX Peel x 4,32000,5,24000,25
+package,Medical Peels,,Salicylic peel x 2,14000,5,12250,13
+package,Medical Peels,,Salicylic peel x 3,21000,5,17375,17
+package,Medical Peels,,Salicylic peel x 4,28000,5,21000,25
+package,Medical Peels,,Black Peel x 4,20000,5,15000,25
+package,Medical Peels,,Glycolic Peel (Face) x 6,30000,5,22500,25
+package,Medical Peels,,Undereye Peel x 6,21000,5,15750,25
+package,Medical Peels,,Dubai Lip Peel x 4,28000,5,22400,20
+package,Medical Peels,,Dubai Lip Peel x 6,42000,5,31500,25
+package,Medical Peels,,Arms Peel x 6,42000,5,31500,25
+package,Medical Peels,,Legs Peel x 6,42000,5,31500,25
+package,Medical Peels,,Back Peel x 6,42000,5,31500,25
+package,Medical Peels,,Abs Peel x 6,42000,5,31500,25
+package,Medical Peels,,Underarm Peel x 6,42000,5,31500,25
+package,Medical Peels,,Bikini Peel x 6,42000,5,31500,25
+package,Medical Peels,,Buttocks x 6,42000,5,31500,25
+package,Medical Peels,,Party Peel x 4,28000,5,22400,20
+package,Medical Peels,,Party Peel x 6,42000,5,31500,25
+package,Medical Peels,,Knuckle Peel x 6,30000,5,22500,25
+package,Medical Peels,,Elbow Peel x 6,30000,5,22500,25
+package,Medical Peels,,Knee Peel x 6,30000,5,22500,25
+package,Medical Peels,,Cara Luxuria Radiance (Anti-pigmentation) x 4,28000,5,22400,20
+package,Medical Peels,,Cara Luxuria Radiance (Anti-pigmentation) x 6,42000,5,31500,25
+package,Medical Peels,,Cara Luxuria Porcelain (Acne removal) x 4,28000,5,22400,20
+package,Medical Peels,,Cara Luxuria Porcelain (Acne removal) x 6,42000,5,31500,25
+package,Medical Peels,,Cara Luxuria Everyoung (Anti-Aging) x 4,36000,5,28800,20
+package,Medical Peels,,Cara Luxuria Everyoung (Anti-Aging) x 6,54000,5,40500,25
+package,Medical Peels,,Cara Charmant EMS Oxyfuse Hydrafacial x 4,28000,5,19200,31
+package,Medical Peels,,Cara Charmant EMS Oxyfuse Hydrafacial x 6,42000,5,27000,36
+package,Medical Peels,,Cara Charmant Vampire Facial Treatment x 4,40000,5,38400,4
+package,Medical Peels,,Cara Charmant Vampire Facial Treatment x 6,60000,5,50400,16
+package,Medical Peels,,Cara Charmant RCSE (Regenerative Cellular Skin Exosomes) x 4,60000,5,57600,4
+package,Medical Peels,,Cara Charmant RCSE (Regenerative Cellular Skin Exosomes) x 6,90000,5,81000,10
+package,Ultravac MnRF Treatment,,UltraVac MnRF Face x 4,48000,5,40000,17
+package,Ultravac MnRF Treatment,,UltraVac MnRF Face x 6,72000,5,50000,31
+package,Ultravac MnRF Treatment,,Ultravac MnRF Stretch Marks Cure Abs x 4,48000,5,40000,17
+package,Ultravac MnRF Treatment,,Ultravac MnRF Stretch Marks Cure Abs x 6,72000,5,50000,31
+package,Ultravac MnRF Treatment,,Ultravac MnRF Stretch Marks Cure Arms x 4,48000,5,40000,17
+package,Ultravac MnRF Treatment,,Ultravac MnRF Stretch Marks Cure Arms x 6,72000,5,50000,31
+package,Ultravac MnRF Treatment,,Ultravac MnRF Stretch Marks Cure Thighs x 4,48000,5,40000,17
+package,Ultravac MnRF Treatment,,Ultravac MnRF Stretch Marks Cure Thighs x 6,72000,5,50000,31
+package,NextGen Hifu Treatment,,NextGen Hifu Treatment Face and Neck x 2,50000,5,40000,20
+package,NextGen Hifu Treatment,,NextGen Hifu Treatment Face and Neck x 3,75000,5,50000,33
+package,NextGen Hifu Treatment,,NextGen Hifu Treatment Arms x 2,50000,5,40000,20
+package,NextGen Hifu Treatment,,NextGen Hifu Treatment Glute x 2,50000,5,40000,20
+package,NextGen Hifu Treatment,,NextGen Hifu Treatment Thighs x 2,50000,5,40000,20
+package,NextGen Hifu Treatment,,NextGen Hifu Treatment Abs x 2,50000,5,40000,20
+package,NextGen Hifu Treatment,,Geo treatment 5ml x 4,40000,5,30000,25
+package,NextGen Hifu Treatment,,Geo treatment 10ml x 4,60000,5,45000,25
+package,Optibeam Pico Laser Treatment,,Full Body Optibeam Pico Laser x 6,108000,5,81000,25
+package,Optibeam Pico Laser Treatment,,Brazillian Optibeam Pico Laser x 6,30000,5,22500,25
+package,Optibeam Pico Laser Treatment,,Brazillian + Underarms Optibeam Pico Laser x 6,42000,5,31500,25
+package,Optibeam Pico Laser Treatment,,Brazillian + Legs Optibeam Pico laser x 6,60000,5,45000,25
+package,Optibeam Pico Laser Treatment,,Arms & Legs Optibeam Pico Laser x 6,60000,5,45000,25
+package,Optibeam Pico Laser Treatment,,Full Legs Optibeam Pico Laser x 6,42000,5,31500,25
+package,Optibeam Pico Laser Treatment,,Full Arms Optibeam Pico Laser x 6,42000,5,31500,25
+package,Optibeam Pico Laser Treatment,,Full Face Optibeam Pico Laser x 6,30000,5,22500,25
+package,Optibeam Pico Laser Treatment,,Optibeam Pico For Neavus x 6,42000,5,31500,25
+package,Optibeam Pico Laser Treatment,,Laser Tatoo Removal mini x 6,30000,5,22500,25
+package,Optibeam Pico Laser Treatment,,Laser Tatoo Removal average x 6,42000,5,31500,25
+package,Optibeam Pico Laser Treatment,,Laser Tatoo Removal Large x 6,60000,5,45000,25
+package,Optibeam Pico Laser Treatment,,Full Face Carbon Peel x 6,42000,5,31500,25
+package,IV Therapy,,Cara Skin Illumination Booster x 5,100000,5,90000,10
+package,IV Therapy,,Cara Skin Illumination Booster x 10,200000,5,140000,30
+package,IV Therapy,,Cara Radiant Skin Booster x 5,48000,5,48000,
+package,IV Therapy,,Cara Radiant Skin Booster x 10,84000,5,84000,
+package,IV Therapy,,Cara Hair Revival Booster x 5,60000,5,48000,20
+package,IV Therapy,,Cara Hair Revival Booster x 10,120000,5,84000,30
+package,IV Therapy,,Cara Immunity Booster x 5,50000,5,40000,20
+package,IV Therapy,,Cara Immunity Booster x 10,100000,5,70000,30
+package,IV Therapy,,Cara Fatloss Accelerator Booster x 5,60000,5,48000,20
+package,IV Therapy,,Cara Fatloss Accelerator Booster x 10,120000,5,84000,30
+package,IV Therapy,,ILS X 3,4500,5,4000,11
+package,IV Therapy,,Skin Microneedlingn x4,12000,5,12000,
+package,Skin Regenerative Treatment,,Skin PRP Treatment x 4,48000,5,38400,20
+package,Skin Regenerative Treatment,,Skin i-PRF Treatment x 4,48000,5,38400,20
+package,Skin Regenerative Treatment,,Skin c-PRF Treatment x 4,48000,5,38400,20
+package,Skin Regenerative Treatment,,RCSE Therapy (exosome) x 4,72000,5,57600,20
+package,Skin Regenerative Treatment,,Skin Peptide Treatment x 4,30000,5,24000,20
+package,Active Acne,,Salicylic peel x 4 + Cara Luxuria Porcelain (Acne removal) x 2,42000,5,29400,30
+package,Active Acne,,Salicylic peel x 3 + Black Peel x 3 + Cara Luxuria Porcelain (Acne removal) x 2 + Subcision x 2,51500,5,36050,30
+package,Active Acne,,Mild - Salicylic peel x 1 + Cara Luxuria Porcelain (Acne removal) x 1,14000,5,14000,
+package,Active Acne,,Moderate - Salicylic peel x 1 + Black Peel x 1 + Cara Luxuria Porcelain (Acne removal) x 1,19000,5,19000,
+package,Active Acne,,Severe- Salicylic peel x 1 + Black Peel x 1 + Cara Luxuria Porcelain (Acne removal) x 1 + ILS x1,20500,5,20500,
+package,Active Acne,,Salicylic peel x 4 + Black Peel x 4 + Cara Luxuria Porcelain (Acne removal) x 2 + Subcision x 2,66500,5,46550,30
+package,Acne Scars,,UltraVac MnRF Face x 2 + Skin PRP Treatment x 2,48000,5,24000,50
+package,Acne Scars,,UltraVac MnRF Face x 4 + Skin PRP Treatment x 4 + Subcision x 2,102000,5,51000,50
+package,Acne Scars,,Mild -UltraVac MnRF Face x 1 + Skin PRP Treatment x 1,24000,5,24000,
+package,Acne Scars,,Moderate - UltraVac MnRF Face x 1 + Skin PRP Treatment x 1 + Subcision x 1,27000,5,27000,
+package,Acne Scars,,Severe - UltraVac MnRF Face x 1 + Skin PRP Treatment x 1 + Subcision x 1+ TCA Cross single session x1,32000,5,32000,
+package,Acne Scars,,UltraVac MnRF Face x 6 + Skin PRP Treatment x 6 + Subcision x 4 + TCA Cross single session x 4,176000,5,70400,60
+package,Melasma & Hyperpigmentation,,Glycolic Peel x4 + Cara Luxuria Radiance facials x2,34000,5,23800,30
+package,Melasma & Hyperpigmentation,,Yellow peel x4 + Cara Luxuria Radiance facials x2 + Full Face Optibeam Pico Laser x2,56000,5,39200,30
+package,Melasma & Hyperpigmentation,,Mild - Glycolic Peel x1 + Cara Luxuria Radiance facials x 1,12000,5,12000,
+package,Melasma & Hyperpigmentation,,Moderate -Yellow peel x 1 + Cara Luxuria Radiance facials x1 + Full Face Optibeam Pico Laser x 1,20000,5,20000,
+package,Melasma & Hyperpigmentation,,Severe - Cosmelan Peel x1 + Cara Luxuria Radiance facials x 1 + Full Face Optibeam Pico Laser x 1,57000,5,57000,
+package,Melasma & Hyperpigmentation,,Cosmelan Peel x1 + Cara Luxuria Radiance facials x2 + Full Face Optibeam Pico Laser x6,89000,5,62300,30
+package,Sun Damage & Photoageing,,Glycolic Face Peels x4 + Cara Luxuria Radiance facials x2 + Full Face Optibeam Pico Laser x2,44000,5,30800,30
+package,Sun Damage & Photoageing,,Glycolic Face Peels x1 + Cara Luxuria Radiance facials x 1 + Full Face Optibeam Pico Laser x1,17000,5,17000,
+package,Sun Damage & Photoageing,,Glycolic Face Peels x6 + Cara Luxuria Radiance facials x2 + Full Face Optibeam Pico Laser x6,74000,5,51800,30
+package,Non-Surgical Hair Loss,,Hair PRP x4 + Scalp Peel Therapy x2,62000,5,43400,30
+package,Non-Surgical Hair Loss,,Hair PRP x4 + Hair Exosomes x2 + Hair Mesotherapy x2 + Scalp Peel Therapy x2,113000,5,73450,35
+package,Non-Surgical Hair Loss,,Mild - Hair PRP x1 + Scalp Peel Therapy x1,19000,5,19000,
+package,Non-Surgical Hair Loss,,Moderate - Hair PRP x1 + Hair Exosomes x1 + Hair Mesotherapy x 1 + Scalp Peel Therapy x1,37500,5,37500,
+package,Non-Surgical Hair Loss,,Severe - Hair PRP x1 + Hair Exosomes x1 + Hair Mesotherapy x1 + Scalp Peel Therapy x1,44500,5,44500,
+package,Non-Surgical Hair Loss,,Hair PRP x6 + Hair Exosomes x4 + Hair Mesotherapy x2+ Scalp Peel Therapy x2,159000,5,87450,45
+package,Facial Rejuvenation,,Cara Luxuria facials x3 + J. Volite x2,53000,5,37100,30
+package,Facial Rejuvenation,,Mild - Cara Luxuria facials x1 + J. Volite x 1,23000,5,23000,
+package,Facial Rejuvenation,,Moderate - J. Volite x1 + Botox + Vampire Facial x1,48500,5,48500,
+package,Facial Rejuvenation,,Severe - J. Volite x1 + Nexgen Hifu Full Face & Neck x1 + Mono x 10U + Vampire Facial x1,71000,5,71000,
+package,Facial Rejuvenation,,J. Volite x2 + Botox + Vampire Facial x2,52450,5,45150,14
+package,Facial Rejuvenation,,J. Volite x2 + Nexgen Hifu Full Face & Neck x1 + Mono x 10U + Vampire Facial x1,87000,5,60900,30
+package,Stretch Marks & Post-Pregnancy,,UltraVac MNRF x4 + Skin PRP x4,96000,5,48000,50
+package,Stretch Marks & Post-Pregnancy,,UltraVac MNRF x1 + Skin PRP x1,24000,5,24000,
+package,Stretch Marks & Post-Pregnancy,,UltraVac MNRF x6 + Skin PRP x6,144000,5,72000,50
+package,Midface Lift,,J. Voluma x2 + Face lift threads x4,112000,5,84000,25
+package,Midface Lift,,J. Voluma x1 + Face lift threads x1,44000,5,44000,
+package,Midface Lift,,J. Voluma x4 + Face lift threads x8,224000,5,168000,25
+package,Mid & lower Facelift,,J. Voluma x4 + Face lift threads x6,200000,5,150000,25
+package,Mid & lower Facelift,,J. Voluma x6 + Face lift threads x8,288000,5,216000,25
+package,CARA'S Signature Full facelift,,J. Voluma x4 + Face lift threads x6 + NextGen Hifu Treatment Face and Neck x 1,225000,5,168750,25
+package,CARA'S Signature Full facelift,,Moderate - J. Voluma x1 + Face lift threads x 1 + NextGen Hifu Treatment Face and Neck x 1,69000,5,69000,
+package,CARA'S Signature Full facelift,,Advance - J. Voluma x1 + Face lift threads x1 + Botox + NextGen Hifu Treatment Face and Neck x 1,91500,5,91500,
+package,CARA'S Signature Full facelift,,J. Voluma x8 + Face lift threads x10 + Botox + NextGen Hifu Treatment Face and Neck x 2,448500,5,319500,29
+package,Filler & Botox Anti-ageing combo,,J. Voluma x4 + Botox,150500,5,112875,25
+package,Filler & Botox Anti-ageing combo,,J. Voluma x1 + Botox,54500,5,54500,
+package,Filler & Botox Anti-ageing combo,,J. Voluma x8 + Botox,301000,5,225750,25
+package,Cara's signature Eyebrow Lift,,Botox + Brow threads x6 + J. Voluma x1,108500,5,67875,37
+package,Cara's signature Eyebrow Lift,,Botox + Brow threads x1 + J. Voluma x1,45500,5,45500,

@@ -7,6 +7,30 @@ Format: newest first.
 
 ---
 
+## 2026-07-24 — Quote treatment catalog: dropdown auto-fills price + GST (§quote generation)
+
+A new quote's treatment is now picked from the clinic's Master Data List instead of
+typed free-text; selecting it auto-fills price, GST, and any package discount.
+
+- **Data**: new `CatalogItem` table (type service|package, category, price, gstRate,
+  defaultDiscountValue, packagePrice), seeded from `data/catalog.csv` via
+  `npm run import:catalog` (upsert by type+name; `--deactivate-missing` retires dropped
+  items). `scripts/importCatalog.ts` is the CSV importer. Loaded **182 services + 189
+  packages** from `Master_Data_List_Ver 5.xlsx`. Campaigns + 4 items deferred
+  (see the cara-catalog-deferred memory).
+- **UI**: `QuotesPanel` gains a search box + grouped `<select>` (Services/Packages ×
+  category). On select it fills treatment/price/gstRate/discount — packages prefill the
+  STANDARD price + built-in discount % so the saving shows. Live preview + GST line
+  handle 0%/exempt items. `lib/catalog.ts` `listCatalogGroups()` feeds the picker from
+  the lead detail page.
+- **Calc**: `createLeadQuote` now threads `gstRate` through to `createQuote`, so NA/0%
+  GST treatments total correctly (discount-before-GST unchanged).
+- Files: `prisma/schema.prisma`, `lib/catalog.ts`, `scripts/importCatalog.ts`,
+  `data/catalog.csv`, `components/QuotesPanel.tsx`,
+  `app/(dashboard)/leads/quoteActions.ts`, `app/(dashboard)/leads/[id]/page.tsx`.
+- **Deploy note**: additive schema (`CatalogItem`) — `prisma db push` to prod, then run
+  the catalog import against prod so the dropdown is populated.
+
 ## 2026-07-21 — Admin-editable role hierarchy / capability matrix (§3.1)
 
 CRM Admin can now control which features each role below them can access, from a new

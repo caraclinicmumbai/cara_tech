@@ -283,6 +283,38 @@ model RolePermission {
   updatedAt    DateTime @updatedAt
 }
 
+/// Treatment catalog (§quote generation) — the clinic's Master Data List of bookable
+/// Services and Packages. A quote's treatment is picked from here, auto-filling the
+/// price and GST. Seeded/refreshed from the master spreadsheet via scripts/importCatalog.ts
+/// (upsert by type+name), so re-importing a new version updates prices in place.
+///   type      : "service" | "package"
+///   price     : base price in whole rupees — the service price, or for a package the
+///               STANDARD (pre-discount) price, so the quote shows the saving.
+///   gstRate   : 5 (2.5 CGST + 2.5 SGST) or 0 (items marked "NA" in the master list).
+///   defaultDiscountValue : a package's built-in discount % (percent), else null.
+///   packagePrice : the package's already-discounted price (reference; packages only).
+model CatalogItem {
+  id                   String  @id @default(cuid())
+  type                 String
+  category             String
+  code                 String?
+  name                 String
+  price                Int
+  gstRate              Float   @default(5)
+  defaultDiscountType  String? // "percent" for packages with a built-in discount, else null
+  defaultDiscountValue Float? // the package discount % (per defaultDiscountType)
+  packagePrice         Int? // packages only: the discounted package price, for reference
+  active               Boolean @default(true)
+  sortOrder            Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([type, name])
+  @@index([active])
+  @@index([category])
+}
+
 model Account {
   id                String  @id @default(cuid())
   userId            String
