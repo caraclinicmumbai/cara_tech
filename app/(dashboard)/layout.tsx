@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { auth, signOut } from "@/auth";
 import { can, isRole, ROLE_LABELS } from "@/lib/rbac";
 import { ensurePermissions } from "@/lib/permissions";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default async function DashboardLayout({
   children,
@@ -87,8 +88,11 @@ export default async function DashboardLayout({
         </div>
       </aside>
 
-      <div className="min-w-0 flex-1">
-        <main className="mx-auto max-w-6xl px-8 py-8">{children}</main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-10 flex items-center justify-end gap-3 border-b-[0.5px] border-cara-rule bg-cara-page/90 px-8 py-3 backdrop-blur">
+          <ThemeToggle />
+        </header>
+        <main className="mx-auto w-full max-w-6xl px-8 py-8">{children}</main>
       </div>
     </div>
   );

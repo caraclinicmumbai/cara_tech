@@ -87,12 +87,39 @@
   --font-serif: var(--font-serif), "Cormorant Garamond", Georgia, "Times New Roman", serif;
 }
 
-/* Editorial white is light-only — neutralise the dark: variant so the
-   dark-mode utilities scattered through the existing components stay inert. */
-@variant dark (&:where(.__cara-never-dark));
+/* Dark mode is opt-in via a `.dark` class on <html> (set by the theme
+   toggle + the no-flash init script). This drives both the CARA token
+   overrides below and every `dark:` utility already in the components. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─── Dark palette (editorial warm-dark) ─── */
+.dark {
+  --cara-page:         #14110d;
+  --cara-surface:      #1c1813;
+  --cara-surface-2:    #232019;
+  --cara-tint:         #221e17;
+
+  --cara-rule:         #3a352b;
+  --cara-rule-strong:  #4a4438;
+  --cara-rule-soft:    #2a2620;
+
+  --cara-ink:          #f2ede3;
+  --cara-ink-soft:     #d8d2c6;
+  --cara-beige:        #b9a877;
+  --cara-beige-deep:   #cbb987;
+
+  --cara-text:         #f2ede3;
+  --cara-text-muted:   #a29c8f;
+  --cara-text-faint:   #6f6a5f;
+  --cara-text-on-dark: #ffffff;
+
+  --background: var(--cara-page);
+  --foreground: var(--cara-ink);
+}
 
 /* ─── Base ─── */
 html { color-scheme: light; }
+html.dark { color-scheme: dark; }
 
 body {
   background: var(--cara-page);
@@ -166,8 +193,14 @@ h1, h2, h3 {
 }
 .cara-btn:hover { background: var(--cara-surface-2); }
 .cara-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.cara-btn-primary { background: var(--cara-ink); color: var(--cara-text-on-dark); }
+.cara-btn-primary { background: var(--cara-ink); color: var(--cara-page); }
 .cara-btn-primary:hover { background: var(--cara-ink-soft); }
+/* In dark mode the ink surface is light — use beige so the primary button
+   stays a distinct, legible accent rather than a pale slab. */
+.dark .cara-btn-primary { background: var(--cara-beige-deep); color: #14110d; }
+.dark .cara-btn-primary:hover { background: var(--cara-beige); }
+/* Pill "on" state mirrors the same treatment. */
+.dark .cara-pill.on { background: var(--cara-beige-deep); border-color: var(--cara-beige-deep); color: #14110d; }
 .cara-btn-pdf { background: var(--cara-beige-deep); border-color: var(--cara-beige-deep); color: var(--cara-text-on-dark); }
 .cara-btn-pdf:hover { background: #6d5b34; border-color: #6d5b34; }
 .cara-btn-save { background: var(--state-success-tx); border-color: var(--state-success-tx); color: var(--cara-text-on-dark); }
