@@ -13,9 +13,11 @@ import { currentUser, canSeeLead } from "@/lib/authz";
 import { can, leadScope } from "@/lib/rbac";
 import { summariseQuotes } from "@/lib/quotes";
 import { listCatalogGroups } from "@/lib/catalog";
-import { readLeadTimeline } from "@/lib/audit";
+import { readLeadTimeline, readLeadAudit } from "@/lib/audit";
 import { listActiveGrants } from "@/lib/leadOwnership";
 import { LeadOwnershipPanel } from "@/components/LeadOwnershipPanel";
+import { LeadEditForm } from "@/components/LeadEditForm";
+import { AuditTable } from "@/components/AuditTable";
 
 export const dynamic = "force-dynamic";
 
@@ -115,6 +117,8 @@ export default async function LeadDetailPage({
     listActiveGrants(lead.id),
     readLeadTimeline(lead.id),
   ]);
+  const canEditLead = can(viewer.role, "leads.edit");
+  const changeHistory = await readLeadAudit(lead.id);
   const ownershipReps = handoverReps.map((r) => ({ id: r.id, name: r.name, branchId: r.branchId, branchName: r.branch?.name ?? null }));
   const granteeOptions = granteeUsers
     .filter((u) => u.id !== viewer.id)
@@ -243,6 +247,10 @@ export default async function LeadDetailPage({
           <Field label="Created" value={formatIst(lead.createdAt)} />
           <Field label="Updated" value={formatIst(lead.updatedAt)} />
         </dl>
+
+        {canEditLead && (
+          <LeadEditForm leadId={lead.id} name={lead.name} phone={lead.phone} email={lead.email} interest={lead.interest} />
+        )}
       </section>
 
       <section className="space-y-4">
@@ -259,6 +267,11 @@ export default async function LeadDetailPage({
           canHandover={canHandover}
           canGrant={canGrant}
         />
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Change history</h2>
+        <AuditTable entries={changeHistory} />
       </section>
 
       {canViewQuotes && (

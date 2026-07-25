@@ -13,6 +13,7 @@ import { evaluateHandover, notifyHandover } from "@/lib/handover";
 import { scheduleHandoverSla } from "@/lib/handoverSla";
 import { notifyCounsellor, type CounsellorAlertKind } from "@/lib/counsellor";
 import { notifySalesHead } from "@/lib/salesHead";
+import { writeAudit } from "@/lib/audit";
 import { sendAutomatedTemplate, outreachTemplate, firstName, istTime } from "@/lib/outreach";
 import { scoreCQS } from "@/lib/cqs";
 import { runStageChange } from "@/lib/chatbotRuntime";
@@ -133,6 +134,10 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     leadData.optedOutReason = "Said not interested on AI call";
     afterCommit.push(async () => {
       const canceled = await cancelScheduledCalls(lead.id);
+      await writeAudit({
+        action: "lead.consent.change", entityType: "lead", entityId: lead.id,
+        field: "optedOut", oldValue: "false", newValue: "true", reason: "Said not interested on AI call",
+      });
       logger.info(`Lead ${lead.id} opted out (not interested) — suppressed all outreach, canceled ${canceled} pending`);
     });
   } else if (handover.length > 0) {

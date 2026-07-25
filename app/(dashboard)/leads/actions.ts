@@ -3,7 +3,7 @@
 // Server Actions for staff edits to a lead's pipeline stage and tag (§3.1).
 // Server Functions are reachable via direct POST, so EVERY action re-checks the
 // session (see Next.js data-security guide) before touching the database.
-import { requireCapability } from "@/lib/authz";
+import { requireCapability, userCanAccessLead } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isLeadStage, LOST_STAGE, isPreConsultation, stageLabel, isLostTag } from "@/lib/leadStages";
@@ -13,6 +13,7 @@ import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
 import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
 import { clickToCall, isTwilioConfigured } from "@/lib/providers/twilio";
 import { cancelScheduledCalls } from "@/lib/queue";
+import { writeAudit, auditLeadFieldUpdate, auditLeadFieldChanges } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 
 const TAG_MAX = 120;
@@ -60,6 +61,19 @@ export async function setLeadStage(
     },
   });
   const lostSummary = [lostTag, lostReason].filter(Boolean).join(" — ");
+  // Audit: pipeline stage move (from → to), with the lost reason when marking lost.
+  if (stageChanged) {
+    await writeAudit({
+      actorId: user.id,
+      actorEmail: user.email,
+      action: "lead.stage.move",
+      entityType: "lead",
+      entityId: leadId,
+      oldValue: lead.stage,
+      newValue: stage,
+      reason: isLost ? (lostSummary || null) : null,
+    });
+  }
   logger.info(
     `Lead ${leadId} stage set to ${stage}${isLost ? ` (lost: ${lostSummary})` : ""} by ${user.email ?? "?"}`,
   );
@@ -165,16 +179,57 @@ export async function sendLeadWhatsAppTemplate(
 }
 
 export async function setLeadTag(leadId: string, tag: string): Promise<void> {
-  await requireCapability("leads.editTag");
+  const user = await requireCapability("leads.editTag");
 
   const trimmed = tag.trim().slice(0, TAG_MAX);
+  const before = await prisma.lead.findUnique({ where: { id: leadId }, select: { tag: true } });
   await prisma.lead.update({
     where: { id: leadId },
     data: { tag: trimmed || null },
   });
+  await auditLeadFieldUpdate(user, leadId, "tag", before?.tag ?? null, trimmed || null);
 
   revalidatePath("/leads");
   revalidatePath(`/leads/${leadId}`);
+}
+
+/// Edit a lead's core details (name / phone / email / interest). Each changed field is
+/// audited (old → new). Changing the phone number requires a written reason
+/// (compliance-sensitive — consent is tied to the number).
+export async function editLead(
+  leadId: string,
+  input: { name: string; phone: string; email?: string | null; interest?: string | null; reason?: string | null },
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await requireCapability("leads.edit");
+  if (!(await userCanAccessLead(user, leadId))) return { ok: false, error: "Not found" };
+
+  const before = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { name: true, phone: true, email: true, interest: true },
+  });
+  if (!before) return { ok: false, error: "Lead not found" };
+
+  const name = input.name.trim();
+  const phone = input.phone.trim();
+  const email = (input.email ?? "").trim() || null;
+  const interest = (input.interest ?? "").trim() || null;
+  if (!name) return { ok: false, error: "Name is required" };
+  if (!phone) return { ok: false, error: "Phone is required" };
+
+  const reason = (input.reason ?? "").trim() || null;
+  const phoneChanged = phone !== before.phone;
+  if (phoneChanged && !reason) return { ok: false, error: "A reason is required to change the phone number" };
+
+  await prisma.lead.update({ where: { id: leadId }, data: { name, phone, email, interest } });
+
+  // Audit each changed field; the phone change carries its mandatory reason.
+  await auditLeadFieldChanges(user, leadId, before, { name, email, interest }, ["name", "email", "interest"]);
+  await auditLeadFieldUpdate(user, leadId, "phone", before.phone, phone, reason);
+
+  logger.info(`Lead ${leadId} details edited by ${user.email ?? "?"}${phoneChanged ? " (phone changed)" : ""}`);
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${leadId}`);
+  return { ok: true };
 }
 
 /// Merge a duplicate lead into its original (§3.1.1). Moves the duplicate's calls,
@@ -223,6 +278,16 @@ export async function mergeDuplicateLead(
     return { ok: false, error: "Merge failed — please try again" };
   }
 
+  await writeAudit({
+    actorId: user.id,
+    actorEmail: user.email,
+    action: "lead.merge",
+    entityType: "lead",
+    entityId: originalId,
+    oldValue: dup.name,
+    newValue: original.name,
+    meta: { mergedFromId: dup.id, mergedFromPhone: dup.phone },
+  });
   logger.info(`Merged duplicate lead ${dup.id} into ${originalId} by ${user.email ?? "?"}`);
   revalidatePath("/leads");
   revalidatePath(`/leads/${originalId}`);
@@ -246,6 +311,7 @@ export async function softDeleteLead(leadId: string): Promise<{ ok: boolean; err
   await cancelScheduledCalls(leadId).catch((err) =>
     logger.error(`Failed to cancel calls for deleted lead ${leadId}: ${String(err)}`),
   );
+  await writeAudit({ actorId: user.id, actorEmail: user.email, action: "lead.softDelete", entityType: "lead", entityId: leadId });
   logger.info(`Lead ${leadId} moved to trash by ${user.email ?? "?"}`);
   revalidatePath("/leads");
   revalidatePath("/leads/deleted");
@@ -260,6 +326,7 @@ export async function restoreLead(leadId: string): Promise<{ ok: boolean; error?
     where: { id: leadId },
     data: { deletedAt: null, deletedBy: null },
   });
+  await writeAudit({ actorId: user.id, actorEmail: user.email, action: "lead.restore", entityType: "lead", entityId: leadId });
   logger.info(`Lead ${leadId} restored by ${user.email ?? "?"}`);
   revalidatePath("/leads");
   revalidatePath("/leads/deleted");
@@ -271,11 +338,15 @@ export async function restoreLead(leadId: string): Promise<{ ok: boolean; error?
 export async function permanentlyDeleteLead(leadId: string): Promise<{ ok: boolean; error?: string }> {
   const user = await requireCapability("leads.permanentDelete");
 
-  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { deletedAt: true } });
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { deletedAt: true, name: true, phone: true } });
   if (!lead) return { ok: false, error: "Lead not found" };
   if (!lead.deletedAt) return { ok: false, error: "Move the lead to trash first" };
 
   await prisma.lead.delete({ where: { id: leadId } });
+  await writeAudit({
+    actorId: user.id, actorEmail: user.email, action: "lead.permanentDelete",
+    entityType: "lead", entityId: leadId, oldValue: `${lead.name} (${lead.phone})`,
+  });
   logger.info(`Lead ${leadId} permanently deleted by ${user.email ?? "?"}`);
   revalidatePath("/leads/deleted");
   return { ok: true };

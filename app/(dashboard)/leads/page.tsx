@@ -69,7 +69,17 @@ export default async function LeadsPage() {
       )}
 
       <section className="space-y-4">
-        <h2 className="cara-eyebrow">Leads ({rows.length})</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="cara-eyebrow">Leads ({rows.length})</h2>
+          {can(role, "leads.export") && (
+            <a
+              href="/api/leads/export"
+              className="rounded border border-black/15 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+            >
+              Export CSV
+            </a>
+          )}
+        </div>
         <LeadsTable
           leads={rows}
           sourceLabels={SOURCE_LABELS}

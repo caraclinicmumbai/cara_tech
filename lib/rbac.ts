@@ -29,6 +29,9 @@ export const CAPABILITIES = [
   "leads.walkin",
   "leads.editStage",
   "leads.editTag",
+  // Edit a lead's core details (name / phone / email / interest). Phone edits require a
+  // reason (audited). Anyone who works leads.
+  "leads.edit",
   "leads.call",
   "leads.whatsapp",
   "leads.merge",
@@ -41,6 +44,8 @@ export const CAPABILITIES = [
   "leads.softDelete",
   "leads.restore",
   "leads.permanentDelete",
+  // Export the leads list as CSV (audited). Managers/admin.
+  "leads.export",
   // Quotes (Phase 2 §multi-quote): view the quotes on a lead; manage = create /
   // revise price / send / reject / withdraw; convert = mark won (needs an invoice);
   // unlock = reopen a converted (locked) quote — Admin-only, so it's granted to no
@@ -56,6 +61,8 @@ export const CAPABILITIES = [
   "reps.manage",
   "settings.manage",
   "users.manage",
+  // View the audit trail (§compliance) — all recorded changes. Managers/admin.
+  "audit.view",
   // Hierarchy settings (§3.1): edit the role → capability matrix itself. Admin-only by
   // default (granted to no role below, so it reaches only crm_admin's wildcard).
   "hierarchy.manage",
@@ -86,6 +93,7 @@ export const CAPABILITY_GROUPS: {
       { key: "leads.walkin", label: "Walk-in entry" },
       { key: "leads.editStage", label: "Move pipeline stage" },
       { key: "leads.editTag", label: "Edit tag / interest" },
+      { key: "leads.edit", label: "Edit details (name/phone/email)" },
       { key: "leads.call", label: "Click-to-call" },
       { key: "leads.whatsapp", label: "Send WhatsApp" },
       { key: "leads.merge", label: "Merge duplicates" },
@@ -95,6 +103,7 @@ export const CAPABILITY_GROUPS: {
       { key: "leads.softDelete", label: "Move to trash" },
       { key: "leads.restore", label: "Restore from trash" },
       { key: "leads.permanentDelete", label: "Permanently delete" },
+      { key: "leads.export", label: "Export leads (CSV)" },
     ],
   },
   {
@@ -131,6 +140,7 @@ export const CAPABILITY_GROUPS: {
     capabilities: [
       { key: "reps.manage", label: "Manage sales reps" },
       { key: "users.manage", label: "Manage staff logins" },
+      { key: "audit.view", label: "View audit log" },
       { key: "hierarchy.manage", label: "Manage role hierarchy" },
       { key: "branches.manage", label: "Manage branches" },
       { key: "settings.manage", label: "System settings" },
@@ -147,6 +157,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.walkin",
     "leads.editStage",
     "leads.editTag",
+    "leads.edit",
     "leads.call",
     "leads.whatsapp",
     "leads.merge",
@@ -160,6 +171,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.walkin",
     "leads.editStage",
     "leads.editTag",
+    "leads.edit",
     "leads.call",
     "leads.whatsapp",
     "leads.merge",
@@ -176,6 +188,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.walkin",
     "leads.editStage",
     "leads.editTag",
+    "leads.edit",
     "leads.call",
     "leads.whatsapp",
     "leads.merge",
@@ -184,11 +197,13 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.grantAccess",
     "leads.softDelete",
     "leads.restore",
+    "leads.export",
     "quotes.view",
     "quotes.manage",
     "quotes.convert",
     "calls.view",
     "analytics.view",
+    "audit.view",
     "templates.manage",
     "chatbot.manage",
     "reps.manage",
@@ -197,6 +212,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.view",
     "leads.editStage",
     "leads.editTag",
+    "leads.edit",
     "leads.call",
     "leads.whatsapp",
     "leads.merge",
@@ -206,11 +222,13 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.softDelete",
     "leads.restore",
     "leads.permanentDelete",
+    "leads.export",
     "quotes.view",
     "quotes.manage",
     "quotes.convert",
     "calls.view",
     "analytics.view",
+    "audit.view",
     "reps.manage",
   ],
 };
@@ -275,6 +293,7 @@ export function routeCapability(pathname: string): Capability | null {
   if (pathname.startsWith("/settings")) return "settings.manage";
   if (pathname.startsWith("/hierarchy")) return "hierarchy.manage";
   if (pathname.startsWith("/branches")) return "branches.manage";
+  if (pathname.startsWith("/audit")) return "audit.view";
   if (pathname.startsWith("/users")) return "users.manage";
   if (pathname.startsWith("/leads/deleted")) return "leads.restore";
   if (pathname.startsWith("/leads/walk-in")) return "leads.walkin";

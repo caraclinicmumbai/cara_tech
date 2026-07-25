@@ -9,6 +9,7 @@ import { scheduleCallAttempt, cancelScheduledCalls, aiCallsPaused } from "@/lib/
 import { pickNextRep, assignLeadToRep } from "@/lib/salesReps";
 import { isWithinDnd } from "@/lib/callWindow";
 import { sendAutomatedTemplate, outreachTemplate, firstName } from "@/lib/outreach";
+import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 
 export type LeadSource =
@@ -97,6 +98,10 @@ export async function optOutLeadsByPhone(phone: string, reason: string): Promise
     await prisma.lead.update({
       where: { id: l.id },
       data: { optedOut: true, optedOutAt: new Date(), optedOutReason: reason },
+    });
+    await writeAudit({
+      action: "lead.consent.change", entityType: "lead", entityId: l.id,
+      field: "optedOut", oldValue: "false", newValue: "true", reason,
     });
     await cancelScheduledCalls(l.id);
   }
