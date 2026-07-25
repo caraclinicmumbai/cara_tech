@@ -139,6 +139,7 @@ model Lead {
   messages        Message[]
   quotes          Quote[]
   chatbotSessions ChatbotSession[]
+  accessGrants    LeadAccessGrant[]
 
   @@index([status])
   @@index([phone])
@@ -269,6 +270,32 @@ model User {
 
   // Branches this user manages (Branch.managerId points here).
   managedBranches Branch[] @relation("BranchManager")
+
+  // Temporary lead-access grants received (§handover — cover a colleague's lead).
+  leadGrants LeadAccessGrant[] @relation("LeadGrantee")
+}
+
+/// A temporary grant of access to a lead (§handover) — lets a counsellor act on a
+/// colleague's lead WITHOUT changing ownership (e.g. cover while the owner is on leave).
+/// A manager/admin grants it with a reason and an optional expiry; it can be revoked
+/// early. An "active" grant (revokedAt null and not past expiry) widens the grantee's
+/// lead scope (see lib/authz.ts). Every grant + revoke is written to AuditLog.
+model LeadAccessGrant {
+  id          String    @id @default(cuid())
+  leadId      String
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  granteeId   String // User.id granted access
+  grantee     User      @relation("LeadGrantee", fields: [granteeId], references: [id], onDelete: Cascade)
+  grantedById String? // User.id who granted (manager/admin)
+  reason      String?
+  expiresAt   DateTime? // null = until revoked
+  revokedAt   DateTime?
+  revokedById String?
+  createdAt   DateTime  @default(now())
+
+  @@index([leadId])
+  @@index([granteeId])
+  @@index([revokedAt])
 }
 
 /// Admin-editable role → capability overrides (§3.1 Hierarchy settings). One row per

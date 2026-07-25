@@ -6,7 +6,7 @@
 // they can't see.
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireCapability, canSeeLead, type SessionUser } from "@/lib/authz";
+import { requireCapability, userCanAccessLead, type SessionUser } from "@/lib/authz";
 import {
   createQuote,
   reviseQuotePrice,
@@ -31,13 +31,9 @@ async function assertCanSeeLead(
   user: SessionUser,
   leadId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const lead = await prisma.lead.findUnique({
-    where: { id: leadId },
-    select: { assignedRepId: true, createdById: true },
-  });
-  if (!lead) return { ok: false, error: "Lead not found" };
-  if (!canSeeLead(user, lead)) return { ok: false, error: "Not found" };
-  return { ok: true };
+  // Grant-aware: also allows a colleague covering the lead via an active access grant.
+  if (await userCanAccessLead(user, leadId)) return { ok: true };
+  return { ok: false, error: "Not found" };
 }
 
 /// Raise a new quote on a lead. Enforces one-open-quote-per-treatment + cycle

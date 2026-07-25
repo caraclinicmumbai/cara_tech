@@ -4,7 +4,7 @@
 // the WhatsApp/email send actions.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { currentUser, canSeeLead } from "@/lib/authz";
+import { currentUser, userCanAccessLead } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { buildQuotePdf, quoteRef } from "@/lib/quotePdf";
 import { getBranchQuoteInfo } from "@/lib/branches";
@@ -23,7 +23,7 @@ export async function GET(
     include: { lead: { select: { name: true, phone: true, assignedRepId: true, createdById: true } } },
   });
   if (!quote) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (!canSeeLead(user, quote.lead)) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!(await userCanAccessLead(user, quote.leadId))) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const pdf = await buildQuotePdf({
     quoteId: quote.id,
