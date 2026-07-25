@@ -7,6 +7,54 @@ Format: newest first.
 
 ---
 
+## 2026-07-25 — Immutable audit log: record views, logins, settings + tamper-evidence
+
+Deepens the audit trail so it can't be quietly edited. Every AuditLog row is
+hash-chained (`hash = sha256(canonical(row) + previous hash)`, inserts serialised by a
+Postgres advisory lock with `at` stamped inside the lock). `scripts/protectAuditLog.ts`
+(`npm run protect:audit`) installs Postgres triggers that make UPDATE/DELETE/TRUNCATE on
+AuditLog RAISE — the app (even a CRM admin) cannot edit or delete a log. `verifyAuditChain()`
++ a "Verify integrity" button on /audit detect any out-of-band tampering and fire a Slack
+alert. Newly logged: record VIEWS (lead opens + quote-PDF opens — who/record/when/IP/device),
+every login/logout/failed login, and settings changes (chatbot flows, WhatsApp templates,
+branches; role-permission changes routed through writeAudit). New capability none (uses
+audit.view). **Deploy: run `npm run protect:audit` against prod once.** Files: `lib/audit.ts`,
+`scripts/protectAuditLog.ts`, `auth.ts`, `app/api/audit/view/route.ts`, `components/RecordViewLogger.tsx`,
+`components/AuditVerifyButton.tsx`, `app/(dashboard)/audit/*`, + settings action instrumentation.
+
+## 2026-07-25 — Compliance audit trail: field/stage/consent/reassign/export + viewer
+
+The five things a Compliance Officer / Branch Manager reach for. Records lead field changes
+(old→new; phone edits require a reason), pipeline stage moves, consent changes (opt-out),
+reassignments (handover + intake assign), and data exports. New audited Leads CSV export
+(`GET /api/leads/export`). Global `/audit` screen (audit.view) with filters + a per-lead
+Change-history section + a small audited edit form for core fields. New capabilities
+`leads.edit`, `leads.export`, `audit.view` (tunable in Hierarchy). Reuses AuditLog (no schema
+change). Files: `lib/audit.ts`, `app/(dashboard)/leads/actions.ts`, `lib/salesReps.ts`,
+`lib/leadIntake.ts`, `lib/callIntake.ts`, `components/{AuditTable,LeadEditForm}.tsx`,
+`app/(dashboard)/audit/page.tsx`.
+
+## 2026-07-25 — Lead handover + temporary access grants (§handover)
+
+Counsellors/managers hand a lead to another counsellor (same-branch open; cross-branch needs
+a manager + written reason); managers grant a colleague temporary access to cover a lead
+without changing ownership (duration + revoke). Every change lands on the lead's Ownership &
+access timeline and Slack-DMs the counsellor. New `LeadAccessGrant` model; active grants widen
+the grantee's lead scope (lib/authz). New capabilities `leads.handover`, `leads.grantAccess`.
+Files: `prisma/schema.prisma`, `lib/{leadOwnership,authz,audit}.ts`,
+`app/(dashboard)/leads/ownershipActions.ts`, `components/LeadOwnershipPanel.tsx`.
+
+## 2026-07-24 — Branch management + per-branch quote PDFs (§branches)
+
+CRM Admin creates clinic branches (Santacruz, Juhu…), each carrying its legal entity + GSTIN,
+address, bank + UPI/QR. A quote raised at a branch renders that branch's details on the PDF
+(falls back to the original Santacruz constants for branch-less quotes). Branch grew from a
+4-field stub into a real entity; new `Quote.branchId` set from the creating user's home branch
+(→ default). New capability `branches.manage` (Admin default, grantable to a CEO login). QR
+stored as bytes so it survives redeploys. **Deploy: `prisma db push` + `npm run seed:branch`
+against prod.** Files: `prisma/schema.prisma`, `lib/branches.ts`, `lib/quotePdf.ts`,
+`app/(dashboard)/branches/*`, `components/BranchesAdmin.tsx`, `scripts/seedDefaultBranch.ts`.
+
 ## 2026-07-24 — Light/dark theme toggle (no-flash, persisted)
 
 Opt-in dark mode via a `.dark` class on `<html>`. A no-flash inline script in the root
