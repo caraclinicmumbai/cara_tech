@@ -11,6 +11,7 @@ import { getClientIp } from "@/lib/rateLimit";
 import { isLoginLocked, recordLoginFailure, clearLoginFailures } from "@/lib/loginThrottle";
 import { can, routeCapability } from "@/lib/rbac";
 import { ensurePermissions } from "@/lib/permissions";
+import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -37,16 +38,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const { locked } = await isLoginLocked(ip);
         if (locked) {
           logger.warn(`Login blocked by rate limit for ip=${ip}`);
+          await writeAudit({ action: "auth.login.failed", entityType: "auth", actorEmail: email, ip, reason: "rate-limited" });
           return null;
         }
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user?.passwordHash || !verifyPassword(password, user.passwordHash)) {
           await recordLoginFailure(ip);
+          await writeAudit({ action: "auth.login.failed", entityType: "auth", actorEmail: email, ip, reason: "invalid credentials" });
           return null;
         }
 
         await clearLoginFailures(ip);
+        await writeAudit({ action: "auth.login", entityType: "auth", actorId: user.id, actorEmail: user.email, ip });
         return {
           id: user.id,
           name: user.name,
@@ -95,6 +99,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         u.salesRepId = (token.salesRepId as string | null) ?? null;
       }
       return session;
+    },
+  },
+  events: {
+    // Audit logout (§compliance). JWT strategy → the event carries the token.
+    async signOut(message) {
+      const token = "token" in message ? message.token : null;
+      const email = (token as { email?: string | null } | null)?.email ?? null;
+      await writeAudit({ action: "auth.logout", entityType: "auth", actorId: token?.sub ?? null, actorEmail: email });
     },
   },
 });

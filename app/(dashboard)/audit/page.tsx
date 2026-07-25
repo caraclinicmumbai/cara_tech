@@ -1,6 +1,7 @@
 import { requireCapability } from "@/lib/authz";
 import { listAuditLog } from "@/lib/audit";
 import { AuditTable } from "@/components/AuditTable";
+import { AuditVerifyButton } from "@/components/AuditVerifyButton";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,12 @@ const ACTIONS: { value: string; label: string }[] = [
   { value: "lead.merge", label: "Merges" },
   { value: "lead.softDelete", label: "Deletions" },
   { value: "lead.export", label: "Data exports" },
+  { value: "record.view", label: "Record views" },
+  { value: "auth.login", label: "Logins" },
+  { value: "auth.login.failed", label: "Failed logins" },
+  { value: "auth.logout", label: "Logouts" },
+  { value: "settings.", label: "Settings changes" },
+  { value: "role.permissions.change", label: "Role permission changes" },
 ];
 
 const inputCls = "rounded border border-black/15 bg-background px-2 py-1.5 text-sm dark:border-white/20";
@@ -48,9 +55,15 @@ export default async function AuditPage({
       <div className="space-y-1">
         <h1 className="text-xl font-semibold">Audit log</h1>
         <p className="text-sm text-black/60 dark:text-white/60">
-          Every recorded change — field edits, stage moves, consent changes, reassignments,
-          and data exports — with who, when, and why. Filter and share the URL.
+          Every recorded event — record views, logins, field edits, stage moves, consent
+          changes, reassignments, settings changes, and data exports — with who, when, from
+          where, and why. Entries are append-only (immutable at the database) and
+          hash-chained so tampering is detectable.
         </p>
+      </div>
+
+      <div className="rounded border border-black/10 p-3 dark:border-white/15">
+        <AuditVerifyButton />
       </div>
 
       <form method="get" className="flex flex-wrap items-end gap-2 rounded border border-black/10 p-3 dark:border-white/15">

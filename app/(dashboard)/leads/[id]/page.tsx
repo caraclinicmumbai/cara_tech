@@ -18,6 +18,7 @@ import { listActiveGrants } from "@/lib/leadOwnership";
 import { LeadOwnershipPanel } from "@/components/LeadOwnershipPanel";
 import { LeadEditForm } from "@/components/LeadEditForm";
 import { AuditTable } from "@/components/AuditTable";
+import { RecordViewLogger } from "@/components/RecordViewLogger";
 
 export const dynamic = "force-dynamic";
 
@@ -126,6 +127,7 @@ export default async function LeadDetailPage({
 
   return (
     <div className="space-y-8">
+      <RecordViewLogger entityType="lead" entityId={lead.id} />
       <div>
         <Link href="/leads" className="text-sm text-black/50 hover:underline dark:text-white/50">
           ← Leads

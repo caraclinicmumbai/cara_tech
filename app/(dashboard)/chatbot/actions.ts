@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/authz";
+import { writeAudit } from "@/lib/audit";
 import {
   isTriggerEvent,
   isFlowPriority,
@@ -41,6 +42,7 @@ export async function createFlow(input: {
     },
     select: { id: true },
   });
+  await writeAudit({ actorId: user.id, actorEmail: user.email, action: "settings.chatbot.create", entityType: "setting", entityId: flow.id, newValue: name });
   logger.info(`Chatbot flow "${name}" created by ${user.email ?? "?"}`);
   revalidatePath("/chatbot");
   return { ok: true, id: flow.id };
@@ -56,8 +58,9 @@ export async function renameFlow(id: string, name: string): Promise<Result> {
 }
 
 export async function setFlowActive(id: string, active: boolean): Promise<Result> {
-  await requireCapability("chatbot.manage");
-  await prisma.chatbotFlow.update({ where: { id }, data: { active } });
+  const user = await requireCapability("chatbot.manage");
+  const flow = await prisma.chatbotFlow.update({ where: { id }, data: { active }, select: { name: true } });
+  await writeAudit({ actorId: user.id, actorEmail: user.email, action: active ? "settings.chatbot.publish" : "settings.chatbot.unpublish", entityType: "setting", entityId: id, newValue: flow.name, field: "active" });
   revalidatePath("/chatbot");
   return { ok: true };
 }
@@ -137,7 +140,9 @@ export async function saveFlowGraph(
 
 export async function deleteFlow(id: string): Promise<Result> {
   const user = await requireCapability("chatbot.manage");
+  const flow = await prisma.chatbotFlow.findUnique({ where: { id }, select: { name: true } });
   await prisma.chatbotFlow.delete({ where: { id } });
+  await writeAudit({ actorId: user.id, actorEmail: user.email, action: "settings.chatbot.delete", entityType: "setting", entityId: id, oldValue: flow?.name ?? id });
   logger.info(`Chatbot flow ${id} deleted by ${user.email ?? "?"}`);
   revalidatePath("/chatbot");
   return { ok: true };

@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/authz";
+import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 
 type Result = { ok: boolean; error?: string; id?: string };
@@ -70,7 +71,7 @@ function normalise(input: BranchInput): { ok: true; data: Prisma.BranchUnchecked
 }
 
 export async function createBranch(input: BranchInput): Promise<Result> {
-  await requireCapability("branches.manage");
+  const actor = await requireCapability("branches.manage");
   const n = normalise(input);
   if (!("data" in n)) return n;
   try {
@@ -79,6 +80,7 @@ export async function createBranch(input: BranchInput): Promise<Result> {
       data: { ...n.data, isDefault: isFirst }, // the very first branch becomes the default
       select: { id: true },
     });
+    await writeAudit({ actorId: actor.id, actorEmail: actor.email, action: "settings.branch.create", entityType: "setting", entityId: created.id, newValue: `${n.data.name} (${n.data.code})` });
     revalidatePath("/branches");
     revalidatePath("/", "layout");
     return { ok: true, id: created.id };
@@ -90,11 +92,12 @@ export async function createBranch(input: BranchInput): Promise<Result> {
 }
 
 export async function updateBranch(id: string, input: BranchInput): Promise<Result> {
-  await requireCapability("branches.manage");
+  const actor = await requireCapability("branches.manage");
   const n = normalise(input);
   if (!("data" in n)) return n;
   try {
     await prisma.branch.update({ where: { id }, data: n.data });
+    await writeAudit({ actorId: actor.id, actorEmail: actor.email, action: "settings.branch.update", entityType: "setting", entityId: id, newValue: `${n.data.name} (${n.data.code})` });
     revalidatePath("/branches");
     return { ok: true };
   } catch (err) {
@@ -105,24 +108,26 @@ export async function updateBranch(id: string, input: BranchInput): Promise<Resu
 }
 
 export async function setBranchActive(id: string, active: boolean): Promise<Result> {
-  await requireCapability("branches.manage");
+  const actor = await requireCapability("branches.manage");
   const b = await prisma.branch.findUnique({ where: { id }, select: { isDefault: true } });
   if (active === false && b?.isDefault) return { ok: false, error: "Set another branch as default before deactivating this one" };
   await prisma.branch.update({ where: { id }, data: { active } });
+  await writeAudit({ actorId: actor.id, actorEmail: actor.email, action: "settings.branch.update", entityType: "setting", entityId: id, field: "active", newValue: String(active) });
   revalidatePath("/branches");
   return { ok: true };
 }
 
 /// Make one branch the default (fallback). Clears the flag on all others atomically.
 export async function setDefaultBranch(id: string): Promise<Result> {
-  await requireCapability("branches.manage");
-  const target = await prisma.branch.findUnique({ where: { id }, select: { active: true } });
+  const actor = await requireCapability("branches.manage");
+  const target = await prisma.branch.findUnique({ where: { id }, select: { active: true, name: true } });
   if (!target) return { ok: false, error: "Branch not found" };
   if (!target.active) return { ok: false, error: "Activate the branch before making it the default" };
   await prisma.$transaction([
     prisma.branch.updateMany({ where: { isDefault: true }, data: { isDefault: false } }),
     prisma.branch.update({ where: { id }, data: { isDefault: true } }),
   ]);
+  await writeAudit({ actorId: actor.id, actorEmail: actor.email, action: "settings.branch.setDefault", entityType: "setting", entityId: id, newValue: target.name });
   revalidatePath("/branches");
   return { ok: true };
 }

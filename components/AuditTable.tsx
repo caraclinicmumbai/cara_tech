@@ -42,7 +42,10 @@ export function AuditTable({ entries, showEntity = false }: { entries: AuditEntr
               <td className="px-3 py-2 text-black/60 dark:text-white/60">{e.field ?? "—"}</td>
               <td className="px-3 py-2">{change(e)}</td>
               <td className="px-3 py-2 text-black/60 dark:text-white/60">{e.reason ?? "—"}</td>
-              <td className="px-3 py-2 text-black/60 dark:text-white/60">{e.actorEmail ?? "system"}</td>
+              <td className="px-3 py-2 text-black/60 dark:text-white/60" title={typeof e.meta?.userAgent === "string" ? e.meta.userAgent : undefined}>
+                {e.actorEmail ?? "system"}
+                {e.ip ? <span className="block text-xs text-black/40 dark:text-white/40">{e.ip}</span> : null}
+              </td>
               {showEntity && (
                 <td className="px-3 py-2 text-xs text-black/45 dark:text-white/45">
                   {e.entityType}{e.entityId ? ` · ${e.entityId.slice(-6)}` : ""}

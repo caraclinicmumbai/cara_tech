@@ -7,6 +7,7 @@
 // lead.consent.change | lead.assign | lead.handover | lead.access.grant |
 // lead.access.revoke | lead.merge | lead.softDelete | lead.restore |
 // lead.permanentDelete | lead.export | role.permissions.change | …
+import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import type { Prisma } from "@prisma/client";
@@ -15,20 +16,68 @@ export type AuditInput = {
   actorId?: string | null;
   actorEmail?: string | null;
   action: string;
-  entityType: string; // lead | quote | role | export | …
+  entityType: string; // lead | quote | role | export | auth | setting | …
   entityId?: string | null;
   field?: string | null; // which field changed (for lead.field.update)
   oldValue?: string | null;
   newValue?: string | null;
   reason?: string | null;
+  ip?: string | null; // request IP (record views, logins)
+  userAgent?: string | null; // device string (stored in meta.userAgent)
   meta?: Record<string, unknown> | null;
 };
 
-/// Write one audit row. Never throws — audit must not break the primary action.
+// ── Tamper-evidence (hash chain) ─────────────────────────────────────────────
+// Each row stores hash = sha256(canonical(row) + prevHash-of-previous-row). If any
+// prior row is altered or removed, every subsequent hash stops matching and
+// verifyAuditChain() flags it. Writes are serialised with a Postgres advisory lock so
+// the chain is strictly linear. Append-only-ness is ALSO enforced at the DB by a trigger
+// that forbids UPDATE/DELETE (scripts/protectAuditLog.ts) — together: the app cannot edit
+// a log, and out-of-band tampering is detectable.
+const AUDIT_LOCK_KEY = 748_923_155;
+
+/// Order-independent stringify (sorted keys) so a jsonb round-trip hashes identically.
+function stable(v: unknown): string {
+  if (v === null || v === undefined) return "null";
+  if (typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return "[" + v.map(stable).join(",") + "]";
+  const o = v as Record<string, unknown>;
+  return "{" + Object.keys(o).sort().map((k) => JSON.stringify(k) + ":" + stable(o[k])).join(",") + "}";
+}
+
+type ChainFields = {
+  at: string; actorId: string | null; actorEmail: string | null; action: string;
+  entityType: string; entityId: string | null; field: string | null; oldValue: string | null;
+  newValue: string | null; reason: string | null; ip: string | null;
+  meta: unknown; prevHash: string | null;
+};
+
+function auditHash(r: ChainFields): string {
+  const canon = stable([
+    r.at, r.actorId, r.actorEmail, r.action, r.entityType, r.entityId, r.field,
+    r.oldValue, r.newValue, r.reason, r.ip, r.meta, r.prevHash,
+  ]);
+  return createHash("sha256").update(canon).digest("hex");
+}
+
+/// Write one audit row into the tamper-evident chain. Never throws — audit must not
+/// break the primary action.
 export async function writeAudit(input: AuditInput): Promise<void> {
+  const meta = input.userAgent ? { ...(input.meta ?? {}), userAgent: input.userAgent } : (input.meta ?? null);
   try {
-    await prisma.auditLog.create({
-      data: {
+    await prisma.$transaction(async (tx) => {
+      // Serialise audit inserts so prevHash always points at the true previous row.
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${AUDIT_LOCK_KEY})`);
+      // Stamp `at` INSIDE the lock so it is monotonic with insertion order — otherwise a
+      // row inserted later could carry an earlier timestamp and break the verify ordering.
+      const at = new Date();
+      const last = await tx.auditLog.findFirst({
+        orderBy: [{ at: "desc" }, { id: "desc" }],
+        select: { hash: true },
+      });
+      const prevHash = last?.hash ?? null;
+      const hash = auditHash({
+        at: at.toISOString(),
         actorId: input.actorId ?? null,
         actorEmail: input.actorEmail ?? null,
         action: input.action,
@@ -38,8 +87,28 @@ export async function writeAudit(input: AuditInput): Promise<void> {
         oldValue: input.oldValue ?? null,
         newValue: input.newValue ?? null,
         reason: input.reason ?? null,
-        meta: (input.meta ?? undefined) as object | undefined,
-      },
+        ip: input.ip ?? null,
+        meta,
+        prevHash,
+      });
+      await tx.auditLog.create({
+        data: {
+          at,
+          actorId: input.actorId ?? null,
+          actorEmail: input.actorEmail ?? null,
+          action: input.action,
+          entityType: input.entityType,
+          entityId: input.entityId ?? null,
+          field: input.field ?? null,
+          oldValue: input.oldValue ?? null,
+          newValue: input.newValue ?? null,
+          reason: input.reason ?? null,
+          ip: input.ip ?? null,
+          meta: (meta ?? undefined) as object | undefined,
+          prevHash,
+          hash,
+        },
+      });
     });
   } catch (err) {
     logger.error(`writeAudit failed (${input.action} on ${input.entityType}:${input.entityId}): ${String(err)}`);
@@ -102,13 +171,14 @@ export type AuditEntry = {
   oldValue: string | null;
   newValue: string | null;
   reason: string | null;
+  ip: string | null;
   meta: Record<string, unknown> | null;
 };
 
 function toEntry(r: {
   id: string; at: Date; action: string; actorEmail: string | null; entityType: string;
   entityId: string | null; field: string | null; oldValue: string | null; newValue: string | null;
-  reason: string | null; meta: Prisma.JsonValue | null;
+  reason: string | null; ip: string | null; meta: Prisma.JsonValue | null;
 }): AuditEntry {
   return {
     id: r.id,
@@ -121,13 +191,14 @@ function toEntry(r: {
     oldValue: r.oldValue,
     newValue: r.newValue,
     reason: r.reason,
+    ip: r.ip,
     meta: (r.meta as Record<string, unknown> | null) ?? null,
   };
 }
 
 const ENTRY_SELECT = {
   id: true, at: true, action: true, actorEmail: true, entityType: true, entityId: true,
-  field: true, oldValue: true, newValue: true, reason: true, meta: true,
+  field: true, oldValue: true, newValue: true, reason: true, ip: true, meta: true,
 } satisfies Prisma.AuditLogSelect;
 
 /// All audit events for one lead (newest first) — optionally restricted to a set of
@@ -204,4 +275,45 @@ export function actionLabel(action: string): string {
     "role.permissions.reset": "Role permissions reset",
   };
   return map[action] ?? action;
+}
+
+// ── Integrity verification ───────────────────────────────────────────────────
+export type ChainResult = {
+  ok: boolean;
+  checked: number;
+  brokenAt?: { id: string; at: string; action: string; reason: string };
+};
+
+/// Walk the hash chain (only rows written with a hash — i.e. everything since chaining
+/// was enabled) and confirm nothing has been altered or removed. On the first mismatch,
+/// returns where it broke. O(n) over the audited history.
+export async function verifyAuditChain(limit = 50_000): Promise<ChainResult> {
+  const rows = await prisma.auditLog.findMany({
+    where: { hash: { not: null } },
+    orderBy: [{ at: "asc" }, { id: "asc" }],
+    take: limit,
+    select: {
+      id: true, at: true, actorId: true, actorEmail: true, action: true, entityType: true,
+      entityId: true, field: true, oldValue: true, newValue: true, reason: true, ip: true,
+      meta: true, prevHash: true, hash: true,
+    },
+  });
+  let prev: string | null = null;
+  let checked = 0;
+  for (const r of rows) {
+    if ((r.prevHash ?? null) !== prev) {
+      return { ok: false, checked, brokenAt: { id: r.id, at: r.at.toISOString(), action: r.action, reason: "Broken link — a previous entry was altered or removed" } };
+    }
+    const expected = auditHash({
+      at: r.at.toISOString(), actorId: r.actorId, actorEmail: r.actorEmail, action: r.action,
+      entityType: r.entityType, entityId: r.entityId, field: r.field, oldValue: r.oldValue,
+      newValue: r.newValue, reason: r.reason, ip: r.ip, meta: r.meta, prevHash: r.prevHash ?? null,
+    });
+    if (expected !== r.hash) {
+      return { ok: false, checked, brokenAt: { id: r.id, at: r.at.toISOString(), action: r.action, reason: "Content mismatch — this entry was altered" } };
+    }
+    prev = r.hash;
+    checked++;
+  }
+  return { ok: true, checked };
 }

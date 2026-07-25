@@ -8,9 +8,10 @@ import { currentUser, userCanAccessLead } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { buildQuotePdf, quoteRef } from "@/lib/quotePdf";
 import { getBranchQuoteInfo } from "@/lib/branches";
+import { writeAudit } from "@/lib/audit";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const user = await currentUser();
@@ -39,6 +40,14 @@ export async function GET(
     leadName: quote.lead.name,
     leadPhone: quote.lead.phone,
     branch: await getBranchQuoteInfo(quote.branchId),
+  });
+
+  // Record-view (§compliance): opening/downloading a quote PDF is a look at the record.
+  await writeAudit({
+    actorId: user.id, actorEmail: user.email, action: "record.view", entityType: "quote", entityId: quote.id,
+    ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || null,
+    userAgent: req.headers.get("user-agent"),
+    meta: { pdf: true, leadId: quote.leadId },
   });
 
   return new NextResponse(new Uint8Array(pdf), {
