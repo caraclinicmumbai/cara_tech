@@ -44,7 +44,7 @@ function StatCard({
       <div className="text-[10px] uppercase tracking-[1.5px] text-cara-muted">
         {label}
       </div>
-      <div className="mt-1 font-serif text-3xl font-medium tabular-nums text-cara-ink">
+      <div className="mt-1 text-3xl font-bold tabular-nums text-cara-ink">
         {value}
       </div>
       {sub && <div className="mt-0.5 text-xs text-cara-faint">{sub}</div>}

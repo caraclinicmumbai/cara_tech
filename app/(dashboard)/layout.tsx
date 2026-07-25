@@ -15,17 +15,24 @@ export default async function DashboardLayout({
   const role = (session?.user as { role?: string })?.role;
 
   const navLink =
-    "px-3 py-2 text-[13px] text-cara-muted transition-colors hover:bg-cara-surface-2 hover:text-cara-ink";
+    "mx-1 rounded-xl px-3 py-2 text-[13px] text-cara-muted transition-colors hover:bg-cara-surface hover:text-cara-ink";
 
   return (
     <div className="flex min-h-screen bg-cara-page">
       <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r-[0.5px] border-cara-rule bg-cara-tint">
         <div className="border-b-[0.5px] border-cara-rule px-5 py-5">
-          <div className="font-serif text-2xl font-medium leading-none text-cara-ink">
-            CARA
-          </div>
-          <div className="mt-1 text-[10px] uppercase tracking-[1.5px] text-cara-muted">
-            Clinic CRM
+          <div className="flex items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-xl bg-cara-accent text-sm font-bold text-white">
+              C
+            </span>
+            <div>
+              <div className="text-lg font-bold leading-none tracking-tight text-cara-ink">
+                CARA
+              </div>
+              <div className="mt-0.5 text-[10px] uppercase tracking-[1.5px] text-cara-muted">
+                Clinic CRM
+              </div>
+            </div>
           </div>
         </div>
 
