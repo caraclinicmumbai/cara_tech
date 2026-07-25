@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/authz";
 import { reloadPermissions, isEditableRole } from "@/lib/permissions";
+import { writeAudit } from "@/lib/audit";
 import { CAPABILITIES, ROLE_CAPABILITIES, type Capability, type Role } from "@/lib/rbac";
 
 const CAP_SET: ReadonlySet<string> = new Set(CAPABILITIES);
@@ -35,17 +36,15 @@ export async function saveRolePermissions(role: string, capabilities: string[]):
     update: { capabilities: caps, updatedById: actor.id ?? null },
   });
 
-  await prisma.auditLog.create({
-    data: {
-      actorId: actor.id ?? null,
-      actorEmail: actor.email ?? null,
-      action: "role.permissions.change",
-      entityType: "role",
-      entityId: role,
-      oldValue: JSON.stringify((previous?.capabilities as string[] | undefined) ?? "default"),
-      newValue: JSON.stringify(caps),
-      meta: { count: caps.length },
-    },
+  await writeAudit({
+    actorId: actor.id,
+    actorEmail: actor.email,
+    action: "role.permissions.change",
+    entityType: "role",
+    entityId: role,
+    oldValue: JSON.stringify((previous?.capabilities as string[] | undefined) ?? "default"),
+    newValue: JSON.stringify(caps),
+    meta: { count: caps.length },
   });
 
   await reloadPermissions(); // rebuild the effective matrix in this instance
@@ -63,16 +62,14 @@ export async function resetRolePermissions(role: string): Promise<Result> {
   if (!previous) return { ok: true }; // already at defaults
 
   await prisma.rolePermission.delete({ where: { role } });
-  await prisma.auditLog.create({
-    data: {
-      actorId: actor.id ?? null,
-      actorEmail: actor.email ?? null,
-      action: "role.permissions.reset",
-      entityType: "role",
-      entityId: role,
-      oldValue: JSON.stringify(previous.capabilities),
-      newValue: JSON.stringify(CAPABILITIES.filter((c) => ROLE_CAPABILITIES[role as Role].has(c))),
-    },
+  await writeAudit({
+    actorId: actor.id,
+    actorEmail: actor.email,
+    action: "role.permissions.reset",
+    entityType: "role",
+    entityId: role,
+    oldValue: JSON.stringify(previous.capabilities),
+    newValue: JSON.stringify(CAPABILITIES.filter((c) => ROLE_CAPABILITIES[role as Role].has(c))),
   });
 
   await reloadPermissions();

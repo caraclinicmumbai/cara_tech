@@ -6,8 +6,10 @@ import { existsSync } from "fs";
 import { join } from "path";
 import PDFDocument from "pdfkit";
 import { computeQuoteTotals } from "@/lib/quoteStages";
+import type { BranchQuoteInfo } from "@/lib/branches";
 
-// Clinic bank details for payment (shown on the quote PDF).
+// Fallback clinic/bank details — used when a quote has no branch, or the branch omits a
+// field. These are the original Santacruz values so single-branch behaviour is unchanged.
 const BANK = {
   accountName: "Cara Healthcare Private Limited",
   accountNumber: "020905011291",
@@ -28,6 +30,9 @@ export type QuotePdfData = {
   expiresAt: Date | null;
   leadName: string;
   leadPhone: string;
+  // The branch this quote belongs to (§branches). Its legal entity / GSTIN / address /
+  // bank / QR are rendered; missing fields fall back to the constants above.
+  branch?: BranchQuoteInfo | null;
 };
 
 const CLINIC_NAME = process.env.CLINIC_NAME ?? "Cara Clinic";
@@ -58,6 +63,24 @@ export function buildQuotePdf(d: QuotePdfData): Promise<Buffer> {
     discountValue: d.discountValue,
   });
 
+  // Effective clinic/bank details: branch first, then the fallback constants.
+  const b = d.branch ?? null;
+  const clinicName = b?.name?.trim() || CLINIC_NAME;
+  const addressLine = [b?.addressLine1, b?.addressLine2, [b?.city, b?.pincode].filter(Boolean).join(" ")]
+    .map((s) => s?.trim())
+    .filter(Boolean)
+    .join(", ");
+  const contactLine =
+    [b?.phone, b?.email].map((s) => s?.trim()).filter(Boolean).join("   ·   ") || CLINIC_CONTACT;
+  const gstin = b?.gstin?.trim() || "";
+  const bank = {
+    accountName: b?.bankAccountName?.trim() || BANK.accountName,
+    accountNumber: b?.bankAccountNumber?.trim() || BANK.accountNumber,
+    ifsc: b?.bankIfsc?.trim() || BANK.ifsc,
+    branch: b?.bankName?.trim() || BANK.branch,
+  };
+  const upiId = b?.upiId?.trim() || "";
+
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     const chunks: Buffer[] = [];
@@ -68,18 +91,23 @@ export function buildQuotePdf(d: QuotePdfData): Promise<Buffer> {
     const left = 50;
     const right = doc.page.width - 50;
     const width = right - left;
+    const headW = width * 0.62; // keep header text clear of the right-aligned title
 
-    // ── Header ──
-    doc.fillColor("#111").font("Helvetica-Bold").fontSize(20).text(CLINIC_NAME, left, 50);
-    doc.font("Helvetica").fontSize(10).fillColor("#666").text(CLINIC_TAGLINE);
-    if (CLINIC_CONTACT) doc.text(CLINIC_CONTACT);
+    // ── Header (flows so the branch address/GSTIN lines don't collide) ──
+    doc.fillColor("#111").font("Helvetica-Bold").fontSize(19).text(clinicName, left, 46, { width: headW });
+    doc.font("Helvetica").fontSize(9).fillColor("#666").text(CLINIC_TAGLINE, { width: headW });
+    if (addressLine) doc.fontSize(8).text(addressLine, { width: headW });
+    const metaLine = [contactLine, gstin ? `GSTIN: ${gstin}` : ""].filter(Boolean).join("   ·   ");
+    if (metaLine) doc.fontSize(8).text(metaLine, { width: headW });
+    const leftBottom = doc.y;
     doc.font("Helvetica-Bold").fontSize(13).fillColor("#111")
-      .text("TREATMENT QUOTATION", left, 52, { width, align: "right" });
+      .text("TREATMENT QUOTATION", left, 50, { width, align: "right" });
 
-    doc.moveTo(left, 100).lineTo(right, 100).strokeColor("#ddd").stroke();
+    const ruleY = Math.max(leftBottom, 92) + 8;
+    doc.moveTo(left, ruleY).lineTo(right, ruleY).strokeColor("#ddd").stroke();
 
     // ── Meta + patient ──
-    let y = 116;
+    let y = ruleY + 16;
     const label = (t: string, x: number) =>
       doc.font("Helvetica").fontSize(8).fillColor("#888").text(t.toUpperCase(), x, y);
     const value = (t: string, x: number, w: number) =>
@@ -137,24 +165,26 @@ export function buildQuotePdf(d: QuotePdfData): Promise<Buffer> {
     y += 16;
     const qrSize = 108;
     const bankWidth = width - qrSize - 20;
-    const bankLines = [
-      ["Account Name", BANK.accountName],
-      ["Account Number", BANK.accountNumber],
-      ["IFSC Code", BANK.ifsc],
-      ["Branch", BANK.branch],
+    const bankLines: [string, string][] = [
+      ["Account Name", bank.accountName],
+      ["Account Number", bank.accountNumber],
+      ["IFSC Code", bank.ifsc],
+      ["Bank / Branch", bank.branch],
     ];
+    if (upiId) bankLines.push(["UPI ID", upiId]);
     let by = y;
     for (const [label, val] of bankLines) {
       doc.font("Helvetica").fontSize(8).fillColor("#888").text(label.toUpperCase(), left, by);
       doc.font("Helvetica-Bold").fontSize(10).fillColor("#111").text(val, left, by + 10, { width: bankWidth });
-      by += 30;
+      by += 28;
     }
 
-    // Razorpay / UPI QR — embedded from public/razorpay-qr.png if present.
-    const qrPath = join(process.cwd(), "public", "razorpay-qr.png");
-    if (existsSync(qrPath)) {
-      const qrX = right - qrSize;
-      doc.image(qrPath, qrX, y, { width: qrSize, height: qrSize });
+    // Scan-to-pay QR — the branch's own QR bytes if set, else the bundled fallback image.
+    const qrX = right - qrSize;
+    const fallbackQr = join(process.cwd(), "public", "razorpay-qr.png");
+    const qrSource: Buffer | string | null = b?.qrImage ?? (existsSync(fallbackQr) ? fallbackQr : null);
+    if (qrSource) {
+      doc.image(qrSource, qrX, y, { width: qrSize, height: qrSize });
       doc.font("Helvetica").fontSize(8).fillColor("#666").text("Scan to pay", qrX, y + qrSize + 3, { width: qrSize, align: "center" });
     }
 
@@ -168,7 +198,7 @@ export function buildQuotePdf(d: QuotePdfData): Promise<Buffer> {
     );
     y = doc.y + 8;
     doc.fontSize(8).fillColor("#aaa").text(
-      `Generated ${istDate(d.createdAt)} · ${CLINIC_NAME}`,
+      `Generated ${istDate(d.createdAt)} · ${clinicName}`,
       left, y, { width, align: "center" },
     );
 

@@ -4,6 +4,7 @@
 // token, so each re-checks the session (server functions are reachable directly).
 import { revalidatePath } from "next/cache";
 import { requireCapability } from "@/lib/authz";
+import { writeAudit } from "@/lib/audit";
 import {
   listAllTemplates,
   createTemplate,
@@ -20,8 +21,11 @@ export async function listTemplatesAction(): Promise<WhatsAppTemplateRow[]> {
 export async function createTemplateAction(
   input: CreateTemplateInput,
 ): Promise<CreateTemplateResult> {
-  await requireCapability("templates.manage");
+  const user = await requireCapability("templates.manage");
   const res = await createTemplate(input);
-  if (res.ok) revalidatePath("/templates");
+  if (res.ok) {
+    await writeAudit({ actorId: user.id, actorEmail: user.email, action: "settings.template.create", entityType: "setting", entityId: res.id, newValue: `${input.name} (${input.language})` });
+    revalidatePath("/templates");
+  }
   return res;
 }

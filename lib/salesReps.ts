@@ -3,6 +3,7 @@
 // team. Assignment is recorded on both the rep (cursor) and the lead.
 import type { SalesRep } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 
 /// Pick the next rep round-robin (least-recently-assigned active rep) and advance
@@ -33,11 +34,20 @@ export async function getLeadOwner(leadId: string): Promise<SalesRep | null> {
   return lead?.assignedRep ?? null;
 }
 
-/// Assign a lead to a rep (records who + when on the lead).
+/// Assign a lead to a rep (records who + when on the lead). Audited as a system
+/// assignment (no human actor) — e.g. the round-robin at intake — so the ownership
+/// trail is complete alongside manual handovers.
 export async function assignLeadToRep(leadId: string, repId: string): Promise<void> {
+  const before = await prisma.lead.findUnique({ where: { id: leadId }, select: { assignedRep: { select: { name: true } } } });
+  const rep = await prisma.salesRep.findUnique({ where: { id: repId }, select: { name: true } });
   await prisma.lead.update({
     where: { id: leadId },
     data: { assignedRepId: repId, assignedAt: new Date() },
+  });
+  await writeAudit({
+    action: "lead.assign", entityType: "lead", entityId: leadId,
+    oldValue: before?.assignedRep?.name ?? "Unassigned", newValue: rep?.name ?? repId,
+    meta: { repId, system: true },
   });
   logger.info(`Lead ${leadId} assigned to rep ${repId}`);
 }

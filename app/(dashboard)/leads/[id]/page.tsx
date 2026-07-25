@@ -10,9 +10,15 @@ import { QuotesPanel } from "@/components/QuotesPanel";
 import { isServiceWindowOpen } from "@/lib/messages";
 import { formatIst } from "@/lib/datetime";
 import { currentUser, canSeeLead } from "@/lib/authz";
-import { can } from "@/lib/rbac";
+import { can, leadScope } from "@/lib/rbac";
 import { summariseQuotes } from "@/lib/quotes";
 import { listCatalogGroups } from "@/lib/catalog";
+import { readLeadTimeline, readLeadAudit } from "@/lib/audit";
+import { listActiveGrants } from "@/lib/leadOwnership";
+import { LeadOwnershipPanel } from "@/components/LeadOwnershipPanel";
+import { LeadEditForm } from "@/components/LeadEditForm";
+import { AuditTable } from "@/components/AuditTable";
+import { RecordViewLogger } from "@/components/RecordViewLogger";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +68,9 @@ export default async function LeadDetailPage({
       messages: { orderBy: { createdAt: "asc" } },
       assignedRep: true,
       quotes: { orderBy: { createdAt: "desc" }, include: { ownerRep: { select: { name: true } } } },
+      // Active grants — makes the ownership scope check (canSeeLead) honour a covering
+      // colleague, and feeds the ownership panel.
+      accessGrants: { where: { revokedAt: null }, select: { granteeId: true, revokedAt: true, expiresAt: true } },
     },
   });
 
@@ -87,8 +96,38 @@ export default async function LeadDetailPage({
   // Treatment catalog for the quote picker (Services + Packages, grouped by category).
   const catalog = canManageQuotes ? await listCatalogGroups() : [];
 
+  // ── Ownership & access (§handover) ──
+  const isManagerScope = leadScope(viewer.role) === "all";
+  const canHandover = can(viewer.role, "leads.handover") && (isManagerScope || viewer.salesRepId === lead.assignedRepId);
+  const canGrant = can(viewer.role, "leads.grantAccess");
+  const [handoverReps, granteeUsers, activeGrants, ownershipHistory] = await Promise.all([
+    canHandover
+      ? prisma.salesRep.findMany({
+          where: { active: true, salesHead: false },
+          select: { id: true, name: true, branchId: true, branch: { select: { name: true } } },
+          orderBy: { name: "asc" },
+        })
+      : Promise.resolve([]),
+    canGrant
+      ? prisma.user.findMany({
+          where: { role: { in: ["front_desk", "telecaller", "branch_manager", "sales_head"] } },
+          select: { id: true, name: true, email: true },
+          orderBy: { createdAt: "asc" },
+        })
+      : Promise.resolve([]),
+    listActiveGrants(lead.id),
+    readLeadTimeline(lead.id),
+  ]);
+  const canEditLead = can(viewer.role, "leads.edit");
+  const changeHistory = await readLeadAudit(lead.id);
+  const ownershipReps = handoverReps.map((r) => ({ id: r.id, name: r.name, branchId: r.branchId, branchName: r.branch?.name ?? null }));
+  const granteeOptions = granteeUsers
+    .filter((u) => u.id !== viewer.id)
+    .map((u) => ({ id: u.id, label: u.name ? `${u.name} (${u.email})` : u.email }));
+
   return (
     <div className="space-y-8">
+      <RecordViewLogger entityType="lead" entityId={lead.id} />
       <div>
         <Link href="/leads" className="text-sm text-black/50 hover:underline dark:text-white/50">
           ← Leads
@@ -210,6 +249,31 @@ export default async function LeadDetailPage({
           <Field label="Created" value={formatIst(lead.createdAt)} />
           <Field label="Updated" value={formatIst(lead.updatedAt)} />
         </dl>
+
+        {canEditLead && (
+          <LeadEditForm leadId={lead.id} name={lead.name} phone={lead.phone} email={lead.email} interest={lead.interest} />
+        )}
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Ownership &amp; access</h2>
+        <LeadOwnershipPanel
+          leadId={lead.id}
+          ownerName={lead.assignedRep?.name ?? "Unassigned"}
+          ownerRepId={lead.assignedRepId}
+          ownerBranchId={lead.assignedRep?.branchId ?? null}
+          reps={ownershipReps}
+          users={granteeOptions}
+          activeGrants={activeGrants}
+          history={ownershipHistory}
+          canHandover={canHandover}
+          canGrant={canGrant}
+        />
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Change history</h2>
+        <AuditTable entries={changeHistory} />
       </section>
 
       {canViewQuotes && (

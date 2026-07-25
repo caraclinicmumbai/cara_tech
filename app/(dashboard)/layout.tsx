@@ -55,6 +55,12 @@ export default async function DashboardLayout({
           {can(role, "users.manage") && (
             <Link href="/users" className={navLink}>Users</Link>
           )}
+          {can(role, "audit.view") && (
+            <Link href="/audit" className={navLink}>Audit Log</Link>
+          )}
+          {can(role, "branches.manage") && (
+            <Link href="/branches" className={navLink}>Branches</Link>
+          )}
           {can(role, "hierarchy.manage") && (
             <Link href="/hierarchy" className={navLink}>Hierarchy</Link>
           )}

@@ -70,6 +70,7 @@ export async function createQuote(input: {
   gstRate?: number | null;
   source?: string | null;
   ownerRepId?: string | null;
+  branchId?: string | null;
   createdById?: string | null;
   validityDays?: number;
 }): Promise<string> {
@@ -116,6 +117,7 @@ export async function createQuote(input: {
       totalPayable: input.price != null ? totals.total : null,
       source: input.source ?? null,
       ownerRepId: input.ownerRepId ?? null,
+      branchId: input.branchId ?? null,
       createdById: input.createdById ?? null,
       expiresAt,
       versions:

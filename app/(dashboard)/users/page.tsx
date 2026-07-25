@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
 export default async function UsersPage() {
   await requireCapability("users.manage");
 
-  const [users, reps] = await Promise.all([
+  const [users, reps, branches] = await Promise.all([
     prisma.user.findMany({
       orderBy: { createdAt: "asc" },
-      select: { id: true, email: true, name: true, role: true, salesRepId: true },
+      select: { id: true, email: true, name: true, role: true, salesRepId: true, branchId: true },
     }),
     prisma.salesRep.findMany({
       orderBy: { name: "asc" },
@@ -24,12 +24,19 @@ export default async function UsersPage() {
         slackUserId: true,
         active: true,
         salesHead: true,
+        branchId: true,
         user: { select: { email: true } },
       },
+    }),
+    prisma.branch.findMany({
+      where: { active: true },
+      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+      select: { id: true, name: true, code: true },
     }),
   ]);
 
   const roleOptions = ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }));
+  const branchOptions = branches.map((b) => ({ id: b.id, label: `${b.name} (${b.code})` }));
   const repRows = reps.map((r) => ({
     id: r.id,
     name: r.name,
@@ -37,6 +44,7 @@ export default async function UsersPage() {
     slackUserId: r.slackUserId,
     active: r.active,
     salesHead: r.salesHead,
+    branchId: r.branchId,
     userEmail: r.user?.email ?? null,
   }));
 
@@ -49,7 +57,7 @@ export default async function UsersPage() {
           sales-rep identity so they receive their leads.
         </p>
       </div>
-      <UsersAdmin users={users} reps={repRows} roleOptions={roleOptions} />
+      <UsersAdmin users={users} reps={repRows} roleOptions={roleOptions} branchOptions={branchOptions} />
     </div>
   );
 }
