@@ -11,7 +11,8 @@
 import type { Lead } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
-import { pickNextRep, assignLeadToRep, getLeadOwner } from "@/lib/salesReps";
+import { pickNextRep, pickReplacementFor, assignLeadToRep, getLeadOwner } from "@/lib/salesReps";
+import { managerSlackTarget } from "@/lib/presence";
 import { logger } from "@/lib/logger";
 
 function truncate(s: string, max: number): string {
@@ -187,10 +188,28 @@ export async function notifyHandover(
     if (rep) await assignLeadToRep(lead.id, rep.id);
   }
 
+  const hot = fired.some((f) => f.key === "high_cqs");
+
+  // §presence: if the owner isn't Active (on a call, on break, or offline), reassign
+  // the handover to an available colleague — preferring the same speciality — so
+  // "go call them now" lands with someone who can act. A hot lead that arrives while
+  // the owner is mid-consultation ALSO pings their manager (urgent escalation).
+  let managerTarget: string | undefined;
+  if (rep && rep.availability !== "available") {
+    if (rep.availability === "in_consultation" && hot) {
+      managerTarget = await managerSlackTarget(rep);
+    }
+    const replacement = await pickReplacementFor({ id: rep.id, speciality: rep.speciality });
+    if (replacement) {
+      await assignLeadToRep(lead.id, replacement.id);
+      logger.info(`Handover rerouted for lead ${lead.id}: owner ${rep.name} was ${rep.availability} → ${replacement.name}`);
+      rep = replacement;
+    }
+  }
+
   if (!isSlackConfigured()) return;
 
   const assignee = rep?.slackUserId ? `<@${rep.slackUserId}>` : (rep?.name ?? "the team");
-  const hot = fired.some((f) => f.key === "high_cqs");
   const { text, blocks } = buildEscalationMessage({ lead, fired, assignee, transcript, cqs, hot });
 
   // DM the assigned rep if we have their Slack id; otherwise the default channel.
@@ -198,6 +217,16 @@ export async function notifyHandover(
   logger.info(
     `${hot ? "Hot-lead escalation" : "Handover alert"} for lead ${lead.id} → ${rep?.name ?? "channel"}: ${fired.map((f) => f.key).join(",")}`,
   );
+
+  // Urgent: hot lead landed while the owner was in consultation → also tell the manager.
+  if (managerTarget) {
+    await sendSlack({
+      channel: managerTarget,
+      text:
+        `🚨 Hot lead *${lead.name}* (${lead.phone}) arrived while the counsellor was in consultation — ` +
+        `reassigned to ${rep?.name ?? "the team"}. Please make sure it's picked up.`,
+    }).catch(() => {});
+  }
 }
 
 /// Escalate a recorded HUMAN call that scored hot (CQS ≥ threshold). Unlike the AI

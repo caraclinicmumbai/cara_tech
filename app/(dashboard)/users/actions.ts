@@ -138,6 +138,7 @@ export async function createRep(input: {
   phone: string;
   slackUserId?: string;
   salesHead?: boolean;
+  speciality?: string;
 }): Promise<Result> {
   await requireCapability("reps.manage");
   const name = input.name?.trim();
@@ -150,6 +151,7 @@ export async function createRep(input: {
       phone,
       slackUserId: input.slackUserId?.trim() || null,
       salesHead: !!input.salesHead,
+      speciality: input.speciality?.trim() || null,
       active: true,
     },
   });
@@ -168,6 +170,18 @@ export async function setRepActive(repId: string, active: boolean): Promise<Resu
 export async function setRepSalesHead(repId: string, salesHead: boolean): Promise<Result> {
   await requireCapability("reps.manage");
   await prisma.salesRep.update({ where: { id: repId }, data: { salesHead } });
+  revalidatePath("/users");
+  return { ok: true };
+}
+
+/// Set a rep's speciality/skill (§presence) — an offline counsellor's leads prefer a
+/// colleague with the same speciality. Free text; blank = generalist.
+export async function setRepSpeciality(repId: string, speciality: string): Promise<Result> {
+  await requireCapability("reps.manage");
+  await prisma.salesRep.update({
+    where: { id: repId },
+    data: { speciality: speciality.trim() || null },
+  });
   revalidatePath("/users");
   return { ok: true };
 }

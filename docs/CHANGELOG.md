@@ -7,6 +7,36 @@ Format: newest first.
 
 ---
 
+## 2026-07-27 — Counsellor availability / presence ("Knowing who's available")
+
+Leads no longer get assigned to counsellors who have stepped away. Each `SalesRep`
+now carries live presence: `availability` (available | in_consultation | break |
+offline), `availabilityAt`, `lastActivityAt` (heartbeat), `onCall`, and a free-text
+`speciality`.
+
+- **One-tap switcher** (`components/StatusSwitcher.tsx`) in the sticky header, on every
+  page — never buried in settings. Shown only to logins linked to a rep. Backed by
+  server actions (`app/(dashboard)/presence-actions.ts`); doubles as the heartbeat
+  (pings on mount / focus / every 90s and reconciles with the server).
+- **Availability-aware routing** (`lib/salesReps.ts`): `pickNextRep()` only picks
+  `available` reps, so in-consultation / break / offline counsellors are skipped.
+  `pickReplacementFor()` reroutes an unavailable owner's handover to an available
+  colleague, **preferring the same speciality** (case-insensitive), else any available.
+- **Handover** (`lib/handover.ts`): if the owner isn't available it reassigns to a
+  replacement; a hot (CQS ≥ threshold) lead arriving mid-consultation also DMs the
+  branch manager (urgent escalation).
+- **Auto In-Consultation** (`lib/presence.ts` + click-to-call sites): a Twilio
+  click-to-call marks the rep In-Consultation "without asking"; the recording webhook
+  (call ended) reverts them to Active. Won't clobber a manual Break taken mid-call.
+- **Auto-offline** (`sweepIdle()` on a 60s worker interval): during working hours
+  (outside the DND window), a rep idle > `PRESENCE_IDLE_MINUTES` (default 15) and not
+  on a call is set Offline and their manager is told on Slack.
+- **Admin**: speciality is editable + live status is visible in the sales-rep roster
+  (`/users`). All presence transitions are audited (`presence.change` / `presence.auto`).
+
+New env: `PRESENCE_IDLE_MINUTES` (default 15). Schema change → run `npm run db:push`
+(prod: `prisma db push`) and restart the app so the regenerated Prisma client loads.
+
 ## 2026-07-25 — Immutable audit log: record views, logins, settings + tamper-evidence
 
 Deepens the audit trail so it can't be quietly edited. Every AuditLog row is

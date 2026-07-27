@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifySlackSignature } from "@/lib/slack";
 import { clickToCall, isTwilioConfigured } from "@/lib/providers/twilio";
+import { beginConsultation } from "@/lib/presence";
 import { logger } from "@/lib/logger";
 
 async function replyToSlack(responseUrl: string | undefined, text: string) {
@@ -78,6 +79,9 @@ export async function POST(req: Request) {
         return;
       }
       const res = await clickToCall(rep.phone, leadId, rep.id);
+      // §presence auto-detect: rep is now on a call → mark In-Consultation (reverted
+      // by the recording webhook when the call ends). Best-effort.
+      if (res.ok) void beginConsultation(rep.id);
       await replyToSlack(
         responseUrl,
         res.ok

@@ -22,6 +22,7 @@ import {
 import { runStageSlaScan } from "@/lib/stageSla";
 import { DIGEST_QUEUE, scheduleDailyDigest, sendDailyDigest } from "@/lib/digest";
 import { monitorSystemHealth } from "@/lib/healthMonitor";
+import { sweepIdle, IDLE_MINUTES } from "@/lib/presence";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -131,6 +132,16 @@ const runHealth = () =>
 runHealth();
 setInterval(runHealth, HEALTH_MONITOR_MS);
 logger.info(`System health monitor active (every ${HEALTH_MONITOR_MS / 60_000} min)`);
+
+// Counsellor presence sweep (§presence) — once a minute, set any counsellor Offline
+// who hasn't sent a heartbeat in PRESENCE_IDLE_MINUTES during working hours and tell
+// their manager. Keeps "leads going to people who went home" from happening.
+const PRESENCE_SWEEP_MS = 60_000;
+const runPresenceSweep = () =>
+  sweepIdle().catch((err) => logger.error(`Presence sweep error: ${String(err)}`));
+runPresenceSweep();
+setInterval(runPresenceSweep, PRESENCE_SWEEP_MS);
+logger.info(`Presence idle-sweep active (every ${PRESENCE_SWEEP_MS / 1000}s, threshold ${IDLE_MINUTES}m)`);
 
 // Branch Manager daily digest — a repeatable (cron) job fires once a day at
 // DIGEST_HOUR_IST; this worker registers it and processes it (§3.1).

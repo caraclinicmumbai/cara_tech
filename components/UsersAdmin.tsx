@@ -13,7 +13,9 @@ import {
   createRep,
   setRepActive,
   setRepSalesHead,
+  setRepSpeciality,
 } from "@/app/(dashboard)/users/actions";
+import { availabilityMeta } from "@/lib/presenceStatus";
 
 type UserRow = {
   id: string;
@@ -31,6 +33,8 @@ type RepRow = {
   active: boolean;
   salesHead: boolean;
   branchId: string | null;
+  speciality: string | null;
+  availability: string;
   userEmail: string | null;
 };
 type Opt = { value: string; label: string };
@@ -64,7 +68,7 @@ export function UsersAdmin({
   // New-login form state
   const [nu, setNu] = useState({ email: "", name: "", password: "", role: "telecaller", salesRepId: "" });
   // New-rep form state
-  const [nr, setNr] = useState({ name: "", phone: "", slackUserId: "", salesHead: false });
+  const [nr, setNr] = useState({ name: "", phone: "", slackUserId: "", speciality: "", salesHead: false });
 
   const repLabel = (r: RepRow) =>
     `${r.name}${r.salesHead ? " · head" : ""}${!r.active ? " · inactive" : ""}${r.userEmail ? " · linked" : ""}`;
@@ -165,8 +169,10 @@ export function UsersAdmin({
         <h2 className="text-lg font-semibold">Sales reps ({reps.length})</h2>
         <p className="text-sm text-black/60 dark:text-white/60">
           Rep identities are the assignable owners: leads round-robin to <em>active</em>,
-          non-sales-head reps, and handovers / click-to-call target them. Link a login to
-          a rep above so a telecaller receives their leads.
+          non-sales-head reps who are <em>Active</em> right now, and handovers / click-to-call
+          target them. Link a login to a rep above so a telecaller receives their leads.
+          Status is live presence (counsellors set it themselves); speciality steers an
+          offline counsellor&apos;s leads to a colleague with the same skill.
         </p>
 
         <div className="flex flex-wrap items-end gap-2 rounded border border-black/10 p-3 dark:border-white/15">
@@ -176,13 +182,15 @@ export function UsersAdmin({
             onChange={(e) => setNr({ ...nr, phone: e.target.value })} />
           <input className={inputCls} placeholder="Slack member ID (U…)" value={nr.slackUserId}
             onChange={(e) => setNr({ ...nr, slackUserId: e.target.value })} />
+          <input className={inputCls} placeholder="Speciality (e.g. Hair)" value={nr.speciality}
+            onChange={(e) => setNr({ ...nr, speciality: e.target.value })} />
           <label className="flex items-center gap-1 text-sm">
             <input type="checkbox" checked={nr.salesHead}
               onChange={(e) => setNr({ ...nr, salesHead: e.target.checked })} />
             Sales head
           </label>
           <button disabled={pending}
-            onClick={() => run(() => createRep(nr).then((r) => { if (r.ok) setNr({ name: "", phone: "", slackUserId: "", salesHead: false }); return r; }))}
+            onClick={() => run(() => createRep(nr).then((r) => { if (r.ok) setNr({ name: "", phone: "", slackUserId: "", speciality: "", salesHead: false }); return r; }))}
             className="rounded bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50">
             Add rep
           </button>
@@ -195,6 +203,8 @@ export function UsersAdmin({
                 <th className="px-3 py-2">Name</th>
                 <th className="px-3 py-2">Phone</th>
                 <th className="px-3 py-2">Slack</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Speciality</th>
                 <th className="px-3 py-2">Linked login</th>
                 <th className="px-3 py-2">Branch</th>
                 <th className="px-3 py-2">Active</th>
@@ -207,6 +217,24 @@ export function UsersAdmin({
                   <td className="px-3 py-2">{r.name}</td>
                   <td className="px-3 py-2">{r.phone || "—"}</td>
                   <td className="px-3 py-2">{r.slackUserId ?? "—"}</td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className={`h-2 w-2 rounded-full ${availabilityMeta(r.availability).dot}`} aria-hidden />
+                      {availabilityMeta(r.availability).label}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <input
+                      className={`${inputCls} w-28`}
+                      defaultValue={r.speciality ?? ""}
+                      placeholder="—"
+                      disabled={pending}
+                      onBlur={(e) => {
+                        if ((e.target.value.trim() || null) !== (r.speciality ?? null))
+                          run(() => setRepSpeciality(r.id, e.target.value));
+                      }}
+                    />
+                  </td>
                   <td className="px-3 py-2">{r.userEmail ?? "—"}</td>
                   <td className="px-3 py-2">
                     <select className={inputCls} defaultValue={r.branchId ?? ""} disabled={pending}

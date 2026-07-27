@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 import { auth, signOut } from "@/auth";
 import { can, isRole, ROLE_LABELS } from "@/lib/rbac";
 import { ensurePermissions } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { StatusSwitcher } from "@/components/StatusSwitcher";
 
 export default async function DashboardLayout({
   children,
@@ -13,6 +15,13 @@ export default async function DashboardLayout({
   const session = await auth();
   await ensurePermissions(); // warm the effective matrix so nav reflects admin overrides
   const role = (session?.user as { role?: string })?.role;
+
+  // §presence: counsellors (a login linked to a sales-rep identity) get the one-tap
+  // status switcher in the header. Pure admins with no rep have no availability.
+  const salesRepId = (session?.user as { salesRepId?: string | null })?.salesRepId ?? null;
+  const rep = salesRepId
+    ? await prisma.salesRep.findUnique({ where: { id: salesRepId }, select: { availability: true } })
+    : null;
 
   const navLink =
     "mx-1 rounded-xl px-3 py-2 text-[13px] text-cara-muted transition-colors hover:bg-cara-surface hover:text-cara-ink";
@@ -103,6 +112,7 @@ export default async function DashboardLayout({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex items-center justify-end gap-3 border-b-[0.5px] border-cara-rule bg-cara-page/90 px-8 py-3 backdrop-blur">
+          {rep && <StatusSwitcher initial={rep.availability} />}
           <ThemeToggle />
         </header>
         <main className="mx-auto w-full max-w-6xl px-8 py-8">{children}</main>

@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyTwilioSignature, publicBase } from "@/lib/providers/twilio";
 import { transcribeAndScoreCall } from "@/lib/callTranscription";
+import { endConsultation } from "@/lib/presence";
 import { logger } from "@/lib/logger";
 
 export async function POST(req: Request) {
@@ -55,6 +56,10 @@ export async function POST(req: Request) {
     },
   });
   logger.info(`Stored human-handover recording for lead ${leadId} (call ${call.id}, ${duration ?? "?"}s)`);
+
+  // §presence auto-detect: the click-to-call has ended → revert the rep from
+  // In-Consultation back to Active (only if we auto-set it). Best-effort.
+  if (repId) void endConsultation(repId);
 
   // Transcribe (ElevenLabs Scribe) + CQS-score in the background so this webhook
   // returns within Twilio's callback timeout — a long call's transcript+score can

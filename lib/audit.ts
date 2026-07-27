@@ -273,6 +273,8 @@ export function actionLabel(action: string): string {
     "lead.export": "Data export",
     "role.permissions.change": "Role permissions changed",
     "role.permissions.reset": "Role permissions reset",
+    "presence.change": "Status changed",
+    "presence.auto": "Status auto-changed",
   };
   return map[action] ?? action;
 }
