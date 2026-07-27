@@ -25,6 +25,8 @@ export default async function UsersPage() {
         active: true,
         salesHead: true,
         branchId: true,
+        speciality: true,
+        availability: true,
         user: { select: { email: true } },
       },
     }),
@@ -45,6 +47,8 @@ export default async function UsersPage() {
     active: r.active,
     salesHead: r.salesHead,
     branchId: r.branchId,
+    speciality: r.speciality,
+    availability: r.availability,
     userEmail: r.user?.email ?? null,
   }));
 

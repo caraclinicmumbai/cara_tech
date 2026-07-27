@@ -12,6 +12,7 @@ import { runStageChange } from "@/lib/chatbotRuntime";
 import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
 import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
 import { clickToCall, isTwilioConfigured } from "@/lib/providers/twilio";
+import { beginConsultation } from "@/lib/presence";
 import { cancelScheduledCalls } from "@/lib/queue";
 import { writeAudit, auditLeadFieldUpdate, auditLeadFieldChanges } from "@/lib/audit";
 import { logger } from "@/lib/logger";
@@ -147,6 +148,10 @@ export async function callLeadAndRecord(
 
   const res = await clickToCall(rep.phone, leadId, rep.id);
   if (!res.ok) return { ok: false, error: res.error };
+  // §presence auto-detect: the rep is now on a call on their work number — mark them
+  // In-Consultation without asking. The Twilio recording webhook reverts them when
+  // the call ends. Best-effort; never blocks the call.
+  void beginConsultation(rep.id);
   logger.info(`Click-to-call started for lead ${leadId} (rep ${rep.name}) by ${user.email}`);
   return { ok: true, repName: rep.name };
 }
