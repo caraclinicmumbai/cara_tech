@@ -7,6 +7,28 @@ Format: newest first.
 
 ---
 
+## 2026-07-27 — Prisma migrations baseline (versioned schema over `db push`)
+
+Schema changes are now versioned, reviewable migrations instead of imperative
+`db push`. Commit `0876251` (merge of `c4ce048`).
+
+- **Baseline migration** `prisma/migrations/0_init/migration.sql` captures the current
+  full schema (17 tables, 49 indexes, 22 FKs), generated via
+  `prisma migrate diff --from-empty`. Adds `migration_lock.toml` (provider = postgresql).
+- **Railway pre-deploy** (`railway.json`) switched from `npx prisma db push` to
+  `npx prisma migrate deploy` — no more silent drift; every schema change ships as a
+  reviewed migration file.
+- **New npm scripts**: `db:migrate:deploy`, `db:migrate:resolve`.
+- **One-time baselining**: existing DBs already contain the `0_init` tables, so each
+  must be marked applied once with `prisma migrate resolve --applied 0_init` before the
+  first `migrate deploy` (else it re-runs `0_init` and errors). Local dev **and prod**
+  are now baselined; prod `migrate status` reports "up to date".
+
+Going forward: create schema changes locally with `npm run db:migrate` (`migrate dev`),
+commit the generated migration, and Railway applies it on deploy. `db:push` remains only
+for throwaway local experiments. Supersedes the "run `npm run db:push`" note in prior
+entries.
+
 ## 2026-07-27 — Counsellor availability / presence ("Knowing who's available")
 
 Leads no longer get assigned to counsellors who have stepped away. Each `SalesRep`
