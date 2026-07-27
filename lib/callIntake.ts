@@ -17,6 +17,7 @@ import { writeAudit } from "@/lib/audit";
 import { sendAutomatedTemplate, outreachTemplate, firstName, istTime } from "@/lib/outreach";
 import { scoreCQS } from "@/lib/cqs";
 import { runStageChange } from "@/lib/chatbotRuntime";
+import { enrollLead } from "@/lib/campaigns/engine";
 import { logger } from "@/lib/logger";
 
 // Outcomes that END the attempt ladder — the lead was reached and a decision
@@ -231,6 +232,17 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
       leadData.status = "unreachable";
       becameUnreachable = true;
       logger.info(`Lead ${lead.id} unreachable after ${attemptNumber} attempts`);
+      // Follow-up (§follow-up): hand the unreachable lead to the "Couldn't Reach Them"
+      // campaign (days 1/5/14/30 → Lost). enrollLead self-guards (kill-switch, exclusions,
+      // opt-out, one-active-per-person), so this is safe to fire unconditionally.
+      afterCommit.push(async () => {
+        const res = await enrollLead(lead.id, "couldnt_reach");
+        logger.info(
+          res.ok
+            ? `Lead ${lead.id} enrolled in Couldn't-Reach campaign (${res.enrollmentId})`
+            : `Couldn't-Reach enroll skipped for lead ${lead.id}: ${res.reason}`,
+        );
+      });
     }
   }
 

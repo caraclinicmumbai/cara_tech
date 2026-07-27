@@ -7,6 +7,39 @@ Format: newest first.
 
 ---
 
+## 2026-07-28 — Follow-up campaigns: engine + guardrails (Stage 1)
+
+Phase 2's biggest revenue item begins: leads that ignore the AI calls + first WhatsApp no
+longer vanish — they enter an automated follow-up **campaign**, wrapped in hard guardrails so
+it can never become harassment. Stage 1 ships the **engine + all four guardrails + per-branch
+controls + one proof campaign** ("Couldn't Reach Them"). The other six campaigns are declared
+(so the per-branch toggles list them) but have no steps yet.
+
+- **The guardrail gate** (`lib/campaigns/eligibility.ts`) — every send passes through, first
+  failure wins: hard exclusions (minor/legal/complaint — no toggle overrides) → opt-out →
+  reply-stops-everything → **12-in-30 person-level ceiling** → branch quiet hours → per-branch
+  toggle. Stops are terminal; ceiling/quiet-hours defer; a disabled toggle pauses (reversible).
+- **One campaign per person, never per quote** — enforced by the DB: a partial unique index
+  `("leadId") WHERE status='active'` on `CampaignEnrollment` makes a second active enrollment
+  impossible. Two open quotes → the higher-value/sooner-expiring one *selects* the campaign
+  (`drivingQuoteId`, context only); enrollment + ceiling + guardrails follow the person.
+- **The engine** (`lib/campaigns/engine.ts`) — `enrollLead` / `stopEnrollmentForLead` /
+  `runCampaignTick`. The tick (worker interval, `CAMPAIGN_TICK_MINUTES`, default 15) advances
+  each due enrollment: gate → send step template → schedule next, or complete + terminal action.
+- **Couldn't Reach Them** — auto-enrolled from `lib/callIntake.ts` when the call ladder
+  exhausts; messages on days 1/5/14/30 then marks the lead **Lost** (premature-loss aware).
+- **Reply-stop** wired into the inbound WhatsApp webhook — any reply halts the active campaign.
+- **Per-branch controls** on the Branches screen — quiet hours (default 20:00–09:00 IST) +
+  a per-campaign on/off switch (`setCampaignEnabled`, audited `settings.campaign.toggle`).
+- **Global kill-switch** `CAMPAIGNS_ENABLED` (env), **OFF by default** — nothing enrols or
+  sends until explicitly enabled, so deploying the code messages no one by surprise.
+
+Schema: `CampaignEnrollment`, `CampaignSetting`, `Branch.quietStartHour`/`quietEndHour`
+(migration `20260727183850_campaigns_stage1`, incl. the hand-added partial unique index).
+Guardrails verified against the dev DB (13 invariants: enrollment uniqueness, ceiling defer,
+reply-stop, exclusion, quiet-hours wrap, stop/re-enroll). New flow doc:
+[flows/08-follow-up-campaigns.md](flows/08-follow-up-campaigns.md).
+
 ## 2026-07-27 — Prisma migrations baseline (versioned schema over `db push`)
 
 Schema changes are now versioned, reviewable migrations instead of imperative
