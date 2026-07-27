@@ -4,18 +4,19 @@ Phase 2's biggest revenue item: leads that ignore the AI calls + first WhatsApp 
 vanish. They enter an automated follow-up **campaign** — and a set of hard guardrails keep
 that from ever becoming harassment.
 
-> **Stage 1 (this doc)** ships the **engine + all four guardrails + per-branch controls +
-> ONE proof campaign** ("Couldn't Reach Them"). The other six campaigns are declared (so
-> the per-branch toggles list them) but have no steps yet — they land in later stages.
+> **Stage 1** shipped the **engine + all four guardrails + per-branch controls +** the
+> "Couldn't Reach Them" campaign. **Stage 2** adds the two WhatsApp nurture drips
+> (Worried About Cost, Just Researching) and **automatic enrollment** from the AI call.
+> The remaining three campaigns are declared but stepless — later stages.
 
 ## The seven campaigns
 
-| Key | Name | Stage 1 |
-|-----|------|---------|
-| `couldnt_reach` | Couldn't Reach Them — messages days 1/5/14/30, then **Lost** | ✅ built |
+| Key | Name | Status |
+|-----|------|--------|
+| `couldnt_reach` | Couldn't Reach Them — messages days 1/5/14/30, then **Lost** | ✅ Stage 1 |
+| `worried_cost` | Worried About Cost (days 1/3/7/14) | ✅ Stage 2 |
+| `just_researching` | Just Researching (weekly, max 6) | ✅ Stage 2 |
 | `hot_lead` | Hot Lead — Fast Track (counsellor call ≤2h; routing, not messaging) | declared |
-| `worried_cost` | Worried About Cost (days 1/3/7/14) | declared |
-| `just_researching` | Just Researching (weekly, max 6) | declared |
 | `international` | International Patient (WhatsApp + email) | declared |
 | `win_back` | Win-Back (90d after Lost, max 4/yr) | declared |
 | `dead_lead_bulk` | Dead Lead Bulk (Sales-Head-approved batch) | declared |
@@ -49,12 +50,25 @@ are open, the higher-value / sooner-expiring one **selects** the campaign (recor
 `drivingQuoteId`, context only) — but the enrollment, the ceiling, and every guardrail hang
 off the **person**.
 
-## How a lead enters (Stage 1)
+## How a lead enters — automatic classification (Stage 2)
 
-The AI call ladder exhausts with no answer → [lib/callIntake.ts](../../lib/callIntake.ts)
-marks the lead unreachable and calls `enrollLead(leadId, "couldnt_reach")`. `enrollLead`
-self-guards (kill-switch, exclusions, opt-out, one-active-per-person), so the call is safe
-and idempotent-ish.
+Leads are sorted into a campaign by **how the AI call went**, never by hand. After every
+recorded call, [lib/callIntake.ts](../../lib/callIntake.ts) calls `classifyFromCall()`
+([lib/campaigns/classify.ts](../../lib/campaigns/classify.ts)) with the call's signals and
+`enrollLead()`s the result (self-guarded, so a null result or an already-enrolled lead is a
+safe no-op). The rules, in order (user-approved: **handover always wins**):
+
+1. **Unreachable** after the full call ladder → `couldnt_reach`.
+2. A retry call still pending, opt-out, **handover fired**, confirmed booking, or a scheduled
+   callback → **no campaign** (a stronger path owns the lead).
+3. Otherwise, a call we actually answered:
+   - a **cost/financing signal** in the tag or handover reasons (price / EMI / budget /
+     financing …) → `worried_cost`;
+   - `interestLevel = high` but no handover → **no campaign** (left for a human);
+   - anything else warm-but-browsing → `just_researching`.
+
+Handover always wins because a handed-over lead is already with a human — the drip must not
+talk over them (same principle as the reply-stop guardrail).
 
 ## The engine loop
 
@@ -87,5 +101,5 @@ push `nextRunAt` forward — no separate delayed jobs — so the guardrails re-e
 
 ## Not yet (later stages)
 
-Campaigns 2–7 · email provider (International Patient) · Hot-Lead fast-track routing wiring ·
-Win-Back review queue + 90-day auto + annual cap · Dead-Lead-Bulk approval UI.
+Hot-Lead fast-track routing wiring · email provider (International Patient) · Win-Back review
+queue + 90-day auto + annual cap · Dead-Lead-Bulk approval UI.

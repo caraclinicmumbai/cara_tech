@@ -7,6 +7,28 @@ Format: newest first.
 
 ---
 
+## 2026-07-28 — Follow-up campaigns: nurture drips + auto-enrollment (Stage 2)
+
+Builds on the Stage 1 engine/guardrails: the two WhatsApp nurture campaigns now have
+schedules, and leads are sorted into a campaign **automatically from how the AI call went** —
+no hand-tagging.
+
+- **Worried About Cost** — value/financing on days 1/3/7/14 (`WHATSAPP_TEMPLATE_WC_DAY1/3/7/14`).
+- **Just Researching** — weekly educational content, 6 weeks (`WHATSAPP_TEMPLATE_JR_WK1..6`);
+  the step count *is* the spec's "max 6 messages" cap.
+- **Call → campaign classifier** (`lib/campaigns/classify.ts`) — from signals the ElevenLabs
+  agent already emits. Order (user-approved, **handover always wins**): unreachable →
+  `couldnt_reach`; retry-pending / opt-out / handover / booked / callback → none; a cost
+  signal in the tag or handover reasons (price/EMI/budget/financing…) → `worried_cost`;
+  `interestLevel=high` without handover → none (left for a human); else → `just_researching`.
+- **Centralized auto-enrollment** — `lib/callIntake.ts` now runs the classifier once
+  post-commit for every recorded call and enrolls the result (replacing Stage 1's inline
+  couldnt_reach enroll). `enrollLead` self-guards, so null/already-enrolled is a safe no-op.
+
+No schema change. `tsc` + `next build` clean; classifier verified (13 cases incl. the
+snake_case `price_request` boundary fix — underscore is a word char, so keys are normalized
+before the cost-word match). Docs: flows/08 + this entry.
+
 ## 2026-07-28 — Follow-up campaigns: engine + guardrails (Stage 1)
 
 Phase 2's biggest revenue item begins: leads that ignore the AI calls + first WhatsApp no

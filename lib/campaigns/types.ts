@@ -64,14 +64,27 @@ export const CAMPAIGNS: Record<CampaignType, CampaignDef> = {
     label: "Worried About Cost",
     description: "Value & financing messages on days 1, 3, 7, 14.",
     channel: "whatsapp",
-    steps: [], // later stage
+    steps: [
+      { dayOffset: 1, template: env("WHATSAPP_TEMPLATE_WC_DAY1") },
+      { dayOffset: 3, template: env("WHATSAPP_TEMPLATE_WC_DAY3") },
+      { dayOffset: 7, template: env("WHATSAPP_TEMPLATE_WC_DAY7") },
+      { dayOffset: 14, template: env("WHATSAPP_TEMPLATE_WC_DAY14") },
+    ],
   },
   just_researching: {
     type: "just_researching",
     label: "Just Researching",
     description: "Weekly educational content, maximum 6 messages.",
     channel: "whatsapp",
-    steps: [], // later stage
+    // Weekly for six weeks = the spec's "maximum 6 messages" (the step count IS the cap).
+    steps: [
+      { dayOffset: 7, template: env("WHATSAPP_TEMPLATE_JR_WK1") },
+      { dayOffset: 14, template: env("WHATSAPP_TEMPLATE_JR_WK2") },
+      { dayOffset: 21, template: env("WHATSAPP_TEMPLATE_JR_WK3") },
+      { dayOffset: 28, template: env("WHATSAPP_TEMPLATE_JR_WK4") },
+      { dayOffset: 35, template: env("WHATSAPP_TEMPLATE_JR_WK5") },
+      { dayOffset: 42, template: env("WHATSAPP_TEMPLATE_JR_WK6") },
+    ],
   },
   couldnt_reach: {
     type: "couldnt_reach",
