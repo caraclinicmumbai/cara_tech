@@ -7,7 +7,8 @@ that from ever becoming harassment.
 > **Stage 1** shipped the **engine + all four guardrails + per-branch controls +** the
 > "Couldn't Reach Them" campaign. **Stage 2** adds the two WhatsApp nurture drips
 > (Worried About Cost, Just Researching) and **automatic enrollment** from the AI call.
-> The remaining three campaigns are declared but stepless — later stages.
+> **Stage 3** wires **Hot-Lead Fast-Track** as a *routing* campaign (no messaging).
+> The remaining campaigns are declared but stepless — later stages.
 
 ## The seven campaigns
 
@@ -16,10 +17,10 @@ that from ever becoming harassment.
 | `couldnt_reach` | Couldn't Reach Them — messages days 1/5/14/30, then **Lost** | ✅ Stage 1 |
 | `worried_cost` | Worried About Cost (days 1/3/7/14) | ✅ Stage 2 |
 | `just_researching` | Just Researching (weekly, max 6) | ✅ Stage 2 |
-| `hot_lead` | Hot Lead — Fast Track (counsellor call ≤2h; routing, not messaging) | declared |
+| `hot_lead` | Hot Lead — Fast Track (counsellor call ≤2h; routing, not messaging) | ✅ Stage 3 |
 | `international` | International Patient (WhatsApp + email) | declared |
-| `win_back` | Win-Back (90d after Lost, max 4/yr) | declared |
-| `dead_lead_bulk` | Dead Lead Bulk (Sales-Head-approved batch) | declared |
+| `win_back` | Win-Back (90d after Lost, max 4/yr) | ✅ auto-sweep |
+| `dead_lead_bulk` | Dead Lead Bulk (Sales/Telecalling-Head-approved batch) | ✅ review queue |
 
 Definitions live in [lib/campaigns/types.ts](../../lib/campaigns/types.ts) as data (a schedule
 of WhatsApp template steps + an optional terminal action). The engine is campaign-agnostic.
@@ -61,14 +62,40 @@ safe no-op). The rules, in order (user-approved: **handover always wins**):
 1. **Unreachable** after the full call ladder → `couldnt_reach`.
 2. A retry call still pending, opt-out, **handover fired**, confirmed booking, or a scheduled
    callback → **no campaign** (a stronger path owns the lead).
-3. Otherwise, a call we actually answered:
+3. **Hot lead** — the high-CQS handover fired (`high_cqs`, CQS ≥ `HANDOVER_CQS_THRESHOLD`,
+   default 75) → `hot_lead` (routing; see below). Checked *before* the generic handover rule.
+4. Any *other* handover, a retry still pending, or a scheduled callback → **no campaign**.
+5. Otherwise, a call we actually answered:
    - a **cost/financing signal** in the tag or handover reasons (price / EMI / budget /
      financing …) → `worried_cost`;
    - `interestLevel = high` but no handover → **no campaign** (left for a human);
    - anything else warm-but-browsing → `just_researching`.
 
-Handover always wins because a handed-over lead is already with a human — the drip must not
-talk over them (same principle as the reply-stop guardrail).
+A *messaging* handover (anything but hot-lead) still wins over a drip, because a handed-over
+lead is already with a human — the drip must not talk over them (same principle as the
+reply-stop guardrail). A **hot lead is the exception**: its campaign *is* the handover, so it
+routes rather than falling through to "no campaign".
+
+## Routing campaigns — Hot-Lead Fast-Track (Stage 3)
+
+`hot_lead` is a **routing campaign, not a messaging one**: it has no template steps and never
+sends. Enrolling a lead is a **fast-track marker** — a record (audited, campaign-system
+visible, per-branch toggleable) that a counsellor must call the lead within the SLA window.
+The actual "call within 2 hours" is the **existing handover + SLA escalation path, reused**
+([lib/handover.ts](../../lib/handover.ts) `escalateHotCall` / the 🔥 alert +
+[lib/handoverSla.ts](../../lib/handoverSla.ts) `HANDOVER_SLA_HOURS`) — Stage 3 wires no new
+timer or alert.
+
+Because a routing campaign has no send-tick to pause in:
+- the **per-branch on/off toggle is enforced at enrollment** (not enrol-then-pause) — a branch
+  that switched Hot-Lead off never enrols (`branch_disabled`);
+- the enrolment's `nextRunAt` is set to **now + the handover SLA window** (reused
+  `HANDOVER_SLA_HOURS`, default 2h); when that elapses the tick **completes** the marker
+  (`routing_window_elapsed`), freeing the person for other campaigns. It sends nothing and
+  runs no guardrail gate (there's nothing to gate).
+
+The global kill-switch, hard exclusions, opt-out, and the one-campaign-per-person index all
+still apply at the door via `enrollLead()`.
 
 ## The engine loop
 
@@ -101,5 +128,5 @@ push `nextRunAt` forward — no separate delayed jobs — so the guardrails re-e
 
 ## Not yet (later stages)
 
-Hot-Lead fast-track routing wiring · email provider (International Patient) · Win-Back review
-queue + 90-day auto + annual cap · Dead-Lead-Bulk approval UI.
+Email provider (International Patient). (Hot-Lead fast-track routing shipped in Stage 3;
+Win-Back auto-sweep + Dead-Lead review queue shipped separately.)

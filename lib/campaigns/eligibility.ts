@@ -30,6 +30,19 @@ export type Gate =
   | { ok: false; action: "defer"; until: Date; reason: string }
   | { ok: false; action: "pause"; reason: string };
 
+/// Is the campaign switched on for this branch? Absence of a CampaignSetting row = enabled;
+/// a null branch (no branch) = enabled. Exported so enrollLead() can enforce the per-branch
+/// toggle at the DOOR for routing campaigns (which have no send-tick to pause in), matching
+/// the tick-time toggle check in checkEligibility() below.
+export async function isBranchCampaignEnabled(branchId: string | null, campaignType: string): Promise<boolean> {
+  if (!branchId) return true;
+  const setting = await prisma.campaignSetting.findUnique({
+    where: { branchId_campaignType: { branchId, campaignType } },
+    select: { enabled: true },
+  });
+  return setting ? setting.enabled : true;
+}
+
 /// A persistent exclusion reason, or null if the lead is not hard-excluded. Exported so
 /// enrollLead() can refuse to enrol an already-excluded lead using the same logic.
 export function hardExclusion(lead: Pick<Lead, "possibleMinor" | "legalThreatFreeze" | "complaintOpen" | "deletedAt">): string | null {

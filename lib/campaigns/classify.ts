@@ -21,6 +21,10 @@ export type CallSignals = {
   retryScheduled: boolean;
   /// The call handed the lead to a human (any handover trigger, incl. hot-lead high CQS).
   handoverFired: boolean;
+  /// This call is a HOT lead — the high-CQS (score ≥ threshold) handover fired. Routes into
+  /// the hot_lead fast-track (routing, not a drip), which is why it's distinct from a plain
+  /// handover: a hot lead's campaign home IS the handover, not "no campaign".
+  hotLead: boolean;
   /// The lead opted out on this call ("not interested").
   optedOut: boolean;
   /// An appointment was confirmed — they're in the pipeline, no nurture needed.
@@ -42,11 +46,18 @@ export function classifyFromCall(s: CallSignals): CampaignType | null {
   // Recovery: unreachable after the full call ladder → Couldn't Reach Them.
   if (s.becameUnreachable) return "couldnt_reach";
 
-  // Any stronger path owns the lead — no drip.
-  if (s.retryScheduled) return null; // still being called
+  // Opt-out and a booked appointment beat everything — nothing to follow up.
   if (s.optedOut) return null;
-  if (s.handoverFired) return null; // handover always wins
   if (s.confirmed) return null; // booked
+
+  // Hot lead (high-CQS handover) → the fast-track ROUTING campaign. Checked BEFORE the
+  // generic "handover → no drip" rule: routing isn't messaging, so the drip-suppression
+  // principle doesn't apply — the hot_lead campaign IS this handover's home.
+  if (s.hotLead) return "hot_lead";
+
+  // Any other stronger path owns the lead — no drip.
+  if (s.retryScheduled) return null; // still being called
+  if (s.handoverFired) return null; // other handover → a human has it, no drip
   if (s.callbackScheduled) return null; // has an active callback
 
   // Only nurture a lead we actually spoke to.

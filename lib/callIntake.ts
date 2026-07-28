@@ -284,6 +284,8 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
       becameUnreachable,
       retryScheduled,
       handoverFired: handover.length > 0,
+      // Hot lead = the high-CQS (score ≥ threshold) handover fired → the fast-track routing campaign.
+      hotLead: handover.some((h) => h.key === "high_cqs"),
       optedOut: input.outcome === "not_interested",
       confirmed: input.outcome === "confirmed",
       callbackScheduled: input.outcome === "rescheduled" || !!callbackAt,

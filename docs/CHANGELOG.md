@@ -7,6 +7,45 @@ Format: newest first.
 
 ---
 
+## 2026-07-28 — Follow-up campaigns: Hot-Lead Fast-Track routing (Stage 3)
+
+`hot_lead` becomes a real **routing** campaign — no messaging. Enrolling a lead is a
+fast-track marker; the actual "counsellor calls within 2h" reuses the existing handover +
+SLA path (no new timer/alert).
+
+- **`CampaignDef.routing`** flag; `hot_lead` marked `routing: true` (still stepless).
+- **Classifier** (`lib/campaigns/classify.ts`) gains a `hotLead` signal and routes it to
+  `hot_lead` *before* the generic "handover → no campaign" rule (a hot lead's campaign IS the
+  handover). `lib/callIntake.ts` passes `hotLead = handover fired `high_cqs`` into the
+  existing post-commit enroll — no new call site.
+- **Enrollment** (`lib/campaigns/engine.ts`): routing campaigns enforce the **per-branch
+  toggle at the door** (`branch_disabled`, since there's no send-tick to pause in) and set
+  `nextRunAt = now + HANDOVER_SLA_HOURS` (reused, default 2h). The tick **completes** the
+  marker when that window elapses (`routing_window_elapsed`) — sends nothing, runs no gate.
+- New eligibility helper `isBranchCampaignEnabled()`.
+
+No schema change; no new env (reuses `HANDOVER_SLA_HOURS` + `CAMPAIGNS_ENABLED`). `tsc` +
+`next build` clean; verified 14 classifier cases + 9 engine integration assertions against the
+dev DB (enroll window, one-active-per-person, before/after-window tick, routing teardown,
+branch-toggle-off refused at the door). Docs: flows/08 + this entry.
+
+## 2026-07-28 — Follow-up campaigns: Win-Back auto-sweep + Dead-Lead review queue
+
+Winning back lost leads (§follow-up).
+
+- **Automatic Win-Back** — a worker sweep (`lib/campaigns/winback.ts` `runWinBackSweep`, every
+  `WINBACK_SWEEP_HOURS`, default 12) enrols leads Lost for `WINBACK_AFTER_DAYS`+ (default 90)
+  into `win_back` (one warm message), **max 4/yr**, consent- and opt-out-checked, deduped per
+  lost-event via `Lead.lastWinBackAt` (only re-fires if the lead was lost *again* since).
+- **Dead-Lead review queue** — `/win-back` lists leads Lost in the last 30 days for a Sales /
+  Telecalling Head to approve (singly/in a batch) for the `dead_lead_bulk` "one more try".
+- **Re-engagement** — a genuine reply to a win-back / dead-lead campaign reactivates the Lost
+  lead → **Human Callback Pending** and pings the owner (`reactivateLostLead`).
+- New **`telecalling_head`** role + **`campaigns.winback`** capability; `/win-back`
+  route-guarded + nav-gated. `win_back` / `dead_lead_bulk` gain their single-step schedule.
+- Schema: `Lead.lastWinBackAt` (migration `20260728063829`). Env:
+  `WHATSAPP_TEMPLATE_WINBACK` / `WHATSAPP_TEMPLATE_DEADLEAD` + win-back tuning vars.
+
 ## 2026-07-28 — Follow-up campaigns: nurture drips + auto-enrollment (Stage 2)
 
 Builds on the Stage 1 engine/guardrails: the two WhatsApp nurture campaigns now have

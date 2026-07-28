@@ -40,6 +40,11 @@ export type CampaignDef = {
   description: string;
   /// Stage 1 is WhatsApp-only; email (International Patient) is deferred to a later stage.
   channel: "whatsapp";
+  /// A ROUTING campaign never messages (steps is empty): enrolment is just a fast-track
+  /// marker that a human works the lead (hot_lead). Because it has no send-tick to pause in,
+  /// the per-branch toggle is enforced at enrolment, and the marker self-completes after the
+  /// SLA window — the actual "counsellor calls within 2h" is the handover + SLA path, reused.
+  routing?: boolean;
   steps: CampaignStep[];
   /// Terminal action once the final step has been sent. "mark_lost" moves the lead to the
   /// Lost stage (Couldn't Reach Them). Omitted = the enrollment just completes.
@@ -57,7 +62,8 @@ export const CAMPAIGNS: Record<CampaignType, CampaignDef> = {
     label: "Hot Lead — Fast Track",
     description: "Score 75+, in a hurry. A counsellor calls within 2 hours (routing, not messaging).",
     channel: "whatsapp",
-    steps: [], // handled via handover + SLA routing, wired in a later stage
+    routing: true, // never messages — a fast-track marker; the counsellor call is the handover + SLA path
+    steps: [],
   },
   worried_cost: {
     type: "worried_cost",

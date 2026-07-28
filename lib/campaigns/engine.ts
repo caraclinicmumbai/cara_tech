@@ -17,9 +17,18 @@ import { sendSlack, isSlackConfigured } from "@/lib/slack";
 import { counsellorChannel } from "@/lib/counsellor";
 import { isPreConsultation } from "@/lib/leadStages";
 import { CAMPAIGNS, campaignsEnabled, isCampaignType, type CampaignDef, type CampaignType } from "@/lib/campaigns/types";
-import { checkEligibility, hardExclusion } from "@/lib/campaigns/eligibility";
+import { checkEligibility, hardExclusion, isBranchCampaignEnabled } from "@/lib/campaigns/eligibility";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Lifetime of a routing (hot_lead) enrolment: it's a fast-track marker that self-completes
+// after the handover SLA window, then the lead is free for other campaigns again. Mirrors
+// lib/handoverSla.slaHours() (HANDOVER_SLA_HOURS, default 2h) — "reuse the SLA window" —
+// read directly rather than importing that BullMQ-backed module into the web bundle.
+function routingWindowMs(): number {
+  const h = Number(process.env.HANDOVER_SLA_HOURS ?? 2);
+  return (Number.isFinite(h) && h > 0 ? h : 2) * 60 * 60 * 1000;
+}
 
 // A paused enrollment (branch toggle off) is re-checked after this long rather than every
 // tick, so a toggled-off campaign doesn't spin. It resumes cleanly when the toggle returns.
@@ -82,9 +91,20 @@ export async function enrollLead(
   if (excluded) return { ok: false, reason: `excluded:${excluded}` };
   if (lead.optedOut) return { ok: false, reason: "opted_out" };
 
+  // A routing campaign (hot_lead) has no send-tick to pause in, so the per-branch toggle is
+  // enforced here at the door — a branch that's switched off the fast-track never enrols.
+  // (Messaging campaigns keep enrol-then-pause: the toggle is re-checked each tick instead.)
+  if (def.routing && !(await isBranchCampaignEnabled(lead.branchId, campaignType))) {
+    return { ok: false, reason: "branch_disabled" };
+  }
+
   const drivingQuoteId = opts.drivingQuoteId ?? (await selectDrivingQuote(leadId));
   const startedAt = new Date();
-  const nextRunAt = stepDueAt(startedAt, def, 0);
+  // Routing marker lives for the SLA window then completes; a messaging campaign's first
+  // step is due per its schedule.
+  const nextRunAt = def.routing
+    ? new Date(startedAt.getTime() + routingWindowMs())
+    : stepDueAt(startedAt, def, 0);
 
   try {
     const created = await prisma.campaignEnrollment.create({
@@ -220,6 +240,20 @@ async function processEnrollment(enr: CampaignEnrollment, now: Date, stats: Tick
     return;
   }
   const def = CAMPAIGNS[enr.campaignType];
+
+  // Routing campaign (hot_lead): never messages. The enrolment was a fast-track marker for
+  // the SLA window; once that window is up (nextRunAt due), it simply completes — the actual
+  // "counsellor calls within 2h" is enforced by the reused handover + SLA path, not here. No
+  // guardrail gate is needed since nothing is being sent.
+  if (def.routing) {
+    await prisma.campaignEnrollment.update({
+      where: { id: enr.id },
+      data: { status: "completed", stopReason: "routing_window_elapsed", nextRunAt: null, stoppedAt: now },
+    });
+    await writeAudit({ action: "lead.campaign.complete", entityType: "lead", entityId: lead.id, newValue: def.label });
+    stats.completed++;
+    return;
+  }
 
   // The guardrail gate.
   const gate = await checkEligibility(lead, enr, now);
