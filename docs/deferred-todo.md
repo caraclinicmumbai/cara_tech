@@ -1,0 +1,43 @@
+# Deferred TODO — things to do later
+
+> **Purpose.** A running list of work that was consciously *deferred* — mentioned during
+> development but intentionally not done yet. **Claude: consult this file when wrapping up a
+> phase, before a go-live, or whenever the user asks "what's left / what did we defer."** Add a
+> new row (with date + context) whenever the user says "we'll do X later." Move items to
+> **Done** (or delete) once completed; keep the reason so the history is legible.
+>
+> For the deeper engineering/compliance backlog (security, DPDP, tests, etc.) see
+> [gaps-and-roadmap.md](./gaps-and-roadmap.md) — this file is for *user-deferred* items.
+
+---
+
+## Open
+
+### 🔴 Go-live: actually turn ON follow-up campaigns
+The campaign **code** is deployed to production, but the engine is **dormant** by design
+(`CAMPAIGNS_ENABLED` defaults off) and messaging templates aren't set, so nothing enrolls or
+sends yet. To go live:
+1. **Create + approve the WhatsApp templates** in `/templates` (they need Meta approval), then
+   set their env names on the Railway **web + worker** services:
+   - Couldn't Reach: `WHATSAPP_TEMPLATE_CR_DAY1` / `_CR_DAY5` / `_CR_DAY14` / `_CR_DAY30`
+   - Worried About Cost: `WHATSAPP_TEMPLATE_WC_DAY1` / `_WC_DAY3` / `_WC_DAY7` / `_WC_DAY14`
+   - Just Researching: `WHATSAPP_TEMPLATE_JR_WK1` … `_JR_WK6`
+   - Win-Back: `WHATSAPP_TEMPLATE_WINBACK` · Dead-Lead: `WHATSAPP_TEMPLATE_DEADLEAD`
+2. **Set `CAMPAIGNS_ENABLED=true`** on Railway web + worker.
+   - ⚠️ Enabling *before* templates exist means enrollments happen and schedules advance, but
+     sends are safe no-ops — **except** Couldn't Reach still **marks leads Lost** after day 30,
+     and the win-back sweep still enrolls Lost leads. So set templates first, then enable.
+3. Optional tuning envs (all have defaults): `CAMPAIGN_TICK_MINUTES`, `WINBACK_AFTER_DAYS`,
+   `WINBACK_CONSENT_MAX_AGE_DAYS`, `WINBACK_SWEEP_HOURS`.
+_Added 2026-07-28._
+
+### International Patient campaign (email)
+The 7th follow-up campaign (`international`) — WhatsApp **+ email** in English. Declared but
+stepless because there's **no email provider wired up**. Needs: pick/integrate an email
+provider, add email as a second channel to the campaign engine, then give `international` its
+step schedule. _Deferred 2026-07-28 (user chose to do it later)._
+
+---
+
+## Done
+_(nothing yet — move completed items here with the date + commit)_
