@@ -13,6 +13,8 @@ import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { sendAutomatedTemplate, firstName } from "@/lib/outreach";
+import { sendSlack, isSlackConfigured } from "@/lib/slack";
+import { counsellorChannel } from "@/lib/counsellor";
 import { isPreConsultation } from "@/lib/leadStages";
 import { CAMPAIGNS, campaignsEnabled, isCampaignType, type CampaignDef, type CampaignType } from "@/lib/campaigns/types";
 import { checkEligibility, hardExclusion } from "@/lib/campaigns/eligibility";
@@ -102,18 +104,70 @@ export async function enrollLead(
   }
 }
 
+// Campaign types whose reply means a LOST lead is re-engaging → bring them back (§follow-up
+// "If they respond, they come back into the pipeline").
+const REENGAGE_CAMPAIGNS = ["win_back", "dead_lead_bulk"];
+
 /// Stop a lead's ACTIVE enrollment (if any). The reply-stop hook and opt-out call this.
-/// Returns how many were stopped (0 or 1). Best-effort audit.
+/// Returns how many were stopped (0 or 1). When a genuine REPLY stops a win-back / dead-lead
+/// campaign, the Lost lead is reactivated back into the pipeline. Best-effort audit.
 export async function stopEnrollmentForLead(leadId: string, reason: string): Promise<number> {
-  const res = await prisma.campaignEnrollment.updateMany({
+  const active = await prisma.campaignEnrollment.findFirst({
     where: { leadId, status: "active" },
+    select: { id: true, campaignType: true },
+  });
+  if (!active) return 0;
+
+  await prisma.campaignEnrollment.update({
+    where: { id: active.id },
     data: { status: "stopped", stoppedAt: new Date(), stopReason: reason, nextRunAt: null },
   });
-  if (res.count > 0) {
-    await writeAudit({ action: "lead.campaign.stop", entityType: "lead", entityId: leadId, newValue: reason });
-    logger.info(`Stopped ${res.count} active campaign enrollment(s) for lead ${leadId} (${reason})`);
+  await writeAudit({ action: "lead.campaign.stop", entityType: "lead", entityId: leadId, newValue: reason });
+  logger.info(`Stopped active campaign "${active.campaignType}" for lead ${leadId} (${reason})`);
+
+  // Win-back re-entry: a real reply (not an opt-out) to a win-back / dead-lead campaign
+  // brings the Lost lead back into the pipeline for a human.
+  if (reason === "replied" && REENGAGE_CAMPAIGNS.includes(active.campaignType)) {
+    await reactivateLostLead(leadId).catch((err) => logger.error(`Reactivate lead ${leadId} failed: ${String(err)}`));
   }
-  return res.count;
+  return 1;
+}
+
+/// Bring a Lost lead back into the pipeline after they replied to a win-back. Clears the Lost
+/// state, moves the stage to Human Callback Pending (their old calls + CQS stay on the lead),
+/// audits it, and pings the owner + counsellor feed. No-op if the lead isn't Lost.
+async function reactivateLostLead(leadId: string): Promise<void> {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { id: true, name: true, stage: true, assignedRep: { select: { slackUserId: true } } },
+  });
+  if (!lead || lead.stage !== "lost") return;
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: {
+      stage: "human_callback_pending",
+      lostAt: null,
+      lostReason: null,
+      lostTag: null,
+      prematureLost: false,
+      stageChangedAt: new Date(),
+      stageStuckNotifiedAt: null,
+    },
+  });
+  await writeAudit({
+    action: "lead.stage.move", entityType: "lead", entityId: leadId,
+    field: "stage", oldValue: "lost", newValue: "human_callback_pending", reason: "Re-engaged: replied to win-back",
+  });
+  logger.info(`Lead ${leadId} reactivated (replied to win-back) → human_callback_pending`);
+
+  if (isSlackConfigured()) {
+    const base = process.env.NEXTAUTH_URL;
+    const link = base ? ` <${base}/leads/${leadId}|Open lead>` : "";
+    const text = `🔄 *${lead.name}* replied to a win-back — back in the pipeline (Human Callback Pending).${link}`;
+    const target = lead.assignedRep?.slackUserId ?? counsellorChannel();
+    await sendSlack({ text, channel: target }).catch(() => {});
+  }
 }
 
 /// Move a lead to the Lost stage when a campaign with onComplete="mark_lost" finishes.

@@ -45,6 +45,10 @@ model Lead {
   // True when the lead was marked Lost BEFORE completing a consultation (a
   //    premature loss the counsellor was alerted to). Counted in the daily digest.
   prematureLost Boolean   @default(false)
+  // ── Win-back (Phase 2 §follow-up) — when this lead was last auto-enrolled in the
+  //    90-day Win-Back campaign. Dedups the daily sweep (one win-back per lost event:
+  //    only re-enrol if the lead was lost AGAIN after the last win-back). ──
+  lastWinBackAt DateTime?
 
   // ── AI→human handover (§3.1) — when an AI call hits a trigger (pricing/clinical
   //    question, distress, wants-human, competitor, unresolved objection, CQS≥75,

@@ -112,14 +112,17 @@ export const CAMPAIGNS: Record<CampaignType, CampaignDef> = {
     label: "Win-Back",
     description: "90 days after Lost, a warm low-pressure message. Maximum 4 a year.",
     channel: "whatsapp",
-    steps: [], // later stage
+    // A single warm, low-pressure touch (spec). The annual cap (max 4/yr) + the 90-day
+    // dedup are enforced by the win-back sweep, not here.
+    steps: [{ dayOffset: 0, template: env("WHATSAPP_TEMPLATE_WINBACK") }],
   },
   dead_lead_bulk: {
     type: "dead_lead_bulk",
     label: "Dead Lead Bulk",
-    description: "Sales Head approves a batch of old lost leads for one more try.",
+    description: "Sales Head / Telecalling Head approves a batch of old lost leads for one more try.",
     channel: "whatsapp",
-    steps: [], // later stage
+    // One more try — a single message; enrollment is manual (review-queue approval).
+    steps: [{ dayOffset: 0, template: env("WHATSAPP_TEMPLATE_DEADLEAD") }],
   },
 };
 
