@@ -128,10 +128,15 @@ export async function enrollLead(
 // "If they respond, they come back into the pipeline").
 const REENGAGE_CAMPAIGNS = ["win_back", "dead_lead_bulk"];
 
-/// Stop a lead's ACTIVE enrollment (if any). The reply-stop hook and opt-out call this.
-/// Returns how many were stopped (0 or 1). When a genuine REPLY stops a win-back / dead-lead
-/// campaign, the Lost lead is reactivated back into the pipeline. Best-effort audit.
-export async function stopEnrollmentForLead(leadId: string, reason: string): Promise<number> {
+/// Stop a lead's ACTIVE enrollment (if any). The reply-stop hook and opt-out call this
+/// (system-attributed); a staff member stopping from the UI passes `actor` so the audit
+/// records who did it. Returns how many were stopped (0 or 1). When a genuine REPLY stops a
+/// win-back / dead-lead campaign, the Lost lead is reactivated back into the pipeline.
+export async function stopEnrollmentForLead(
+  leadId: string,
+  reason: string,
+  actor?: { id?: string | null; email?: string | null },
+): Promise<number> {
   const active = await prisma.campaignEnrollment.findFirst({
     where: { leadId, status: "active" },
     select: { id: true, campaignType: true },
@@ -142,7 +147,10 @@ export async function stopEnrollmentForLead(leadId: string, reason: string): Pro
     where: { id: active.id },
     data: { status: "stopped", stoppedAt: new Date(), stopReason: reason, nextRunAt: null },
   });
-  await writeAudit({ action: "lead.campaign.stop", entityType: "lead", entityId: leadId, newValue: reason });
+  await writeAudit({
+    actorId: actor?.id ?? null, actorEmail: actor?.email ?? null,
+    action: "lead.campaign.stop", entityType: "lead", entityId: leadId, newValue: reason,
+  });
   logger.info(`Stopped active campaign "${active.campaignType}" for lead ${leadId} (${reason})`);
 
   // Win-back re-entry: a real reply (not an opt-out) to a win-back / dead-lead campaign

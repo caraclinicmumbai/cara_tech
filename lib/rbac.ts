@@ -63,6 +63,9 @@ export const CAPABILITIES = [
   // Win-back (§follow-up): review lost leads and approve them (singly/in a batch) for one
   // more automated try. Sales Head + Telecalling Head by default (+ Admin wildcard).
   "campaigns.winback",
+  // Follow-up campaigns (§follow-up): view running campaign enrolments (the /campaigns
+  // overview + the per-lead card) and STOP a lead's campaign. Everyone who works leads.
+  "campaigns.manage",
   "reps.manage",
   "settings.manage",
   "users.manage",
@@ -138,6 +141,7 @@ export const CAPABILITY_GROUPS: {
       { key: "templates.manage", label: "WhatsApp templates" },
       { key: "chatbot.manage", label: "Chatbot flows" },
       { key: "campaigns.winback", label: "Approve win-back retries" },
+      { key: "campaigns.manage", label: "View & stop campaigns" },
     ],
   },
   {
@@ -187,6 +191,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "quotes.manage",
     "quotes.convert",
     "calls.view",
+    "campaigns.manage",
   ],
   telecalling_head: [
     "leads.view",
@@ -208,6 +213,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "reps.manage",
     // Runs the telecalling floor — approves lost leads for a win-back retry.
     "campaigns.winback",
+    "campaigns.manage",
   ],
   branch_manager: [
     "leads.view",
@@ -234,6 +240,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "templates.manage",
     "chatbot.manage",
     "reps.manage",
+    "campaigns.manage",
   ],
   sales_head: [
     "leads.view",
@@ -258,6 +265,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "audit.view",
     "reps.manage",
     "campaigns.winback",
+    "campaigns.manage",
   ],
 };
 
@@ -323,6 +331,7 @@ export function routeCapability(pathname: string): Capability | null {
   if (pathname.startsWith("/hierarchy")) return "hierarchy.manage";
   if (pathname.startsWith("/branches")) return "branches.manage";
   if (pathname.startsWith("/win-back")) return "campaigns.winback";
+  if (pathname.startsWith("/campaigns")) return "campaigns.manage";
   if (pathname.startsWith("/audit")) return "audit.view";
   if (pathname.startsWith("/users")) return "users.manage";
   if (pathname.startsWith("/leads/deleted")) return "leads.restore";

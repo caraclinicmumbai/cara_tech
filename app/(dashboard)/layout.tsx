@@ -68,6 +68,9 @@ export default async function DashboardLayout({
           {can(role, "leads.restore") && (
             <Link href="/leads/deleted" className={navLink}>Deleted</Link>
           )}
+          {can(role, "campaigns.manage") && (
+            <Link href="/campaigns" className={navLink}>Campaigns</Link>
+          )}
           {can(role, "campaigns.winback") && (
             <Link href="/win-back" className={navLink}>Win-Back</Link>
           )}

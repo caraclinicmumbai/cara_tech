@@ -7,6 +7,26 @@ Format: newest first.
 
 ---
 
+## 2026-07-28 — Follow-up campaigns: visibility UI (per-lead card + /campaigns overview)
+
+Surfaces running campaigns in the app (previously only visible in Prisma Studio / the audit
+log) and lets staff pull a lead out.
+
+- **Per-lead card** on the lead detail page — active campaign (or most-recent as history):
+  name, `messages sent / total`, next-touch time (window end for hot-lead routing), + a Stop
+  button. `components/LeadCampaignCard.tsx`.
+- **`/campaigns` overview** — all active enrollments grouped by campaign type, counts,
+  next-touch, per-row Stop. `app/(dashboard)/campaigns/page.tsx`.
+- Read models `lib/campaigns/enrollments.ts` (`getLeadCampaign` / `listActiveCampaigns`).
+- **Stop** — new `campaigns.manage` capability (telecaller, telecalling head, branch manager,
+  sales head, + admin); server action `stopLeadCampaign` → `stopEnrollmentForLead(...,
+  "stopped_by_staff", actor)`, actor-attributed audit, and it does **not** reactivate a Lost
+  lead (that stays reserved for a genuine reply). `stopEnrollmentForLead` gained an optional
+  actor arg. New nav link + `/campaigns` route guard.
+
+No schema change. `tsc` + `next build` clean; read helpers + actor-attributed stop verified
+against the dev DB. Docs: flows/08 + this entry.
+
 ## 2026-07-28 — Follow-up campaigns: Hot-Lead Fast-Track routing (Stage 3)
 
 `hot_lead` becomes a real **routing** campaign — no messaging. Enrolling a lead is a

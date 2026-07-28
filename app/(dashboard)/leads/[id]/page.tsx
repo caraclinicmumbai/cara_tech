@@ -19,6 +19,8 @@ import { LeadOwnershipPanel } from "@/components/LeadOwnershipPanel";
 import { LeadEditForm } from "@/components/LeadEditForm";
 import { AuditTable } from "@/components/AuditTable";
 import { RecordViewLogger } from "@/components/RecordViewLogger";
+import { getLeadCampaign } from "@/lib/campaigns/enrollments";
+import { LeadCampaignCard } from "@/components/LeadCampaignCard";
 
 export const dynamic = "force-dynamic";
 
@@ -119,6 +121,9 @@ export default async function LeadDetailPage({
     readLeadTimeline(lead.id),
   ]);
   const canEditLead = can(viewer.role, "leads.edit");
+  // Follow-up campaign (§follow-up): the lead's active/most-recent enrollment + who may stop it.
+  const leadCampaign = await getLeadCampaign(lead.id);
+  const canManageCampaigns = can(viewer.role, "campaigns.manage");
   const changeHistory = await readLeadAudit(lead.id);
   const ownershipReps = handoverReps.map((r) => ({ id: r.id, name: r.name, branchId: r.branchId, branchName: r.branch?.name ?? null }));
   const granteeOptions = granteeUsers
@@ -226,6 +231,8 @@ export default async function LeadDetailPage({
             {formatIst(lead.callbackAt)} — auto-retries cancelled, a call is scheduled for this time.
           </div>
         )}
+
+        {leadCampaign && <LeadCampaignCard campaign={leadCampaign} canStop={canManageCampaigns} />}
 
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           <Field label="Phone" value={lead.phone} />

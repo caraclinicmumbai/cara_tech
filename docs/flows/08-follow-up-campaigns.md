@@ -114,6 +114,23 @@ push `nextRunAt` forward — no separate delayed jobs — so the guardrails re-e
 - **Step templates**: `WHATSAPP_TEMPLATE_CR_DAY1/5/14/30` (approved WhatsApp templates; unset
   = that step is a safe no-op, schedule still advances).
 
+## Seeing campaigns (UI)
+
+Two read surfaces, both gated by the **`campaigns.manage`** capability (granted to
+telecaller, telecalling head, branch manager, sales head, + admin):
+
+- **Per-lead card** — the lead detail page shows the lead's active campaign (or, if none is
+  active, its most recent as muted history): campaign name, `messages sent / total`, next-touch
+  time (or, for the hot-lead routing campaign, the window end). A **Stop** button appears for
+  staff with the capability. ([components/LeadCampaignCard.tsx](../../components/LeadCampaignCard.tsx))
+- **`/campaigns` overview** — every lead currently in a campaign, grouped by campaign type with
+  counts, next-touch times, and a per-row **Stop**. ([app/(dashboard)/campaigns/page.tsx](../../app/(dashboard)/campaigns/page.tsx))
+
+Both read through [lib/campaigns/enrollments.ts](../../lib/campaigns/enrollments.ts)
+(`getLeadCampaign` / `listActiveCampaigns`). **Stop** calls `stopLeadCampaign` →
+`stopEnrollmentForLead(lead, "stopped_by_staff", actor)` — actor-attributed in the audit, and
+(unlike a reply-stop) it does **not** reactivate a Lost lead.
+
 ## Data model
 
 - `CampaignEnrollment` — a lead's membership (status, step, `nextRunAt`, `drivingQuoteId`,
