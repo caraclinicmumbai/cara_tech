@@ -6,6 +6,7 @@
 export const ROLES = [
   "front_desk",
   "telecaller",
+  "telecalling_head",
   "branch_manager",
   "sales_head",
   "crm_admin",
@@ -16,6 +17,7 @@ export type Role = (typeof ROLES)[number];
 export const ROLE_LABELS: Record<Role, string> = {
   front_desk: "Front-Desk Staff",
   telecaller: "Telecaller / Counsellor",
+  telecalling_head: "Telecalling Head",
   branch_manager: "Branch Manager",
   sales_head: "Sales Head",
   crm_admin: "CRM Admin",
@@ -58,6 +60,12 @@ export const CAPABILITIES = [
   "analytics.view",
   "templates.manage",
   "chatbot.manage",
+  // Win-back (§follow-up): review lost leads and approve them (singly/in a batch) for one
+  // more automated try. Sales Head + Telecalling Head by default (+ Admin wildcard).
+  "campaigns.winback",
+  // Follow-up campaigns (§follow-up): view running campaign enrolments (the /campaigns
+  // overview + the per-lead card) and STOP a lead's campaign. Everyone who works leads.
+  "campaigns.manage",
   "reps.manage",
   "settings.manage",
   "users.manage",
@@ -132,6 +140,8 @@ export const CAPABILITY_GROUPS: {
     capabilities: [
       { key: "templates.manage", label: "WhatsApp templates" },
       { key: "chatbot.manage", label: "Chatbot flows" },
+      { key: "campaigns.winback", label: "Approve win-back retries" },
+      { key: "campaigns.manage", label: "View & stop campaigns" },
     ],
   },
   {
@@ -181,6 +191,29 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "quotes.manage",
     "quotes.convert",
     "calls.view",
+    "campaigns.manage",
+  ],
+  telecalling_head: [
+    "leads.view",
+    "leads.editStage",
+    "leads.editTag",
+    "leads.edit",
+    "leads.call",
+    "leads.whatsapp",
+    "leads.merge",
+    "leads.markLost",
+    "leads.handover",
+    "leads.grantAccess",
+    "quotes.view",
+    "quotes.manage",
+    "quotes.convert",
+    "calls.view",
+    "analytics.view",
+    "audit.view",
+    "reps.manage",
+    // Runs the telecalling floor — approves lost leads for a win-back retry.
+    "campaigns.winback",
+    "campaigns.manage",
   ],
   branch_manager: [
     "leads.view",
@@ -207,6 +240,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "templates.manage",
     "chatbot.manage",
     "reps.manage",
+    "campaigns.manage",
   ],
   sales_head: [
     "leads.view",
@@ -230,6 +264,8 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "analytics.view",
     "audit.view",
     "reps.manage",
+    "campaigns.winback",
+    "campaigns.manage",
   ],
 };
 
@@ -239,6 +275,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
 export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
   front_desk: new Set(CAPS.front_desk),
   telecaller: new Set(CAPS.telecaller),
+  telecalling_head: new Set(CAPS.telecalling_head),
   branch_manager: new Set(CAPS.branch_manager),
   sales_head: new Set(CAPS.sales_head),
   crm_admin: new Set(CAPABILITIES), // super-user
@@ -293,6 +330,8 @@ export function routeCapability(pathname: string): Capability | null {
   if (pathname.startsWith("/settings")) return "settings.manage";
   if (pathname.startsWith("/hierarchy")) return "hierarchy.manage";
   if (pathname.startsWith("/branches")) return "branches.manage";
+  if (pathname.startsWith("/win-back")) return "campaigns.winback";
+  if (pathname.startsWith("/campaigns")) return "campaigns.manage";
   if (pathname.startsWith("/audit")) return "audit.view";
   if (pathname.startsWith("/users")) return "users.manage";
   if (pathname.startsWith("/leads/deleted")) return "leads.restore";

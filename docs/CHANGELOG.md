@@ -7,6 +7,142 @@ Format: newest first.
 
 ---
 
+## 2026-07-28 — Follow-up campaigns: visibility UI (per-lead card + /campaigns overview)
+
+Surfaces running campaigns in the app (previously only visible in Prisma Studio / the audit
+log) and lets staff pull a lead out.
+
+- **Per-lead card** on the lead detail page — active campaign (or most-recent as history):
+  name, `messages sent / total`, next-touch time (window end for hot-lead routing), + a Stop
+  button. `components/LeadCampaignCard.tsx`.
+- **`/campaigns` overview** — all active enrollments grouped by campaign type, counts,
+  next-touch, per-row Stop. `app/(dashboard)/campaigns/page.tsx`.
+- Read models `lib/campaigns/enrollments.ts` (`getLeadCampaign` / `listActiveCampaigns`).
+- **Stop** — new `campaigns.manage` capability (telecaller, telecalling head, branch manager,
+  sales head, + admin); server action `stopLeadCampaign` → `stopEnrollmentForLead(...,
+  "stopped_by_staff", actor)`, actor-attributed audit, and it does **not** reactivate a Lost
+  lead (that stays reserved for a genuine reply). `stopEnrollmentForLead` gained an optional
+  actor arg. New nav link + `/campaigns` route guard.
+
+No schema change. `tsc` + `next build` clean; read helpers + actor-attributed stop verified
+against the dev DB. Docs: flows/08 + this entry.
+
+## 2026-07-28 — Follow-up campaigns: Hot-Lead Fast-Track routing (Stage 3)
+
+`hot_lead` becomes a real **routing** campaign — no messaging. Enrolling a lead is a
+fast-track marker; the actual "counsellor calls within 2h" reuses the existing handover +
+SLA path (no new timer/alert).
+
+- **`CampaignDef.routing`** flag; `hot_lead` marked `routing: true` (still stepless).
+- **Classifier** (`lib/campaigns/classify.ts`) gains a `hotLead` signal and routes it to
+  `hot_lead` *before* the generic "handover → no campaign" rule (a hot lead's campaign IS the
+  handover). `lib/callIntake.ts` passes `hotLead = handover fired `high_cqs`` into the
+  existing post-commit enroll — no new call site.
+- **Enrollment** (`lib/campaigns/engine.ts`): routing campaigns enforce the **per-branch
+  toggle at the door** (`branch_disabled`, since there's no send-tick to pause in) and set
+  `nextRunAt = now + HANDOVER_SLA_HOURS` (reused, default 2h). The tick **completes** the
+  marker when that window elapses (`routing_window_elapsed`) — sends nothing, runs no gate.
+- New eligibility helper `isBranchCampaignEnabled()`.
+
+No schema change; no new env (reuses `HANDOVER_SLA_HOURS` + `CAMPAIGNS_ENABLED`). `tsc` +
+`next build` clean; verified 14 classifier cases + 9 engine integration assertions against the
+dev DB (enroll window, one-active-per-person, before/after-window tick, routing teardown,
+branch-toggle-off refused at the door). Docs: flows/08 + this entry.
+
+## 2026-07-28 — Follow-up campaigns: Win-Back auto-sweep + Dead-Lead review queue
+
+Winning back lost leads (§follow-up).
+
+- **Automatic Win-Back** — a worker sweep (`lib/campaigns/winback.ts` `runWinBackSweep`, every
+  `WINBACK_SWEEP_HOURS`, default 12) enrols leads Lost for `WINBACK_AFTER_DAYS`+ (default 90)
+  into `win_back` (one warm message), **max 4/yr**, consent- and opt-out-checked, deduped per
+  lost-event via `Lead.lastWinBackAt` (only re-fires if the lead was lost *again* since).
+- **Dead-Lead review queue** — `/win-back` lists leads Lost in the last 30 days for a Sales /
+  Telecalling Head to approve (singly/in a batch) for the `dead_lead_bulk` "one more try".
+- **Re-engagement** — a genuine reply to a win-back / dead-lead campaign reactivates the Lost
+  lead → **Human Callback Pending** and pings the owner (`reactivateLostLead`).
+- New **`telecalling_head`** role + **`campaigns.winback`** capability; `/win-back`
+  route-guarded + nav-gated. `win_back` / `dead_lead_bulk` gain their single-step schedule.
+- Schema: `Lead.lastWinBackAt` (migration `20260728063829`). Env:
+  `WHATSAPP_TEMPLATE_WINBACK` / `WHATSAPP_TEMPLATE_DEADLEAD` + win-back tuning vars.
+
+## 2026-07-28 — Follow-up campaigns: nurture drips + auto-enrollment (Stage 2)
+
+Builds on the Stage 1 engine/guardrails: the two WhatsApp nurture campaigns now have
+schedules, and leads are sorted into a campaign **automatically from how the AI call went** —
+no hand-tagging.
+
+- **Worried About Cost** — value/financing on days 1/3/7/14 (`WHATSAPP_TEMPLATE_WC_DAY1/3/7/14`).
+- **Just Researching** — weekly educational content, 6 weeks (`WHATSAPP_TEMPLATE_JR_WK1..6`);
+  the step count *is* the spec's "max 6 messages" cap.
+- **Call → campaign classifier** (`lib/campaigns/classify.ts`) — from signals the ElevenLabs
+  agent already emits. Order (user-approved, **handover always wins**): unreachable →
+  `couldnt_reach`; retry-pending / opt-out / handover / booked / callback → none; a cost
+  signal in the tag or handover reasons (price/EMI/budget/financing…) → `worried_cost`;
+  `interestLevel=high` without handover → none (left for a human); else → `just_researching`.
+- **Centralized auto-enrollment** — `lib/callIntake.ts` now runs the classifier once
+  post-commit for every recorded call and enrolls the result (replacing Stage 1's inline
+  couldnt_reach enroll). `enrollLead` self-guards, so null/already-enrolled is a safe no-op.
+
+No schema change. `tsc` + `next build` clean; classifier verified (13 cases incl. the
+snake_case `price_request` boundary fix — underscore is a word char, so keys are normalized
+before the cost-word match). Docs: flows/08 + this entry.
+
+## 2026-07-28 — Follow-up campaigns: engine + guardrails (Stage 1)
+
+Phase 2's biggest revenue item begins: leads that ignore the AI calls + first WhatsApp no
+longer vanish — they enter an automated follow-up **campaign**, wrapped in hard guardrails so
+it can never become harassment. Stage 1 ships the **engine + all four guardrails + per-branch
+controls + one proof campaign** ("Couldn't Reach Them"). The other six campaigns are declared
+(so the per-branch toggles list them) but have no steps yet.
+
+- **The guardrail gate** (`lib/campaigns/eligibility.ts`) — every send passes through, first
+  failure wins: hard exclusions (minor/legal/complaint — no toggle overrides) → opt-out →
+  reply-stops-everything → **12-in-30 person-level ceiling** → branch quiet hours → per-branch
+  toggle. Stops are terminal; ceiling/quiet-hours defer; a disabled toggle pauses (reversible).
+- **One campaign per person, never per quote** — enforced by the DB: a partial unique index
+  `("leadId") WHERE status='active'` on `CampaignEnrollment` makes a second active enrollment
+  impossible. Two open quotes → the higher-value/sooner-expiring one *selects* the campaign
+  (`drivingQuoteId`, context only); enrollment + ceiling + guardrails follow the person.
+- **The engine** (`lib/campaigns/engine.ts`) — `enrollLead` / `stopEnrollmentForLead` /
+  `runCampaignTick`. The tick (worker interval, `CAMPAIGN_TICK_MINUTES`, default 15) advances
+  each due enrollment: gate → send step template → schedule next, or complete + terminal action.
+- **Couldn't Reach Them** — auto-enrolled from `lib/callIntake.ts` when the call ladder
+  exhausts; messages on days 1/5/14/30 then marks the lead **Lost** (premature-loss aware).
+- **Reply-stop** wired into the inbound WhatsApp webhook — any reply halts the active campaign.
+- **Per-branch controls** on the Branches screen — quiet hours (default 20:00–09:00 IST) +
+  a per-campaign on/off switch (`setCampaignEnabled`, audited `settings.campaign.toggle`).
+- **Global kill-switch** `CAMPAIGNS_ENABLED` (env), **OFF by default** — nothing enrols or
+  sends until explicitly enabled, so deploying the code messages no one by surprise.
+
+Schema: `CampaignEnrollment`, `CampaignSetting`, `Branch.quietStartHour`/`quietEndHour`
+(migration `20260727183850_campaigns_stage1`, incl. the hand-added partial unique index).
+Guardrails verified against the dev DB (13 invariants: enrollment uniqueness, ceiling defer,
+reply-stop, exclusion, quiet-hours wrap, stop/re-enroll). New flow doc:
+[flows/08-follow-up-campaigns.md](flows/08-follow-up-campaigns.md).
+
+## 2026-07-27 — Prisma migrations baseline (versioned schema over `db push`)
+
+Schema changes are now versioned, reviewable migrations instead of imperative
+`db push`. Commit `0876251` (merge of `c4ce048`).
+
+- **Baseline migration** `prisma/migrations/0_init/migration.sql` captures the current
+  full schema (17 tables, 49 indexes, 22 FKs), generated via
+  `prisma migrate diff --from-empty`. Adds `migration_lock.toml` (provider = postgresql).
+- **Railway pre-deploy** (`railway.json`) switched from `npx prisma db push` to
+  `npx prisma migrate deploy` — no more silent drift; every schema change ships as a
+  reviewed migration file.
+- **New npm scripts**: `db:migrate:deploy`, `db:migrate:resolve`.
+- **One-time baselining**: existing DBs already contain the `0_init` tables, so each
+  must be marked applied once with `prisma migrate resolve --applied 0_init` before the
+  first `migrate deploy` (else it re-runs `0_init` and errors). Local dev **and prod**
+  are now baselined; prod `migrate status` reports "up to date".
+
+Going forward: create schema changes locally with `npm run db:migrate` (`migrate dev`),
+commit the generated migration, and Railway applies it on deploy. `db:push` remains only
+for throwaway local experiments. Supersedes the "run `npm run db:push`" note in prior
+entries.
+
 ## 2026-07-27 — Counsellor availability / presence ("Knowing who's available")
 
 Leads no longer get assigned to counsellors who have stepped away. Each `SalesRep`

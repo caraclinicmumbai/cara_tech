@@ -17,6 +17,8 @@ import { writeAudit } from "@/lib/audit";
 import { sendAutomatedTemplate, outreachTemplate, firstName, istTime } from "@/lib/outreach";
 import { scoreCQS } from "@/lib/cqs";
 import { runStageChange } from "@/lib/chatbotRuntime";
+import { enrollLead } from "@/lib/campaigns/engine";
+import { classifyFromCall } from "@/lib/campaigns/classify";
 import { logger } from "@/lib/logger";
 
 // Outcomes that END the attempt ladder — the lead was reached and a decision
@@ -122,6 +124,7 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
   // Automated WhatsApp outreach (§3.1.3) — set during the branch below, fired
   // after the lead is persisted. Each is OFF unless its template env is set.
   let becameUnreachable = false;
+  let retryScheduled = false;
   let callbackTimeStr: string | null = null;
 
   if (input.outcome === "not_interested") {
@@ -204,6 +207,7 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     const delays = retryDelaysDays(); // e.g. [1, 5]
     const maxAttempts = delays.length + 1; // + the immediate intake call
     if (attemptNumber < maxAttempts) {
+      retryScheduled = true;
       const delayDays = delays[attemptNumber - 1] ?? delays[delays.length - 1]!; // attempt N→N+1
       const nextAttempt = attemptNumber + 1;
       afterCommit.push(async () => {
@@ -269,6 +273,34 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
   // EVERY scored call whose CQS is very high or very low, DMing the sales head.
   afterCommit.push(async () => {
     await notifySalesHead(lead, scored?.cqs);
+  });
+
+  // Follow-up auto-enrollment (§follow-up) — sort the lead into a campaign from how the
+  // call went (couldnt_reach / worried_cost / just_researching), handover always winning.
+  // enrollLead self-guards (kill-switch, exclusions, opt-out, one-active-per-person), so a
+  // null classification or an already-enrolled lead is a safe no-op.
+  afterCommit.push(async () => {
+    const campaign = classifyFromCall({
+      becameUnreachable,
+      retryScheduled,
+      handoverFired: handover.length > 0,
+      // Hot lead = the high-CQS (score ≥ threshold) handover fired → the fast-track routing campaign.
+      hotLead: handover.some((h) => h.key === "high_cqs"),
+      optedOut: input.outcome === "not_interested",
+      confirmed: input.outcome === "confirmed",
+      callbackScheduled: input.outcome === "rescheduled" || !!callbackAt,
+      answered: !!input.transcript && input.outcome !== "no_answer",
+      tag: leadData.tag ?? lead.tag,
+      handoverReasons: input.handoverReasons,
+      interestLevel: lead.interestLevel,
+    });
+    if (!campaign) return;
+    const res = await enrollLead(lead.id, campaign);
+    logger.info(
+      res.ok
+        ? `Lead ${lead.id} auto-enrolled in "${campaign}" campaign (${res.enrollmentId})`
+        : `Auto-enroll ("${campaign}") skipped for lead ${lead.id}: ${res.reason}`,
+    );
   });
 
   // Atomic write (§ reliability): the Call and the Lead update land together, or

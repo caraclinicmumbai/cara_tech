@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyMetaSignature } from "@/lib/providers/meta";
 import { optOutLeadsByPhone } from "@/lib/leadIntake";
 import { findLeadByPhone, findOrCreateLeadByPhone, recordInbound, updateMessageStatus } from "@/lib/messages";
+import { stopEnrollmentForLead } from "@/lib/campaigns/engine";
 import { runChatbot } from "@/lib/chatbotRuntime";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
 import { logger } from "@/lib/logger";
@@ -129,6 +130,11 @@ export async function POST(req: Request) {
             await recordInbound({ leadId: lead.id, waId: msg.id, type, body, mediaId });
             await notifyInbound(lead.id, lead.name, body);
             logger.info(`WhatsApp inbound stored for lead ${lead.id} (${type})`);
+
+            // Reply-stops-everything (§follow-up): the instant a lead replies, halt any
+            // active follow-up campaign — a human takes over; the system must never talk
+            // over a real conversation. Runs for a plain reply AND an opt-out.
+            await stopEnrollmentForLead(lead.id, isOptOut ? "opted_out" : "replied");
 
             // Drive the chatbot flow — but not for opt-out messages, and only once
             // per message id (dedup above), so retries don't double-fire.

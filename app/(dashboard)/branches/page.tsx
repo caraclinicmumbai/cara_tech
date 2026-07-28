@@ -1,6 +1,7 @@
 import { requireCapability } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { listBranches } from "@/lib/branches";
+import { CAMPAIGN_TYPES, CAMPAIGNS } from "@/lib/campaigns/types";
 import { BranchesAdmin } from "@/components/BranchesAdmin";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export default async function BranchesPage() {
   ]);
 
   const managerOptions = managers.map((m) => ({ id: m.id, label: m.name ? `${m.name} (${m.email})` : m.email }));
+  const campaigns = CAMPAIGN_TYPES.map((t) => ({ type: t, label: CAMPAIGNS[t].label, description: CAMPAIGNS[t].description }));
 
   return (
     <div className="space-y-6">
@@ -33,7 +35,7 @@ export default async function BranchesPage() {
           have a branch set yet. (Lead routing by branch comes later.)
         </p>
       </div>
-      <BranchesAdmin branches={branches} managerOptions={managerOptions} />
+      <BranchesAdmin branches={branches} managerOptions={managerOptions} campaigns={campaigns} />
     </div>
   );
 }

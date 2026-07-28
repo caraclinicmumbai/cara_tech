@@ -9,6 +9,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/authz";
 import { writeAudit } from "@/lib/audit";
+import { CAMPAIGNS, isCampaignType } from "@/lib/campaigns/types";
 import { logger } from "@/lib/logger";
 
 type Result = { ok: boolean; error?: string; id?: string };
@@ -31,11 +32,23 @@ export type BranchInput = {
   bankName?: string | null;
   upiId?: string | null;
   managerId?: string | null;
+  // Follow-up quiet hours (§follow-up) — IST wall-clock hours [0-23] as form strings.
+  // Blank = use the global default (20:00–09:00).
+  quietStartHour?: string | null;
+  quietEndHour?: string | null;
 };
 
 function clean(v: string | null | undefined): string | null {
   const s = (v ?? "").trim();
   return s.length ? s : null;
+}
+
+/// Parse a quiet-hour form field to an int hour [0-23], or null (blank/invalid = default).
+function cleanHour(v: string | null | undefined): number | null {
+  const s = (v ?? "").trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : null;
 }
 
 /// Validate + normalise the shared fields. Code is uppercased and must be short alnum.
@@ -66,6 +79,8 @@ function normalise(input: BranchInput): { ok: true; data: Prisma.BranchUnchecked
       bankName: clean(input.bankName),
       upiId: clean(input.upiId),
       managerId: clean(input.managerId),
+      quietStartHour: cleanHour(input.quietStartHour),
+      quietEndHour: cleanHour(input.quietEndHour),
     },
   };
 }
@@ -128,6 +143,31 @@ export async function setDefaultBranch(id: string): Promise<Result> {
     prisma.branch.update({ where: { id }, data: { isDefault: true } }),
   ]);
   await writeAudit({ actorId: actor.id, actorEmail: actor.email, action: "settings.branch.setDefault", entityType: "setting", entityId: id, newValue: target.name });
+  revalidatePath("/branches");
+  return { ok: true };
+}
+
+/// Turn a follow-up campaign on/off for a branch (§follow-up). Upserts a CampaignSetting
+/// row; absence of a row means enabled, so this only writes when overriding. Audited.
+export async function setCampaignEnabled(
+  branchId: string,
+  campaignType: string,
+  enabled: boolean,
+): Promise<Result> {
+  const actor = await requireCapability("branches.manage");
+  if (!isCampaignType(campaignType)) return { ok: false, error: "Unknown campaign" };
+  const branch = await prisma.branch.findUnique({ where: { id: branchId }, select: { name: true } });
+  if (!branch) return { ok: false, error: "Branch not found" };
+  await prisma.campaignSetting.upsert({
+    where: { branchId_campaignType: { branchId, campaignType } },
+    create: { branchId, campaignType, enabled },
+    update: { enabled },
+  });
+  await writeAudit({
+    actorId: actor.id, actorEmail: actor.email, action: "settings.campaign.toggle",
+    entityType: "setting", entityId: branchId, field: campaignType,
+    newValue: enabled ? "on" : "off", reason: `${CAMPAIGNS[campaignType].label} @ ${branch.name}`,
+  });
   revalidatePath("/branches");
   return { ok: true };
 }

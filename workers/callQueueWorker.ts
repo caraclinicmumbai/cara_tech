@@ -23,6 +23,9 @@ import { runStageSlaScan } from "@/lib/stageSla";
 import { DIGEST_QUEUE, scheduleDailyDigest, sendDailyDigest } from "@/lib/digest";
 import { monitorSystemHealth } from "@/lib/healthMonitor";
 import { sweepIdle, IDLE_MINUTES } from "@/lib/presence";
+import { runCampaignTick } from "@/lib/campaigns/engine";
+import { runWinBackSweep } from "@/lib/campaigns/winback";
+import { campaignsEnabled } from "@/lib/campaigns/types";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -142,6 +145,30 @@ const runPresenceSweep = () =>
 runPresenceSweep();
 setInterval(runPresenceSweep, PRESENCE_SWEEP_MS);
 logger.info(`Presence idle-sweep active (every ${PRESENCE_SWEEP_MS / 1000}s, threshold ${IDLE_MINUTES}m)`);
+
+// Follow-up campaign engine (§follow-up) — advance every enrollment whose next step is
+// due: run the guardrail gate, send the step, schedule the next (or complete + mark Lost).
+// Deferrals (ceiling / quiet hours) just push nextRunAt forward. A DB-polling interval
+// (like the presence/stage sweeps) rather than per-message jobs, so the guardrails
+// re-evaluate on every attempt. Gated by CAMPAIGNS_ENABLED (off = the tick is a no-op).
+const CAMPAIGN_TICK_MS = Number(process.env.CAMPAIGN_TICK_MINUTES ?? 15) * 60_000;
+const runCampaigns = () =>
+  runCampaignTick().catch((err) => logger.error(`Campaign tick error: ${String(err)}`));
+runCampaigns();
+setInterval(runCampaigns, CAMPAIGN_TICK_MS);
+logger.info(
+  `Follow-up campaign engine ${campaignsEnabled() ? "active" : "idle (CAMPAIGNS_ENABLED off)"} (tick every ${CAMPAIGN_TICK_MS / 60_000} min)`,
+);
+
+// Win-Back sweep (§follow-up) — once every WINBACK_SWEEP_HOURS (default 12), enrol leads
+// that have been Lost for 90+ days into the automatic Win-Back campaign (max 4/yr, consent-
+// and opt-out-checked). Also gated by CAMPAIGNS_ENABLED (the sweep no-ops when off).
+const WINBACK_SWEEP_MS = Number(process.env.WINBACK_SWEEP_HOURS ?? 12) * 60 * 60_000;
+const runWinBack = () =>
+  runWinBackSweep().catch((err) => logger.error(`Win-back sweep error: ${String(err)}`));
+runWinBack();
+setInterval(runWinBack, WINBACK_SWEEP_MS);
+logger.info(`Win-back sweep active (every ${WINBACK_SWEEP_MS / 3_600_000} h)`);
 
 // Branch Manager daily digest — a repeatable (cron) job fires once a day at
 // DIGEST_HOUR_IST; this worker registers it and processes it (§3.1).

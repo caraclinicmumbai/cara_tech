@@ -26,9 +26,14 @@ export type BranchView = {
   bankIfsc: string | null;
   bankName: string | null;
   upiId: string | null;
+  quietStartHour: number | null;
+  quietEndHour: number | null;
   hasQr: boolean;
   managerId: string | null;
   managerName: string | null;
+  /// Per-campaign on/off state for this branch (campaignType → enabled). A campaign
+  /// absent from the map is enabled by default (opt-out model).
+  campaignSettings: Record<string, boolean>;
 };
 
 /// The subset the quote PDF needs to render a branch's identity + pay-to block.
@@ -69,6 +74,8 @@ const BRANCH_SELECT = {
   bankIfsc: true,
   bankName: true,
   upiId: true,
+  quietStartHour: true,
+  quietEndHour: true,
   managerId: true,
 } satisfies Prisma.BranchSelect;
 
@@ -76,6 +83,7 @@ function toView(
   b: Prisma.BranchGetPayload<{ select: typeof BRANCH_SELECT }> & {
     qrImage?: Uint8Array | null;
     manager?: { name: string | null } | null;
+    campaignSettings?: { campaignType: string; enabled: boolean }[];
   },
 ): BranchView {
   return {
@@ -97,18 +105,27 @@ function toView(
     bankIfsc: b.bankIfsc,
     bankName: b.bankName,
     upiId: b.upiId,
+    quietStartHour: b.quietStartHour,
+    quietEndHour: b.quietEndHour,
     hasQr: false, // set by callers that also read qrImage presence
     managerId: b.managerId,
     managerName: b.manager?.name ?? null,
+    campaignSettings: Object.fromEntries((b.campaignSettings ?? []).map((s) => [s.campaignType, s.enabled])),
   };
 }
 
 /// All branches for the admin screen (active first, then by name). Includes whether a
-/// QR image is present (without shipping the bytes) and the manager's name.
+/// QR image is present (without shipping the bytes), the manager's name, and each
+/// branch's per-campaign on/off settings.
 export async function listBranches(): Promise<BranchView[]> {
   const rows = await prisma.branch.findMany({
     orderBy: [{ active: "desc" }, { isDefault: "desc" }, { name: "asc" }],
-    select: { ...BRANCH_SELECT, qrImage: true, manager: { select: { name: true } } },
+    select: {
+      ...BRANCH_SELECT,
+      qrImage: true,
+      manager: { select: { name: true } },
+      campaignSettings: { select: { campaignType: true, enabled: true } },
+    },
   });
   return rows.map((r) => ({ ...toView(r), hasQr: !!r.qrImage }));
 }

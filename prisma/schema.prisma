@@ -45,6 +45,10 @@ model Lead {
   // True when the lead was marked Lost BEFORE completing a consultation (a
   //    premature loss the counsellor was alerted to). Counted in the daily digest.
   prematureLost Boolean   @default(false)
+  // ── Win-back (Phase 2 §follow-up) — when this lead was last auto-enrolled in the
+  //    90-day Win-Back campaign. Dedups the daily sweep (one win-back per lost event:
+  //    only re-enrol if the lead was lost AGAIN after the last win-back). ──
+  lastWinBackAt DateTime?
 
   // ── AI→human handover (§3.1) — when an AI call hits a trigger (pricing/clinical
   //    question, distress, wants-human, competitor, unresolved objection, CQS≥75,
@@ -135,11 +139,12 @@ model Lead {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  calls           Call[]
-  messages        Message[]
-  quotes          Quote[]
-  chatbotSessions ChatbotSession[]
-  accessGrants    LeadAccessGrant[]
+  calls               Call[]
+  messages            Message[]
+  quotes              Quote[]
+  chatbotSessions     ChatbotSession[]
+  accessGrants        LeadAccessGrant[]
+  campaignEnrollments CampaignEnrollment[]
 
   @@index([status])
   @@index([phone])
@@ -175,13 +180,13 @@ model SalesRep {
   // Only "available" reps enter the round-robin (pickNextRep); the rest have their
   // new leads routed to the next available counsellor.
   //   available | in_consultation | break | offline
-  availability   String    @default("available")
-  availabilityAt DateTime  @default(now()) // when availability last changed
+  availability   String   @default("available")
+  availabilityAt DateTime @default(now()) // when availability last changed
   // Heartbeat from the app — drives the 15-min auto-offline sweep (during work hours).
-  lastActivityAt DateTime  @default(now())
+  lastActivityAt DateTime @default(now())
   // True while auto-set to in_consultation by a live click-to-call, so the call-end
   // webhook reverts to available (and a manual Break isn't clobbered by a stray revert).
-  onCall         Boolean   @default(false)
+  onCall         Boolean  @default(false)
   // Skill/speciality (§presence) — an offline counsellor's leads prefer a colleague
   // with the SAME speciality; null = generalist (eligible only as a fallback match).
   speciality     String?
@@ -404,17 +409,17 @@ model VerificationToken {
 /// the nodes (send messages, ask questions, branch, assign) node-by-node. The graph
 /// itself is stored as JSON (React Flow nodes + edges); see lib/chatbotFlows.ts.
 model ChatbotFlow {
-  id           String    @id @default(cuid())
-  name         String
+  id            String    @id @default(cuid())
+  name          String
   // What starts the flow: inbound_message | template_message | … (TRIGGER_EVENTS).
-  triggerEvent String    @default("inbound_message")
+  triggerEvent  String    @default("inbound_message")
   // Optional trigger match config (e.g. { field: "message_text", op: "not_equals", value: "XYZ" }).
   triggerConfig Json?
-  priority     String    @default("high") // high | medium | low
-  active       Boolean   @default(false)
-  expireOn     DateTime? // null = never expires
+  priority      String    @default("high") // high | medium | low
+  active        Boolean   @default(false)
+  expireOn      DateTime? // null = never expires
   // The flow definition: { nodes: [...], edges: [...] } (React Flow shape).
-  graph        Json      @default("{\"nodes\":[],\"edges\":[]}")
+  graph         Json      @default("{\"nodes\":[],\"edges\":[]}")
 
   // Branch scaffold (per-branch flows later) + who created it.
   branchId    String?
@@ -435,17 +440,17 @@ model ChatbotFlow {
 /// node id, and the lead's next inbound message resumes it. `variables` holds the
 /// answers collected so far (used for {{placeholder}} interpolation + branching).
 model ChatbotSession {
-  id            String  @id @default(cuid())
+  id            String      @id @default(cuid())
   leadId        String
-  lead          Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lead          Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
   flowId        String
   flow          ChatbotFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
-  status        String  @default("active") // active (waiting for a reply) | ended
+  status        String      @default("active") // active (waiting for a reply) | ended
   currentNodeId String? // the wait node we're paused at
   waitKind      String? // ask | buttons | list — how to read the next reply
-  variables     Json    @default("{}")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  variables     Json        @default("{}")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@index([leadId, status])
   @@index([flowId])
@@ -460,10 +465,10 @@ model ChatbotSession {
 /// user/quote has no branch yet (keeps single-branch behaviour working). Lead routing
 /// by branch is not wired yet (round-robin is still global — see lib/salesReps.ts).
 model Branch {
-  id       String  @id @default(cuid())
-  code     String  @unique // short code, e.g. "SCZ", "JUH" — used in quote refs
-  name     String // display name, e.g. "Cara Santacruz"
-  active   Boolean @default(true)
+  id        String  @id @default(cuid())
+  code      String  @unique // short code, e.g. "SCZ", "JUH" — used in quote refs
+  name      String // display name, e.g. "Cara Santacruz"
+  active    Boolean @default(true)
   isDefault Boolean @default(false) // the fallback branch (exactly one should be true)
 
   // Legal / tax identity (per branch — each may invoice under its own GSTIN).
@@ -490,17 +495,80 @@ model Branch {
   managerId String?
   manager   User?   @relation("BranchManager", fields: [managerId], references: [id], onDelete: SetNull)
 
+  // ── Follow-up quiet hours (Phase 2 §follow-up) — automated campaign messages are
+  //    NEVER sent inside this IST window (default 20:00–09:00). Stored as wall-clock
+  //    hours [0-23]; null = use the global default. Distinct from the call DND window
+  //    (lib/callWindow.ts), which governs AI voice calls, not campaign messages. ──
+  quietStartHour Int? // IST hour the quiet window opens (default 20 = 8 PM)
+  quietEndHour   Int? // IST hour the quiet window closes (default 9 = 9 AM)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  leads          Lead[]
-  reps           SalesRep[]
-  users          User[]        @relation("UserHomeBranch")
-  quotes         Quote[]       @relation("QuoteBranch")
-  invoicedQuotes Quote[]       @relation("QuoteInvoicedBranch")
-  chatbotFlows   ChatbotFlow[]
+  leads            Lead[]
+  reps             SalesRep[]
+  users            User[]            @relation("UserHomeBranch")
+  quotes           Quote[]           @relation("QuoteBranch")
+  invoicedQuotes   Quote[]           @relation("QuoteInvoicedBranch")
+  chatbotFlows     ChatbotFlow[]
+  campaignSettings CampaignSetting[]
 
   @@index([active])
+}
+
+/// A lead's membership in a follow-up campaign (Phase 2 §follow-up). THE core guardrail:
+/// a lead may hold AT MOST ONE active enrollment at a time — enforced by a partial unique
+/// index on (leadId) WHERE status = 'active' (added in the migration). Campaigns follow the
+/// PERSON, never the quote — two open quotes still yield one enrollment. `drivingQuoteId`
+/// records which quote's value/urgency selected the campaign, for context only.
+model CampaignEnrollment {
+  id           String @id @default(cuid())
+  leadId       String
+  lead         Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  /// couldnt_reach | worried_cost | just_researching | hot_lead | international | win_back | dead_lead_bulk
+  campaignType String
+  /// active | stopped | completed
+  status       String @default("active")
+  /// 0-based index of the NEXT step to send in the campaign's schedule.
+  step         Int    @default(0)
+
+  // Branch snapshot at enrollment — drives the per-branch on/off toggle + quiet hours
+  // lookup even if the lead's branch later changes.
+  branchId       String?
+  // The quote (if any) whose higher value/urgency selected this campaign — context only.
+  drivingQuoteId String?
+
+  nextRunAt    DateTime? // when the next step is due (null once completed/stopped)
+  lastSentAt   DateTime?
+  messagesSent Int       @default(0)
+
+  startedAt  DateTime  @default(now())
+  stoppedAt  DateTime?
+  /// replied | opted_out | excluded | superseded | completed | manual — why it ended.
+  stopReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, nextRunAt])
+  @@index([leadId])
+  @@index([campaignType])
+}
+
+/// Per-branch on/off switch for each follow-up campaign type (Phase 2 §follow-up).
+/// Absence of a row = enabled (opt-out model); a row with enabled=false suppresses that
+/// campaign for that branch. Hard exclusions and the global kill-switch override this.
+model CampaignSetting {
+  id           String  @id @default(cuid())
+  branchId     String
+  branch       Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  campaignType String
+  enabled      Boolean @default(true)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, campaignType])
+  @@index([branchId])
 }
 
 /// A treatment quote (Phase 2 §multi-quote). THE structural change: a lead is the

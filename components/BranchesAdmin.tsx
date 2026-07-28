@@ -7,11 +7,13 @@ import {
   updateBranch,
   setBranchActive,
   setDefaultBranch,
+  setCampaignEnabled,
   type BranchInput,
 } from "@/app/(dashboard)/branches/actions";
 import type { BranchView } from "@/lib/branches";
 
 type ManagerOption = { id: string; label: string };
+type CampaignOption = { type: string; label: string; description: string };
 
 const inputCls =
   "rounded border border-black/15 bg-background px-2 py-1.5 text-sm dark:border-white/20";
@@ -19,7 +21,7 @@ const inputCls =
 const EMPTY: BranchInput = {
   code: "", name: "", legalName: "", gstin: "", addressLine1: "", addressLine2: "",
   city: "", pincode: "", phone: "", email: "", bankAccountName: "", bankAccountNumber: "",
-  bankIfsc: "", bankName: "", upiId: "", managerId: "",
+  bankIfsc: "", bankName: "", upiId: "", managerId: "", quietStartHour: "", quietEndHour: "",
 };
 
 function toInput(b: BranchView): BranchInput {
@@ -30,6 +32,8 @@ function toInput(b: BranchView): BranchInput {
     bankAccountName: b.bankAccountName ?? "", bankAccountNumber: b.bankAccountNumber ?? "",
     bankIfsc: b.bankIfsc ?? "", bankName: b.bankName ?? "", upiId: b.upiId ?? "",
     managerId: b.managerId ?? "",
+    quietStartHour: b.quietStartHour != null ? String(b.quietStartHour) : "",
+    quietEndHour: b.quietEndHour != null ? String(b.quietEndHour) : "",
   };
 }
 
@@ -103,6 +107,19 @@ function BranchFields({
           {managerOptions.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
         </select>
       </div>
+      <div>
+        <div className={groupTitle}>Follow-up quiet hours (IST)</div>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-black/55 dark:text-white/55">No campaign messages between</span>
+          <input type="number" min={0} max={23} className={`${inputCls} w-20`} placeholder="20"
+            value={data.quietStartHour ?? ""} onChange={(e) => set({ quietStartHour: e.target.value })} />
+          <span className="text-black/55 dark:text-white/55">:00 and</span>
+          <input type="number" min={0} max={23} className={`${inputCls} w-20`} placeholder="9"
+            value={data.quietEndHour ?? ""} onChange={(e) => set({ quietEndHour: e.target.value })} />
+          <span className="text-black/55 dark:text-white/55">:00</span>
+          <span className="text-xs text-black/40 dark:text-white/40">(blank = default 20:00–09:00)</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -110,9 +127,11 @@ function BranchFields({
 export function BranchesAdmin({
   branches,
   managerOptions,
+  campaigns,
 }: {
   branches: BranchView[];
   managerOptions: ManagerOption[];
+  campaigns: CampaignOption[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -237,6 +256,38 @@ export function BranchesAdmin({
                   </button>
                   <button className="text-sm text-black/50 hover:underline dark:text-white/50"
                     onClick={() => setEditingId(null)}>Cancel</button>
+                </div>
+
+                {/* ── Follow-up campaigns: per-branch on/off (§follow-up) ── */}
+                <div className="border-t border-black/10 pt-4 dark:border-white/15">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-black/45 dark:text-white/45">
+                    Follow-up campaigns
+                  </div>
+                  <p className="mt-1 text-xs text-black/45 dark:text-white/45">
+                    Turn each campaign on or off for this branch. Hard exclusions (minor / legal /
+                    complaint), opt-out, the reply-stop, and the 12-in-30 message ceiling always
+                    apply regardless of these switches.
+                  </p>
+                  <div className="mt-2 space-y-1.5">
+                    {campaigns.map((c) => {
+                      const enabled = b.campaignSettings[c.type] ?? true;
+                      return (
+                        <label key={c.type} className="flex items-start gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={enabled}
+                            disabled={pending}
+                            onChange={() => run(() => setCampaignEnabled(b.id, c.type, !enabled))}
+                          />
+                          <span>
+                            <span className="font-medium">{c.label}</span>{" "}
+                            <span className="text-xs text-black/45 dark:text-white/45">— {c.description}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
