@@ -45,6 +45,28 @@ export type NormalizedLead = {
   createdById?: string;
 };
 
+/// Consent basis for a self-served DIGITAL source (§compliance C2). Meta/Google
+/// lead ads and the website form make the person accept a privacy notice before
+/// submitting, and a WhatsApp message is user-initiated — so ingestion itself is
+/// evidence of consent to be contacted about the enquiry. Returns null for
+/// staff-entered / referral sources (walk-ins carry an explicit iPad/written form
+/// captured at the clinic; those consent fields arrive on the NormalizedLead).
+function digitalConsentBasis(source: LeadSource): string | null {
+  switch (source) {
+    case "web_form":
+      return "Website enquiry form — privacy notice accepted at submission";
+    case "facebook":
+    case "instagram":
+      return "Meta Lead Ad — privacy policy accepted on the ad form";
+    case "google":
+      return "Google Lead Form — privacy policy accepted on the form";
+    case "whatsapp":
+      return "User-initiated WhatsApp contact";
+    default:
+      return null; // manual | referral | walk_in — consent captured elsewhere
+  }
+}
+
 /// Sources that must NEVER trigger an automated AI call (§3.1.2 exceptions):
 /// the lead is physically present or just spoken to, so we route to manual
 /// follow-up instead. Distinct from the env-configurable PAUSE_AUTO_CALL_SOURCES.
@@ -145,6 +167,15 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
   const held = !!input.heldForReview;
   const manualQueue = neverCall || !!dup || held;
 
+  // Consent capture (§compliance C2). An explicit walk-in consent (input.consent*)
+  // always wins; otherwise a self-served digital source evidences consent to be
+  // contacted about the enquiry at the moment of ingest. Stored on the record AND
+  // written to the audit trail so "when/how did we get consent" is answerable.
+  const now = new Date();
+  const consentBasis = digitalConsentBasis(input.source);
+  const consentMethod = input.consentMethod ?? (consentBasis ? "digital_form" : undefined);
+  const consentAt = input.consentAt ?? (consentBasis ? now : undefined);
+
   const lead = await prisma.lead.create({
     data: {
       name: input.name,
@@ -160,12 +191,26 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
       externalId: input.externalId,
       campaign: input.campaign,
       adId: input.adId,
-      consentMethod: input.consentMethod,
-      consentAt: input.consentAt,
+      consentMethod,
+      consentAt,
       consentBy: input.consentBy,
+      // Per-channel consent for digital enquiries — they submitted a form asking to
+      // be contacted, so call + marketing consent is recorded (checked before every
+      // outreach). Left untouched for staff-entered/referral sources (null = unknown).
+      consentCall: consentBasis ? true : undefined,
+      consentMarketing: consentBasis ? true : undefined,
+      consentUpdatedAt: consentBasis ? now : undefined,
       createdById: input.createdById,
     },
   });
+
+  // Record the consent basis in the immutable audit trail (§compliance C2).
+  if (consentBasis) {
+    await writeAudit({
+      action: "lead.consent.change", entityType: "lead", entityId: lead.id,
+      field: "consent", oldValue: null, newValue: "captured", reason: consentBasis,
+    }).catch((err) => logger.error(`Consent audit failed for lead ${lead.id}: ${String(err)}`));
+  }
 
   // Ownership (§3.1 RBAC): every new lead — including walk-ins and duplicates —
   // gets a telecaller owner (round-robin) at intake, so "my leads" scoping works

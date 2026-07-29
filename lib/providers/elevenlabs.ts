@@ -229,6 +229,13 @@ function isTruthy(v: unknown): boolean {
   return s === "true" || s === "yes" || s === "1" || s === "y";
 }
 
+/// Tri-state boolean from a data-collection value: true/false when the agent set
+/// the field, undefined when it's absent (so we don't overwrite with a guess).
+function boolOrUndef(v: unknown): boolean | undefined {
+  if (v == null || v === "") return undefined;
+  return isTruthy(v);
+}
+
 /// Build the handover trigger keys the agent flagged: an explicit comma-separated
 /// `handover_reasons`/`handover_reason` data point, plus any known boolean fields.
 function collectHandoverReasons(collected: Record<string, { value?: unknown }>): string[] {
@@ -276,5 +283,8 @@ export function mapElevenLabsPostCall(payload: PostCall): RecordCallInput | null
     handoverReasons: collectHandoverReasons(collected),
     cqs: cqs != null && !Number.isNaN(cqs) ? cqs : undefined,
     language: str(collected.language?.value),
+    // Recording-consent disclosure (§compliance C1): the agent flags whether it
+    // made/obtained the "this call is recorded" acknowledgement.
+    recordingConsent: boolOrUndef(collected.recording_consent?.value),
   };
 }

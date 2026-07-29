@@ -11,7 +11,7 @@ import { notifyCounsellor } from "@/lib/counsellor";
 import { runStageChange } from "@/lib/chatbotRuntime";
 import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
 import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
-import { clickToCall, isTwilioConfigured } from "@/lib/providers/twilio";
+import { clickToCall, isTwilioConfigured, deleteTwilioRecording } from "@/lib/providers/twilio";
 import { beginConsultation } from "@/lib/presence";
 import { cancelScheduledCalls } from "@/lib/queue";
 import { writeAudit, auditLeadFieldUpdate, auditLeadFieldChanges } from "@/lib/audit";
@@ -346,6 +346,17 @@ export async function permanentlyDeleteLead(leadId: string): Promise<{ ok: boole
   const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { deletedAt: true, name: true, phone: true } });
   if (!lead) return { ok: false, error: "Lead not found" };
   if (!lead.deletedAt) return { ok: false, error: "Move the lead to trash first" };
+
+  // Right-to-erasure (§compliance C3): delete the actual call recordings from Twilio
+  // BEFORE we drop the DB rows — otherwise the audio lingers on the provider with no
+  // reference to clean it up. Best-effort; the DB delete proceeds regardless.
+  const recordings = await prisma.call.findMany({
+    where: { leadId, recordingUrl: { not: null } },
+    select: { recordingUrl: true },
+  });
+  for (const c of recordings) {
+    if (c.recordingUrl) await deleteTwilioRecording(c.recordingUrl);
+  }
 
   await prisma.lead.delete({ where: { id: leadId } });
   await writeAudit({

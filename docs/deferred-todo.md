@@ -31,6 +31,20 @@ sends yet. To go live:
    `WINBACK_CONSENT_MAX_AGE_DAYS`, `WINBACK_SWEEP_HOURS`.
 _Added 2026-07-28._
 
+### 🔴 Go-live: add the AI recording-consent disclosure to the ElevenLabs agent (C1)
+The CRM side of recording consent is built and deployed (`Call.recordingConsent`; human-
+handover calls disclose to the patient via a Twilio whisper). **Remaining, config-only, on
+ElevenLabs (can't be set from code):** update the "Manish" agent prompt so its opening line
+announces the call is recorded, and have it emit `recording_consent = true`. Until then AI
+calls store no consent flag and CQS keeps docking the consent dimension. Script + field spec:
+[elevenlabs-agent-integration.md](./elevenlabs-agent-integration.md) §7. _Added 2026-07-29._
+
+### Data-retention window (C3) — decide + enable
+The retention-purge job ships **off** (`DATA_RETENTION_MONTHS` unset = no-op). Before go-live,
+decide a window (e.g. 12 months) with legal sign-off and set `DATA_RETENTION_MONTHS` on the
+Railway **worker** (optional `RETENTION_SCAN_HOURS`, default 24). It then redacts recordings +
+transcripts on calls older than the window (and deletes their Twilio audio). _Added 2026-07-29._
+
 ### International Patient campaign (email)
 The 7th follow-up campaign (`international`) — WhatsApp **+ email** in English. Declared but
 stepless because there's **no email provider wired up**. Needs: pick/integrate an email

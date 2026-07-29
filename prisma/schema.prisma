@@ -111,7 +111,7 @@ model Lead {
 
   // ── Consent capture (§3.1.13) — for walk-in/front-desk, the iPad/written
   //    consent form is collected at the clinic BEFORE the record is created. ──
-  consentMethod String? // ipad | written (null for digital sources that consent differently)
+  consentMethod String? // ipad | written (walk-in) | digital_form (web/Meta/Google/WhatsApp §C2)
   consentAt     DateTime? // when consent was captured
   consentBy     String? // staff member (email) who captured the consent
 
@@ -250,6 +250,12 @@ model Call {
   providerSid  String? @unique // Twilio CallSid (correlation)
   cqs          Int? // Conversation Quality Score 0–100, judged by Claude (§3.1)
   cqsBreakdown Json? // per-dimension scores + objection type + summary
+
+  // Recording-consent disclosure (§compliance C1). Whether a "this call is recorded"
+  // disclosure was made / acknowledged on THIS call: AI calls set it from the agent's
+  // `recording_consent` data point; human-handover calls disclose via a callee whisper
+  // (so it's true when one was placed). Null = unknown / not disclosed.
+  recordingConsent Boolean?
 
   // Who handled a human-handover call — the rep who initiated the click-to-call
   // (from the Slack button or the in-app button). Null for AI calls. (§3.1)

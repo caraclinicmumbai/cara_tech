@@ -47,6 +47,8 @@ export type RecordCallInput = {
   handoverReasons?: string[];
   cqs?: number;
   language?: string;
+  /// Recording-consent disclosure acknowledged on this call (§compliance C1).
+  recordingConsent?: boolean;
 };
 
 export type RecordCallResult =
@@ -85,6 +87,7 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
           outcome: input.outcome,
           sentiment: input.sentiment,
           duration: input.duration,
+          recordingConsent: input.recordingConsent,
         },
       });
       logger.info(`Lead ${lead.id} already opted out — recorded call ${call.id}, suppressed all outreach/retry/handover`);
@@ -350,6 +353,7 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
           duration: input.duration,
           cqs: scored?.cqs,
           cqsBreakdown: scored?.breakdown,
+          recordingConsent: input.recordingConsent,
         },
       });
       await tx.lead.update({ where: { id: lead.id }, data: leadData });

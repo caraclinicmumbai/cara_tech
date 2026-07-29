@@ -76,20 +76,37 @@ function xmlEscape(s: string): string {
 /// TwiML returned when the rep answers: announce, then dial + record the lead.
 /// The recording completion is POSTed to our webhook with the leadId (and the
 /// handling rep's id, when known, so the recording is attributed to them).
+///
+/// Recording-consent disclosure (§compliance C1): the rep-facing `<Say>` isn't
+/// heard by the patient (it plays before they're connected), so the `<Number url>`
+/// points at a whisper TwiML that Twilio plays to the PATIENT when they answer —
+/// disclosing the recording to them before the two legs bridge.
 export function dialLeadTwiML(leadPhone: string, leadId: string, repId?: string): string {
   const base = publicBase();
   const cb =
     `${base}/api/webhooks/twilio/recording?leadId=${encodeURIComponent(leadId)}` +
     (repId ? `&repId=${encodeURIComponent(repId)}` : "");
   const from = process.env.TWILIO_CALLER_ID ?? "";
+  const whisper = `${base}/api/twilio/whisper`;
   return (
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<Response>` +
     `<Say>Connecting you to the patient now. This call is recorded.</Say>` +
     `<Dial callerId="${xmlEscape(from)}" record="record-from-answer-dual" ` +
     `recordingStatusCallback="${xmlEscape(cb)}" recordingStatusCallbackEvent="completed">` +
-    `<Number>${xmlEscape(leadPhone)}</Number>` +
+    `<Number url="${xmlEscape(whisper)}">${xmlEscape(leadPhone)}</Number>` +
     `</Dial>` +
+    `</Response>`
+  );
+}
+
+/// The recording-disclosure whisper played to the PATIENT (callee) when they answer
+/// a human-handover call, before the two legs bridge (§compliance C1).
+export function recordingWhisperTwiML(): string {
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<Response>` +
+    `<Say>This call is recorded for quality and training purposes.</Say>` +
     `</Response>`
   );
 }
@@ -110,6 +127,32 @@ export function verifyTwilioSignature(
   const a = Buffer.from(expected);
   const b = Buffer.from(signature);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/// Delete a recording's audio from Twilio's servers (§compliance C3 — erasure /
+/// retention). Our DB row is dropped separately; this removes the actual media so
+/// PII doesn't linger on the provider. The recording SID (RE…) is parsed from the
+/// stored URL. Best-effort: returns true on success or if already gone (404).
+export async function deleteTwilioRecording(recordingUrl: string): Promise<boolean> {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  if (!sid || !token) return false;
+  const match = recordingUrl.match(/(RE[0-9a-fA-F]{32})/);
+  if (!match) {
+    logger.warn(`Twilio recording delete: no SID in URL ${recordingUrl}`);
+    return false;
+  }
+  try {
+    await axios.delete(`${API}/Accounts/${sid}/Recordings/${match[1]}.json`, {
+      auth: { username: sid, password: token },
+      timeout: 15_000,
+    });
+    return true;
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) return true; // already gone
+    logger.error(`Twilio recording delete failed (${match[1]}): ${String(err)}`);
+    return false;
+  }
 }
 
 /// Fetch a Twilio recording's audio (Basic-auth'd) for the in-CRM player.

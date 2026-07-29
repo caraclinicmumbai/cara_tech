@@ -25,6 +25,7 @@ import { monitorSystemHealth } from "@/lib/healthMonitor";
 import { sweepIdle, IDLE_MINUTES } from "@/lib/presence";
 import { runCampaignTick } from "@/lib/campaigns/engine";
 import { runWinBackSweep } from "@/lib/campaigns/winback";
+import { runRetentionPurge, retentionMonths } from "@/lib/dataRetention";
 import { campaignsEnabled } from "@/lib/campaigns/types";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
@@ -169,6 +170,18 @@ const runWinBack = () =>
 runWinBack();
 setInterval(runWinBack, WINBACK_SWEEP_MS);
 logger.info(`Win-back sweep active (every ${WINBACK_SWEEP_MS / 3_600_000} h)`);
+
+// Data-retention purge (§compliance C3) — once a day, redact recordings + transcripts
+// on calls older than DATA_RETENTION_MONTHS. OFF unless that env is set (runRetentionPurge
+// no-ops when unset), so nothing is destroyed until the clinic chooses a window.
+const RETENTION_SCAN_MS = Number(process.env.RETENTION_SCAN_HOURS ?? 24) * 60 * 60_000;
+const runRetention = () =>
+  runRetentionPurge().catch((err) => logger.error(`Retention purge error: ${String(err)}`));
+runRetention();
+setInterval(runRetention, RETENTION_SCAN_MS);
+logger.info(
+  `Data-retention purge ${retentionMonths() ? `active (>${retentionMonths()}mo, scan every ${RETENTION_SCAN_MS / 3_600_000}h)` : "idle (DATA_RETENTION_MONTHS unset)"}`,
+);
 
 // Branch Manager daily digest — a repeatable (cron) job fires once a day at
 // DIGEST_HOUR_IST; this worker registers it and processes it (§3.1).
