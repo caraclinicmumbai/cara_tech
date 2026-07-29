@@ -68,6 +68,37 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
     }
   }
 
+  // Opt-out re-check (§ reliability R5): a lead can opt out (STOP on WhatsApp)
+  // in the window between this call being PLACED and its result arriving. Persist
+  // the Call for the record, but suppress EVERYTHING downstream — no CQS spend,
+  // stage advance, retry, handover, template send, or campaign enrollment. (An
+  // opt-out DECIDED on THIS call arrives as outcome "not_interested" and is handled
+  // in the main flow below; this guards the ALREADY-opted-out state.)
+  if (lead.optedOut) {
+    try {
+      const call = await prisma.call.create({
+        data: {
+          leadId: input.leadId,
+          callType: input.callType,
+          elevenlabsId: input.elevenlabsId,
+          transcript: input.transcript,
+          outcome: input.outcome,
+          sentiment: input.sentiment,
+          duration: input.duration,
+        },
+      });
+      logger.info(`Lead ${lead.id} already opted out — recorded call ${call.id}, suppressed all outreach/retry/handover`);
+      return { ok: true, call };
+    } catch (err) {
+      // Lost the race to a concurrent duplicate webhook (unique elevenlabsId).
+      if ((err as { code?: string }).code === "P2002" && input.elevenlabsId) {
+        const existing = await prisma.call.findUnique({ where: { elevenlabsId: input.elevenlabsId } });
+        if (existing) return { ok: true, call: existing };
+      }
+      throw err;
+    }
+  }
+
   // Conversation Quality Score (§3.1) — Claude scores the transcript against the
   // rubric. Best-effort: null when unconfigured/empty/failed. The computed score
   // also drives the high-CQS handover trigger below. Computed BEFORE the DB

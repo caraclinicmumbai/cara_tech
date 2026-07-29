@@ -143,6 +143,10 @@ export async function fetchConversationAudio(
 
 // ── Post-call webhook ────────────────────────────────────────────────
 
+// Max clock skew / age (seconds) tolerated on the signed timestamp before a
+// request is treated as a replay (§ security S4).
+const ELEVENLABS_REPLAY_TOLERANCE_SECONDS = 5 * 60;
+
 /// Verify the ElevenLabs post-call webhook HMAC.
 /// Header format: `ElevenLabs-Signature: t=<unix>,v0=<hex hmac>`,
 /// signed payload = `${t}.${rawBody}` with the webhook secret.
@@ -162,6 +166,16 @@ export function verifyElevenLabsSignature(
   const t = parts["t"];
   const v0 = parts["v0"];
   if (!t || !v0) return false;
+
+  // Replay guard (§ security S4): the HMAC covers `t`, but a captured request is
+  // still valid forever unless we require `t` to be recent. Reject stale/skewed
+  // timestamps before checking the (constant-time) HMAC.
+  const tsSec = Number(t);
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!Number.isFinite(tsSec) || Math.abs(nowSec - tsSec) > ELEVENLABS_REPLAY_TOLERANCE_SECONDS) {
+    logger.warn(`ElevenLabs webhook rejected: timestamp ${t} outside replay window`);
+    return false;
+  }
 
   const expected = "v0=" + createHmac("sha256", secret).update(`${t}.${rawBody}`).digest("hex");
   const a = Buffer.from(expected);

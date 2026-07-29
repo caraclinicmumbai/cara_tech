@@ -46,11 +46,13 @@ items are addressed (and keep [CHANGELOG.md](CHANGELOG.md) in step).
   retried and never marked unreachable. (`lib/queue.ts`, `workers/callQueueWorker.ts`)
   → On final failure, alert Slack and/or drop the lead into the manual queue; add a
   dead-letter path.
-- ⬜ 🟠 **R5 — `optedOut` not re-checked in `recordCall`.** If a lead opts out (STOP)
+- ✅ 🟠 **R5 — `optedOut` not re-checked in `recordCall`.** If a lead opted out (STOP)
   between a call being placed and the result arriving, the post-call pipeline still
-  advances stage, schedules the next attempt, and sends templates. (`lib/callIntake.ts`)
-  → Early in `recordCall`, if `lead.optedOut`, persist the Call but skip
-  outreach/retry/handover.
+  advanced stage, scheduled the next attempt, and sent templates. *Fixed on `dev`: an
+  early guard in `recordCall` — when `lead.optedOut` is already true, persist the Call
+  for the record and return, skipping CQS spend, stage advance, retry, handover,
+  templates, and campaign enrollment (P2002-race-safe). Distinct from an opt-out decided
+  ON the call (`outcome === "not_interested"`), still handled in the main flow.*
 - ⬜ 🟠 **R6 — Round-robin rep assignment race.** `pickNextRep` does read-then-update
   without a lock; two concurrent handovers can pick the same rep. (`lib/salesReps.ts`)
   → Single transaction with `SELECT … FOR UPDATE SKIP LOCKED`, or atomic
@@ -86,13 +88,17 @@ items are addressed (and keep [CHANGELOG.md](CHANGELOG.md) in step).
   WhatsApp on any lead — `assignedRepId` exists but no query filters on it.
   (`app/api/leads`, `app/api/calls`, `leads/actions.ts`, recording/media proxies)
   → Decide all-staff-see-all vs. assignment-scoped; if scoped, filter every query/mutation.
-- ⬜ 🔴 **S3 — `/api/twilio/voice/[leadId]` is unauthenticated + XML injection.** No
-  signature check; returns the patient's raw phone in TwiML built with unescaped values.
-  (`app/api/twilio/voice/[leadId]/route.ts`, `dialLeadTwiML` in `lib/providers/twilio.ts`)
-  → Verify `X-Twilio-Signature`; XML-escape all interpolated values.
-- ⬜ 🟠 **S4 — ElevenLabs webhook has no replay/timestamp check.** HMAC authenticates `t`
-  but it's never validated as recent → a captured request can be replayed. (`lib/providers/elevenlabs.ts`)
-  → Reject when `|now − t| > ~5 min`.
+- ✅ 🔴 **S3 — `/api/twilio/voice/[leadId]` is unauthenticated + XML injection.** No
+  signature check; returned the patient's raw phone in TwiML. *Fixed on `dev`: the route
+  now verifies `X-Twilio-Signature` over the exact public URL (base + path + query,
+  incl. `repId`) for both POST and GET, returning 403 on mismatch — mirrors the recording
+  webhook. XML-escaping of all interpolated values (`dialLeadTwiML` via `xmlEscape`) was
+  already in place.*
+- ✅ 🟠 **S4 — ElevenLabs webhook has no replay/timestamp check.** HMAC authenticated `t`
+  but never validated it as recent → a captured request could be replayed. *Fixed on
+  `dev`: `verifyElevenLabsSignature` rejects when `|now − t| > 5 min` (or `t` is
+  non-numeric) before the HMAC check. Note: manual signed-webhook replay tests now need a
+  fresh timestamp.*
 - ⬜ 🟠 **S5 — Rate limiters fail-open + IP spoofable.** A Redis outage silently disables
   login brute-force + intake throttle; `getClientIp` trusts the first `x-forwarded-for`,
   so rotating the header bypasses both. (`lib/rateLimit.ts`, `lib/loginThrottle.ts`)
