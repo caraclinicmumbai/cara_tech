@@ -7,6 +7,31 @@ Format: newest first.
 
 ---
 
+## 2026-07-29 — Security hardening: webhook auth + replay guard + opt-out re-check
+
+Quick-wins batch from the security/reliability backlog (`docs/gaps-and-roadmap.md`
+S3, S4, R5). No schema, env, or migration change.
+
+- **S3 — authenticate the Twilio voice webhook.** `/api/twilio/voice/[leadId]` was
+  public, so a guessed cuid returned the patient's phone number inside the TwiML. It
+  now verifies `X-Twilio-Signature` over the exact signed URL (base + path + query,
+  incl. `repId`) for both POST and GET, returning 403 on mismatch — mirrors the
+  recording webhook. (XML-escaping of interpolated values was already in place via
+  `dialLeadTwiML`/`xmlEscape`.)
+- **S4 — ElevenLabs replay guard.** `verifyElevenLabsSignature` now rejects a signed
+  timestamp outside a 5-minute window (or a non-numeric `t`) before the HMAC check,
+  so a captured request can't be replayed. *Manual signed-webhook replay tests now
+  need a fresh timestamp.*
+- **R5 — opt-out re-check in `recordCall`.** A lead who opted out (WhatsApp STOP)
+  between a call being placed and its result arriving still got stage advance, retry,
+  handover, and templates. `recordCall` now early-guards on `lead.optedOut`: it
+  persists the Call for the record and returns, skipping CQS spend, stage advance,
+  retry, handover, template sends, and campaign enrollment (P2002-race-safe). Distinct
+  from an opt-out decided ON the call (`outcome === "not_interested"`).
+
+`tsc` + `eslint` clean; S4 replay window verified offline (fresh passes;
+stale/future/bad-HMAC rejected). Backlog statuses updated in `gaps-and-roadmap.md`.
+
 ## 2026-07-28 — Follow-up campaigns: visibility UI (per-lead card + /campaigns overview)
 
 Surfaces running campaigns in the app (previously only visible in Prisma Studio / the audit
