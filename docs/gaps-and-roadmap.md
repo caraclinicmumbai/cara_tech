@@ -114,19 +114,28 @@ items are addressed (and keep [CHANGELOG.md](CHANGELOG.md) in step).
 
 ## Compliance (DPDP / India)
 
-- ⬜ 🔴 **C1 — No recording-consent disclosure on AI calls, and consent never stored.**
-  The ElevenLabs call has no spoken "this call is recorded" disclosure, and no field
-  records that consent was given. Recording a patient (health context) without disclosure
-  is real exposure under DPDP. (`lib/providers/elevenlabs.ts`, n8n Agent 1)
-  → Add a spoken disclosure as the agent's first line; persist a per-`Call` consent flag.
-- ⬜ 🔴 **C2 — Digital-source consent not captured.** `consentMethod/At/By` are populated
-  only for walk-ins; web/Meta/Google leads get a paid AI call with no consent record.
-  (`lib/leadIntake.ts`, `app/api/intake/*`) → Capture the ad-form/website consent text +
-  timestamp at ingest.
-- ⬜ 🔴 **C3 — No data retention / purge / right-to-erasure.** Transcripts, recordings, and
-  PII are stored forever; no admin "delete this patient's data" action; a deletion request
-  can't be honored without manual DB surgery. → Admin hard-delete action (cascades) + null
-  the Twilio recording; scheduled purge past a retention window.
+- 🚧 🔴 **C1 — recording-consent disclosure + per-Call consent flag.** *Code done on
+  `dev`:* `Call.recordingConsent Boolean?` (migration `20260729…_call_recording_consent`);
+  the AI mapper stores the agent's `recording_consent` data point; human-handover calls now
+  play a **patient-audible disclosure whisper** (`<Number url=/api/twilio/whisper>`, sig-
+  verified) before the legs bridge and set `recordingConsent=true`. **REMAINING (config, on
+  ElevenLabs — can't be set from code):** add a spoken "this call is recorded" line as the
+  agent's first utterance in the "Manish" agent prompt + have it emit `recording_consent`.
+  See [elevenlabs-agent-integration.md](elevenlabs-agent-integration.md).
+- ✅ 🔴 **C2 — Digital-source consent not captured.** `consentMethod/At/By` were populated
+  only for walk-ins. *Fixed on `dev`:* `ingestLead` records consent for self-served digital
+  sources (web_form / facebook / instagram / google / whatsapp) — `consentMethod=digital_form`,
+  `consentAt`, `consentCall`/`consentMarketing=true`, `consentUpdatedAt` — plus an immutable
+  `lead.consent.change` audit row naming the basis (privacy-notice/ad-form acceptance).
+  Staff-entered (manual/referral) sources still assert nothing (consent captured elsewhere).
+- ✅ 🔴 **C3 — Data retention / purge / right-to-erasure.** *Fixed on `dev`:* (a) erasure —
+  `permanentlyDeleteLead` now deletes each call's audio from **Twilio** (`deleteTwilioRecording`)
+  before cascading the DB rows, so recordings don't linger on the provider; (b) a scheduled
+  **retention purge** (`lib/dataRetention.ts` `runRetentionPurge`, worker daily) redacts
+  recordingUrl + transcript on calls older than `DATA_RETENTION_MONTHS` and deletes their
+  Twilio audio, keeping non-PII shape (outcome/CQS/duration) + a `data.retention.purge` audit.
+  **OFF by default** (env unset = no-op) until the clinic sets a window. Residual: purge covers
+  call recordings/transcripts only — message bodies / lead-record PII purge is a follow-up.
 - ⬜ 🟠 **C4 — DND is a time-window only (no TRAI/DLT scrub).** Quiet hours (22:00–10:00 IST)
   are enforced, but there's no check against the DND registry / DLT-registered templates.
   (`lib/callWindow.ts`) → Integrate a DND-scrub before dialing. *(Known; parked pending a

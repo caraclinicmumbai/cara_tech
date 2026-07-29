@@ -53,6 +53,8 @@ export async function POST(req: Request) {
       duration: Number.isFinite(duration) ? duration : undefined,
       providerSid: params.CallSid,
       handledById: repId, // the rep who initiated the click-to-call
+      // The patient heard the recording-disclosure whisper before bridging (§C1).
+      recordingConsent: true,
     },
   });
   logger.info(`Stored human-handover recording for lead ${leadId} (call ${call.id}, ${duration ?? "?"}s)`);

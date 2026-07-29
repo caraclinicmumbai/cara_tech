@@ -38,6 +38,7 @@ match exactly (the CRM reads these keys).
 | `tag` | free text — what they asked for | `Lead.tag` (also accepts `requested_service` / `service` / `interest`) |
 | `language` | `en` · `hi` · or the actual language if other | Unsupported language → human handover (see §5) |
 | `handover_reasons` | comma-separated keys (see §4) | Routes the lead to a human + Slack alert |
+| `recording_consent` | boolean — `true` once the recording disclosure (§7) was made/acknowledged | `Call.recordingConsent` (compliance evidence; feeds the CQS consent dimension) |
 
 > **Do NOT emit a `cqs` field.** The CRM computes the Conversation Quality Score
 > itself (Claude scores the transcript). Anything the agent emits is ignored in
@@ -124,6 +125,12 @@ qualification:
 This satisfies the DPDP recording-consent requirement and the CQS consent dimension.
 If the patient declines recording, emit `handover_reasons = "wants_human"` and hand
 off rather than continuing on a recorded line.
+
+**Emit `recording_consent = true`** once the disclosure is made/acknowledged — the CRM
+stores it on `Call.recordingConsent` as consent evidence (compliance item C1). Human-
+handover (rep) calls disclose automatically via a Twilio callee whisper, so this field
+is only needed for the AI calls. *(Until the agent prompt is updated, AI calls store no
+consent flag and CQS keeps docking the consent dimension.)*
 
 ## 8. WhatsApp is sent by the CRM
 
