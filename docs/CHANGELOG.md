@@ -7,6 +7,39 @@ Format: newest first.
 
 ---
 
+## 2026-07-29 — Compliance set (DPDP): recording consent, digital-source consent, retention/erasure
+
+Backlog items C1–C3 (`docs/gaps-and-roadmap.md`). Additive schema change
+(`Call.recordingConsent`) via migration `20260729073420_call_recording_consent` —
+Railway's pre-deploy `migrate deploy` applies it automatically on push.
+
+- **C1 — recording-consent disclosure + per-Call flag** *(code complete; the AI agent's
+  spoken line is a config task on ElevenLabs).* New `Call.recordingConsent Boolean?`. The
+  ElevenLabs mapper stores the agent's `recording_consent` data point. Human-handover (rep)
+  calls now play a **patient-audible disclosure whisper** — `dialLeadTwiML` points the
+  `<Number url>` at a new signature-verified `/api/twilio/whisper` route that Twilio plays
+  to the patient before the legs bridge — and the recording webhook sets
+  `recordingConsent=true`. Remaining: add the spoken disclosure line to the "Manish" agent
+  prompt + have it emit `recording_consent` (see `elevenlabs-agent-integration.md` §7).
+- **C2 — digital-source consent capture.** `ingestLead` now records consent for self-served
+  digital sources (web_form / facebook / instagram / google / whatsapp): `consentMethod=
+  digital_form`, `consentAt`, `consentCall`/`consentMarketing=true`, `consentUpdatedAt`, plus
+  an immutable `lead.consent.change` audit row naming the basis (privacy-notice / ad-form
+  acceptance). Staff-entered (manual/referral) sources assert nothing — consent captured
+  elsewhere (walk-ins carry the explicit iPad/written form).
+- **C3 — data retention / right-to-erasure.** Erasure (`permanentlyDeleteLead`) now deletes
+  each call's audio from **Twilio** (`deleteTwilioRecording`) before cascading the DB rows.
+  A scheduled **retention purge** (`lib/dataRetention.ts` `runRetentionPurge`, worker daily)
+  redacts `recordingUrl` + `transcript` on calls older than `DATA_RETENTION_MONTHS` and
+  deletes their Twilio audio, keeping non-PII shape (outcome/CQS/duration) + a
+  `data.retention.purge` audit. **OFF by default** — no-op until the env is set. Residual:
+  covers call recordings/transcripts only; message-body / lead-PII purge is a follow-up.
+
+`tsc` + `next build` clean; 15 offline + DB assertions pass (mapping tri-state, whisper
+wiring, retention math, delete guard, ingest consent capture). Docs: `gaps-and-roadmap.md`,
+`elevenlabs-agent-integration.md`, `deferred-todo.md`. **Config follow-ups (deferred-todo):**
+the C1 agent-prompt line, and choosing/setting `DATA_RETENTION_MONTHS` before go-live.
+
 ## 2026-07-29 — Security hardening: webhook auth + replay guard + opt-out re-check
 
 Quick-wins batch from the security/reliability backlog (`docs/gaps-and-roadmap.md`
