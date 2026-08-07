@@ -21,6 +21,7 @@ import { AuditTable } from "@/components/AuditTable";
 import { RecordViewLogger } from "@/components/RecordViewLogger";
 import { getLeadCampaign } from "@/lib/campaigns/enrollments";
 import { LeadCampaignCard } from "@/components/LeadCampaignCard";
+import { LeadComments } from "@/components/LeadComments";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +126,19 @@ export default async function LeadDetailPage({
   const leadCampaign = await getLeadCampaign(lead.id);
   const canManageCampaigns = can(viewer.role, "campaigns.manage");
   const changeHistory = await readLeadAudit(lead.id);
+  // Staff notes / comments (§notes). Author or a manager (all-leads scope) may delete.
+  const canComment = can(viewer.role, "leads.comment");
+  const comments = await prisma.leadComment.findMany({
+    where: { leadId: lead.id },
+    orderBy: { createdAt: "desc" },
+  });
+  const commentViews = comments.map((c) => ({
+    id: c.id,
+    authorName: c.authorName,
+    body: c.body,
+    createdAt: formatIst(c.createdAt),
+    canDelete: canComment && (c.authorId === viewer.id || isManagerScope),
+  }));
   const ownershipReps = handoverReps.map((r) => ({ id: r.id, name: r.name, branchId: r.branchId, branchName: r.branch?.name ?? null }));
   const granteeOptions = granteeUsers
     .filter((u) => u.id !== viewer.id)
@@ -260,6 +274,11 @@ export default async function LeadDetailPage({
         {canEditLead && (
           <LeadEditForm leadId={lead.id} name={lead.name} phone={lead.phone} email={lead.email} interest={lead.interest} />
         )}
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Notes &amp; comments ({comments.length})</h2>
+        <LeadComments leadId={lead.id} comments={commentViews} canComment={canComment} />
       </section>
 
       <section className="space-y-4">

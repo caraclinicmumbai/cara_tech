@@ -31,6 +31,17 @@ sends yet. To go live:
    `WINBACK_CONSENT_MAX_AGE_DAYS`, `WINBACK_SWEEP_HOURS`.
 _Added 2026-07-28._
 
+### 🔴 Twilio Auth Token is invalid — refresh it (health monitor alerting)
+The Slack downtime feed is firing "Twilio API down" — but Twilio is **up**; the API returns
+`401 / error 20003 (Authenticate)`, i.e. the stored `TWILIO_AUTH_TOKEN` is being **rejected**
+(almost certainly rotated in the Twilio Console). SID/token formats are valid, so it's the
+value, not a typo. **Impact while broken:** click-to-call handovers, recording fetch/playback,
+and the C3 erasure/retention recording-deletes all fail. **Fix:** copy the current Auth Token
+from Twilio Console → Account → Keys & tokens, and set `TWILIO_AUTH_TOKEN` in `.env.local` +
+Railway **web** and **worker**, then re-run the health probe to confirm 200. Optional polish:
+make `checkTwilio` report "auth failed (401)" distinctly from a real outage
+(`lib/healthMonitor.ts`). _Added 2026-08-08 (user deferred; "we'll do it later")._
+
 ### 🔴 Go-live: add the AI recording-consent disclosure to the ElevenLabs agent (C1)
 The CRM side of recording consent is built and deployed (`Call.recordingConsent`; human-
 handover calls disclose to the patient via a Twilio whisper). **Remaining, config-only, on

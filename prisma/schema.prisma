@@ -145,6 +145,7 @@ model Lead {
   chatbotSessions     ChatbotSession[]
   accessGrants        LeadAccessGrant[]
   campaignEnrollments CampaignEnrollment[]
+  comments            LeadComment[]
 
   @@index([status])
   @@index([phone])
@@ -266,6 +267,25 @@ model Call {
 
   @@index([leadId])
   @@index([callType])
+}
+
+/// A staff note / review on a lead (§notes). Free-text, human-authored context that
+/// isn't a structured field — a call recap, patient preference, or a manager's review.
+/// DISTINCT from the AuditLog (automatic + immutable): comments are written by staff
+/// and can be deleted by their author or a manager. `authorId`/`authorName` mirror the
+/// AuditLog convention (no FK): the name is snapshotted so attribution survives if the
+/// login is later removed.
+model LeadComment {
+  id         String   @id @default(cuid())
+  leadId     String
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  authorId   String? // User.id who wrote it (null if the account was later removed)
+  authorName String? // snapshot of the author's name/email at write time
+  body       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([leadId, createdAt])
 }
 
 // ── Auth (NextAuth.js / Auth.js — §2.5) ──────────────────────────────
