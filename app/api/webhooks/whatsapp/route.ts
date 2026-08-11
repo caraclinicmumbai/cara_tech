@@ -19,9 +19,33 @@ import { logger } from "@/lib/logger";
 const OPT_OUT_KEYWORDS = ["stop", "stop messages", "unsubscribe"];
 const CONSENT_KEYWORDS = ["yes", "y"];
 
+// Minimal shapes of the WhatsApp Cloud API webhook payload — only the fields we read
+// (the payload is trusted after the X-Hub-Signature-256 check).
+type WaReply = { id?: string; title?: string };
+type WaMedia = { id?: string; caption?: string; filename?: string };
+type WaMessage = {
+  type?: string;
+  from: string;
+  id?: string;
+  text?: { body?: string };
+  button?: { text?: string; payload?: string };
+  interactive?: { button_reply?: WaReply; list_reply?: WaReply };
+  image?: WaMedia;
+  document?: WaMedia;
+  audio?: WaMedia;
+  video?: WaMedia;
+};
+type WaStatus = { id?: string; status?: string; errors?: { title?: string }[] };
+type WaValue = {
+  contacts?: { wa_id?: string; profile?: { name?: string } }[];
+  messages?: WaMessage[];
+  statuses?: WaStatus[];
+};
+type WaWebhook = { entry?: { changes?: { value?: WaValue }[] }[] };
+
 // Flatten a WhatsApp inbound message into a storable + routable shape. For button /
 // list replies we also surface the reply id + title so the chatbot can branch.
-function parseInbound(msg: any): {
+function parseInbound(msg: WaMessage): {
   type: string;
   body: string;
   mediaId?: string;
@@ -55,8 +79,8 @@ function parseInbound(msg: any): {
 
 // The sender's WhatsApp profile name, matched by wa_id from the webhook's
 // `contacts` array (used to name an auto-created lead).
-function contactName(value: any, waId: string): string | undefined {
-  const c = (value?.contacts ?? []).find((x: any) => x?.wa_id === waId);
+function contactName(value: WaValue, waId: string): string | undefined {
+  const c = (value.contacts ?? []).find((x) => x?.wa_id === waId);
   return c?.profile?.name;
 }
 
@@ -87,7 +111,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  let body: any;
+  let body: WaWebhook;
   try {
     body = JSON.parse(raw);
   } catch {
@@ -97,7 +121,7 @@ export async function POST(req: Request) {
   try {
     for (const entry of body?.entry ?? []) {
       for (const change of entry?.changes ?? []) {
-        const value = change?.value ?? {};
+        const value: WaValue = change?.value ?? {};
 
         for (const msg of value.messages ?? []) {
           const from = msg.from;

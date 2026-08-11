@@ -50,7 +50,7 @@ function groupOf(type: string): string {
 }
 
 // ── Custom node (one component for every type; reads its spec) ──
-function FlowNodeView({ id, type, data, selected }: NodeProps) {
+function FlowNodeView({ type, data, selected }: NodeProps) {
   const t = type ?? "send_text";
   const spec = specFor(t);
   const outs = spec.outputs((data as Record<string, unknown>) ?? {});

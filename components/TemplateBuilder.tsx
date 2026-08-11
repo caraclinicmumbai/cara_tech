@@ -233,7 +233,7 @@ export function TemplateBuilder() {
           className="rounded bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50">
           {pending ? "Submitting…" : "Submit for approval"}
         </button>
-        <p className="text-[11px] text-black/40 dark:text-white/40">Submitted templates can't be edited — you'd create a new one. Approval is usually a few hours.</p>
+        <p className="text-[11px] text-black/40 dark:text-white/40">Submitted templates can&apos;t be edited — you&apos;d create a new one. Approval is usually a few hours.</p>
 
         {result && (
           <p className={`text-sm ${result.ok ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>

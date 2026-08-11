@@ -6,7 +6,7 @@
 // need `reps.manage` (Branch Manager / Sales Head / CRM Admin).
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireCapability, currentUser } from "@/lib/authz";
+import { requireCapability } from "@/lib/authz";
 import { hashPassword } from "@/lib/password";
 import { isRole } from "@/lib/rbac";
 import { logger } from "@/lib/logger";

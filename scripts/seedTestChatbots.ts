@@ -3,6 +3,7 @@
 // seeded test lead — never real patients. Idempotent (clears prior [TEST] flows +
 // the test lead first). Run with the target DATABASE_URL loaded.
 import { prisma } from "../lib/prisma";
+import { Prisma } from "@prisma/client";
 
 // Pass the tester's WhatsApp number via TEST_PHONE (E.164), e.g.
 //   TEST_PHONE="+91XXXXXXXXXX" npx tsx scripts/seedTestChatbots.ts
@@ -87,10 +88,10 @@ async function main() {
       data: {
         name: f.name,
         triggerEvent: f.triggerEvent,
-        triggerConfig: f.triggerConfig as any,
+        triggerConfig: f.triggerConfig as Prisma.InputJsonValue,
         active: true,
         priority: "high",
-        graph: f.graph as any,
+        graph: f.graph as Prisma.InputJsonValue,
       },
     });
     console.log(`  + ${f.name}`);
