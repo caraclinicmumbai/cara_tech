@@ -4,6 +4,7 @@
 // Server Functions are reachable via direct POST, so EVERY action re-checks the
 // session (see Next.js data-security guide) before touching the database.
 import { requireCapability, userCanAccessLead } from "@/lib/authz";
+import { leadScope } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isLeadStage, LOST_STAGE, isPreConsultation, stageLabel, isLostTag } from "@/lib/leadStages";
@@ -20,6 +21,7 @@ import { logger } from "@/lib/logger";
 const TAG_MAX = 120;
 const REASON_MAX = 300;
 const MESSAGE_MAX = 4096; // WhatsApp text body limit
+const COMMENT_MAX = 4000;
 
 export async function setLeadStage(
   leadId: string,
@@ -365,5 +367,60 @@ export async function permanentlyDeleteLead(leadId: string): Promise<{ ok: boole
   });
   logger.info(`Lead ${leadId} permanently deleted by ${user.email ?? "?"}`);
   revalidatePath("/leads/deleted");
+  return { ok: true };
+}
+
+/// Add a staff note / comment to a lead (§notes). Anyone who works the lead (and can
+/// access it under the ownership scope) may comment. The author's name is snapshotted
+/// so attribution survives if the login is later removed.
+export async function addLeadComment(
+  leadId: string,
+  body: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await requireCapability("leads.comment");
+  if (!(await userCanAccessLead(user, leadId))) return { ok: false, error: "Not found" };
+
+  const text = body.trim().slice(0, COMMENT_MAX);
+  if (!text) return { ok: false, error: "Comment can't be empty" };
+
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true } });
+  if (!lead) return { ok: false, error: "Lead not found" };
+
+  await prisma.leadComment.create({
+    data: { leadId, authorId: user.id, authorName: user.name ?? user.email ?? null, body: text },
+  });
+  await writeAudit({
+    actorId: user.id, actorEmail: user.email, action: "lead.comment.add",
+    entityType: "lead", entityId: leadId,
+  });
+  logger.info(`Comment added to lead ${leadId} by ${user.email ?? "?"}`);
+  revalidatePath(`/leads/${leadId}`);
+  return { ok: true };
+}
+
+/// Delete a lead comment (§notes). The author may delete their own; a manager (all-leads
+/// scope) may delete anyone's.
+export async function deleteLeadComment(
+  commentId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await requireCapability("leads.comment");
+
+  const comment = await prisma.leadComment.findUnique({
+    where: { id: commentId },
+    select: { id: true, leadId: true, authorId: true },
+  });
+  if (!comment) return { ok: false, error: "Comment not found" };
+  if (!(await userCanAccessLead(user, comment.leadId))) return { ok: false, error: "Not found" };
+
+  const isAuthor = !!comment.authorId && comment.authorId === user.id;
+  const isManager = leadScope(user.role ?? "") === "all";
+  if (!isAuthor && !isManager) return { ok: false, error: "You can only delete your own comments" };
+
+  await prisma.leadComment.delete({ where: { id: commentId } });
+  await writeAudit({
+    actorId: user.id, actorEmail: user.email, action: "lead.comment.delete",
+    entityType: "lead", entityId: comment.leadId, meta: { commentId },
+  });
+  revalidatePath(`/leads/${comment.leadId}`);
   return { ok: true };
 }

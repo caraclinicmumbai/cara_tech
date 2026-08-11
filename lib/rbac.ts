@@ -38,6 +38,9 @@ export const CAPABILITIES = [
   "leads.whatsapp",
   "leads.merge",
   "leads.markLost",
+  // Add / delete staff notes on a lead (§notes). Anyone who works leads; a manager
+  // (all-leads scope) can delete anyone's note, others only their own.
+  "leads.comment",
   // Handover (§handover): transfer a lead's owner. Same-branch is open to counsellors
   // (their own lead) + managers; cross-branch is manager/admin-only + a written reason.
   "leads.handover",
@@ -106,6 +109,7 @@ export const CAPABILITY_GROUPS: {
       { key: "leads.whatsapp", label: "Send WhatsApp" },
       { key: "leads.merge", label: "Merge duplicates" },
       { key: "leads.markLost", label: "Mark lost" },
+      { key: "leads.comment", label: "Add notes / comments" },
       { key: "leads.handover", label: "Hand over (transfer owner)" },
       { key: "leads.grantAccess", label: "Grant temporary access" },
       { key: "leads.softDelete", label: "Move to trash" },
@@ -172,6 +176,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.whatsapp",
     "leads.merge",
     "leads.markLost",
+    "leads.comment",
     "calls.view",
     "analytics.view",
   ],
@@ -186,6 +191,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.whatsapp",
     "leads.merge",
     "leads.markLost",
+    "leads.comment",
     "leads.handover",
     "quotes.view",
     "quotes.manage",
@@ -202,6 +208,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.whatsapp",
     "leads.merge",
     "leads.markLost",
+    "leads.comment",
     "leads.handover",
     "leads.grantAccess",
     "quotes.view",
@@ -226,6 +233,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.whatsapp",
     "leads.merge",
     "leads.markLost",
+    "leads.comment",
     "leads.handover",
     "leads.grantAccess",
     "leads.softDelete",
@@ -251,6 +259,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.whatsapp",
     "leads.merge",
     "leads.markLost",
+    "leads.comment",
     "leads.handover",
     "leads.grantAccess",
     "leads.softDelete",

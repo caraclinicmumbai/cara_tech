@@ -31,6 +31,15 @@ sends yet. To go live:
    `WINBACK_CONSENT_MAX_AGE_DAYS`, `WINBACK_SWEEP_HOURS`.
 _Added 2026-07-28._
 
+### 🟠 Twilio `checkTwilio` polish — distinguish auth-fail/suspension from outage (optional)
+The root cause of the earlier "Twilio API down" alerts turned out to be **account suspension
+for non-payment**, not a bad token — the stored `TWILIO_AUTH_TOKEN` was valid all along. Once
+funds were added the probe returned `HTTP 200 / status active` (resolved 2026-08-11). Remaining
+*optional* polish: make `checkTwilio` (`lib/healthMonitor.ts`) report a `401 / error 20003` as
+"auth failed / account suspended (billing)" distinctly from a real outage, so the next
+occurrence is self-explanatory in Slack instead of reading as a generic HTTP 401.
+_Added 2026-08-08; credential/suspension resolved 2026-08-11._
+
 ### 🔴 Go-live: add the AI recording-consent disclosure to the ElevenLabs agent (C1)
 The CRM side of recording consent is built and deployed (`Call.recordingConsent`; human-
 handover calls disclose to the patient via a Twilio whisper). **Remaining, config-only, on

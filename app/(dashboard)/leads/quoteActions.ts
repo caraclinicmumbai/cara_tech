@@ -18,6 +18,7 @@ import {
 import { buildQuotePdf, quoteRef } from "@/lib/quotePdf";
 import { branchIdForUser, getBranchQuoteInfo } from "@/lib/branches";
 import { sendLeadDocument } from "@/lib/messages";
+import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 
 type Result = { ok: boolean; error?: string };
@@ -82,8 +83,9 @@ export async function createLeadQuote(input: {
   // which legal entity / GSTIN / bank / address the PDF renders (§branches).
   const branchId = await branchIdForUser(user.id);
 
+  let quoteId = "";
   try {
-    await createQuote({
+    quoteId = await createQuote({
       leadId: input.leadId,
       treatment,
       price,
@@ -101,6 +103,17 @@ export async function createLeadQuote(input: {
     logger.error(`createLeadQuote failed for ${input.leadId}: ${String(err)}`);
     return { ok: false, error: "Could not create the quote" };
   }
+  // Recorded against the LEAD (entityType/id) so it shows in the lead's change
+  // history; the quote is identified in meta.
+  await writeAudit({
+    actorId: user.id,
+    actorEmail: user.email,
+    action: "lead.quote.create",
+    entityType: "lead",
+    entityId: input.leadId,
+    newValue: treatment,
+    meta: { quoteId, treatment },
+  });
   logger.info(`Quote created on lead ${input.leadId} by ${user.email ?? "?"}`);
   revalidatePath(`/leads/${input.leadId}`);
   return { ok: true };
@@ -152,6 +165,11 @@ export async function setLeadQuoteStatus(input: {
   const seen = await assertCanSeeLead(user, input.leadId);
   if (!seen.ok) return seen;
 
+  const before = await prisma.quote.findUnique({
+    where: { id: input.quoteId },
+    select: { status: true },
+  });
+
   try {
     await transitionQuote({
       quoteId: input.quoteId,
@@ -165,6 +183,20 @@ export async function setLeadQuoteStatus(input: {
     logger.error(`setLeadQuoteStatus failed for ${input.quoteId}: ${String(err)}`);
     return { ok: false, error: "Could not update the quote" };
   }
+  // Record the effective status (acceptance advances straight to awaiting_payment,
+  // mirroring transitionQuote). Any rejection/withdrawal reason rides along.
+  const effectiveStatus = input.status === "accepted" ? "awaiting_payment" : input.status;
+  await writeAudit({
+    actorId: user.id,
+    actorEmail: user.email,
+    action: "lead.quote.status",
+    entityType: "lead",
+    entityId: input.leadId,
+    oldValue: before?.status ?? null,
+    newValue: effectiveStatus,
+    reason: input.rejectionReason?.trim() || input.withdrawnReason?.trim() || null,
+    meta: { quoteId: input.quoteId },
+  });
   logger.info(`Quote ${input.quoteId} → ${input.status} by ${user.email ?? "?"}`);
   revalidatePath(`/leads/${input.leadId}`);
   return { ok: true };
@@ -233,6 +265,16 @@ export async function sendLeadQuoteWhatsApp(input: {
   if (quote.status === "drafted") {
     try {
       await transitionQuote({ quoteId: quote.id, status: "sent" });
+      await writeAudit({
+        actorId: user.id,
+        actorEmail: user.email,
+        action: "lead.quote.status",
+        entityType: "lead",
+        entityId: input.leadId,
+        oldValue: "drafted",
+        newValue: "sent",
+        meta: { quoteId: quote.id, via: "whatsapp-send" },
+      });
     } catch (err) {
       logger.error(`Quote ${quote.id} sent on WhatsApp but status update failed: ${String(err)}`);
     }
@@ -253,6 +295,11 @@ export async function setLeadQuoteOwner(input: {
   const seen = await assertCanSeeLead(user, input.leadId);
   if (!seen.ok) return seen;
 
+  const before = await prisma.quote.findUnique({
+    where: { id: input.quoteId },
+    select: { ownerRepId: true },
+  });
+
   try {
     await setQuoteOwner(input.quoteId, input.ownerRepId || null);
   } catch (err) {
@@ -260,6 +307,16 @@ export async function setLeadQuoteOwner(input: {
     logger.error(`setLeadQuoteOwner failed for ${input.quoteId}: ${String(err)}`);
     return { ok: false, error: "Could not reassign the quote" };
   }
+  await writeAudit({
+    actorId: user.id,
+    actorEmail: user.email,
+    action: "lead.quote.owner",
+    entityType: "lead",
+    entityId: input.leadId,
+    oldValue: before?.ownerRepId ?? null,
+    newValue: input.ownerRepId || null,
+    meta: { quoteId: input.quoteId },
+  });
   revalidatePath(`/leads/${input.leadId}`);
   return { ok: true };
 }
