@@ -60,6 +60,42 @@ stepless because there's **no email provider wired up**. Needs: pick/integrate a
 provider, add email as a second channel to the campaign engine, then give `international` its
 step schedule. _Deferred 2026-07-28 (user chose to do it later)._
 
+### Pre-delivery QA — deferred items (batch 2+)
+From the 2026-08-11 QA pass. The **batch-1 quick wins shipped** on `dev` (commit `a4194c5`:
+dark-mode selects, quote-revision audit, mandatory quote source, AI-skips-voice-notes, call
+button on new leads, Interest→Treatment + Callback→Follow Up renames, Created column). Still
+open:
+- **"Fresh Lead" default stage (M — needs a prod migration).** Every lead is currently born
+  `ai_contacted` (`schema` default + `DEFAULT_STAGE`). Decision made: add a `fresh_lead` stage
+  as the default and advance to `ai_contacted` **only when the AI actually places a call**
+  (add the transition in `lib/callIntake.ts`). Touches `lib/leadStages.ts`, schema migration,
+  and call-outcome stage mapping.
+- **Lead creation-date filter (M).** `LeadsTable` has only enum/text filter kinds; add a
+  date-range kind (the Created column now exists to filter on).
+- **Editable Follow-Up date (M).** Only call-driven `callbackAt` exists; make it staff-editable
+  (add to `LeadEditForm` + an action). Pairs with the Follow-Up rename already shipped.
+- **Tags dropdown (deferred by user).** `lead.tag` is free text; convert `TagField` to a
+  select once the **preset tag list is provided**. No preset list exists yet.
+- **Interest/Treatment auto-fill (M).** Transcript-derived treatment currently lands in `tag`,
+  not `interest`; decide source-of-truth (transcript vs campaign→treatment map) and wire the
+  write-back in `lib/callIntake.ts` / intake.
+- **Bulk select / bulk update leads (L).** No multi-select or bulk-action UI in `LeadsTable`;
+  needs selection state + a bulk-action bar + new bulk server action(s) with per-lead auth.
+- **AI First Inbound Response — global on/off toggle (M).** There is no LLM; "AI inbound" is the
+  deterministic chatbot-flow engine (`lib/chatbotRuntime.ts`), gated only by per-flow `active`.
+  Add a persisted global setting + a toggle in the (currently stub) `settings` page, read before
+  `runChatbot` in the WhatsApp webhook.
+- **Reports module (L).** No `reports/` route exists — only Dashboard + CQS. Build on
+  `computeDigestMetrics` (`lib/digest.ts`); add date-range/branch/rep filtering, quote-revenue
+  and call-stats reporting, export.
+- **Quote treatment catalog is empty (config/data).** The searchable picker works but
+  `CatalogItem` is populated only by `npm run import:catalog` (not seeded, no admin UI). An empty
+  catalog blocks quote creation (no free-text fallback). Run the import; consider a free-text
+  fallback or a catalog admin UI later.
+- **Quote WhatsApp-share disabled (config).** Enabled only when the 24h window is open OR
+  `QUOTE_DOC_TEMPLATE_NAME` is set. Set an approved doc template env to allow proactive sharing.
+_Added 2026-08-11._
+
 ---
 
 ## Done
