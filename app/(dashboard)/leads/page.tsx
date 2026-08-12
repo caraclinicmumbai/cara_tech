@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { LeadForm } from "@/components/LeadForm";
 import { LeadsTable, type LeadRow } from "@/components/LeadsTable";
 import { STAGE_LABELS } from "@/lib/leadStages";
+import { formatIstDate } from "@/lib/datetime";
 import { currentUser, leadWhereForUser } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 
@@ -46,6 +47,7 @@ export default async function LeadsPage() {
     tag: l.tag,
     interest: l.interest,
     status: l.status,
+    created: formatIstDate(l.createdAt),
     calls: l._count.calls,
     cqs: l.calls[0]?.cqs ?? null,
     duplicateOfId: l.duplicateOfId,

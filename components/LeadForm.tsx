@@ -48,14 +48,14 @@ export function LeadForm() {
   }
 
   const input =
-    "rounded border border-black/15 dark:border-white/20 bg-transparent px-3 py-2 text-sm";
+    "rounded border border-black/15 dark:border-white/20 bg-cara-surface text-cara-ink px-3 py-2 text-sm";
 
   return (
     <form onSubmit={onSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <input name="name" placeholder="Full name" required className={input} />
       <input name="phone" placeholder="Phone (+91...)" required className={input} />
       <input name="email" type="email" placeholder="Email (optional)" className={input} />
-      <input name="interest" placeholder="Interest (e.g. Hair treatment)" className={input} />
+      <input name="interest" placeholder="Treatment (e.g. Hair treatment)" className={input} />
       <select name="source" className={input} defaultValue="manual">
         <option value="manual">Manual</option>
         <option value="web_form">Web form</option>

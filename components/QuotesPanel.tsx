@@ -422,7 +422,7 @@ export function QuotesPanel({
 
                 <div className="flex items-center gap-2">
                   <button
-                    disabled={pending || !nq.treatment.trim()}
+                    disabled={pending || !nq.treatment.trim() || !nq.source}
                     className="rounded bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
                     onClick={() =>
                       run(() =>

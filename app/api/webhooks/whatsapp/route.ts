@@ -77,6 +77,12 @@ function parseInbound(msg: WaMessage): {
   }
 }
 
+// The AI chatbot only ACTS on typed or tapped messages. Voice notes, audio,
+// images, documents and video are stored on the lead's thread (so the rep sees
+// them) but must NOT drive a flow reply — otherwise the bot answers a "[audio]"
+// placeholder, and a voice note could corrupt an in-progress flow's answer.
+const AI_ACTIONABLE_TYPES = new Set(["text", "button", "interactive"]);
+
 // The sender's WhatsApp profile name, matched by wa_id from the webhook's
 // `contacts` array (used to name an auto-created lead).
 function contactName(value: WaValue, waId: string): string | undefined {
@@ -160,10 +166,13 @@ export async function POST(req: Request) {
             // over a real conversation. Runs for a plain reply AND an opt-out.
             await stopEnrollmentForLead(lead.id, isOptOut ? "opted_out" : "replied");
 
-            // Drive the chatbot flow — but not for opt-out messages, and only once
-            // per message id (dedup above), so retries don't double-fire.
-            if (!isOptOut && !alreadySeen) {
+            // Drive the chatbot flow — but not for opt-out messages, only once
+            // per message id (dedup above) so retries don't double-fire, and only
+            // for actionable types (never voice notes / media — see set above).
+            if (!isOptOut && !alreadySeen && AI_ACTIONABLE_TYPES.has(type)) {
               await runChatbot(lead.id, { text: body, interactiveId, interactiveTitle });
+            } else if (!isOptOut && !alreadySeen && !AI_ACTIONABLE_TYPES.has(type)) {
+              logger.info(`WhatsApp ${type} from lead ${lead.id} — stored, AI reply skipped (non-actionable)`);
             }
           } else {
             logger.warn(`WhatsApp opt-out from unknown number ${from} — nothing to suppress`);

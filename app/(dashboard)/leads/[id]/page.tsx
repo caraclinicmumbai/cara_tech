@@ -122,6 +122,7 @@ export default async function LeadDetailPage({
     readLeadTimeline(lead.id),
   ]);
   const canEditLead = can(viewer.role, "leads.edit");
+  const canCall = can(viewer.role, "leads.call");
   // Follow-up campaign (§follow-up): the lead's active/most-recent enrollment + who may stop it.
   const leadCampaign = await getLeadCampaign(lead.id);
   const canManageCampaigns = can(viewer.role, "campaigns.manage");
@@ -182,9 +183,11 @@ export default async function LeadDetailPage({
           </div>
         )}
 
-        {/* Manual rep call — available for assigned leads AND opted-out leads (opt-out
-            only suppresses AUTOMATED calls, a human rep may still dial back). */}
-        {(lead.assignedRep || lead.optedOut) && (
+        {/* Manual rep call — shown for any lead the viewer can call (incl. brand-new
+            unassigned leads and opted-out ones). The callLeadAndRecord action falls
+            back to an active rep when the lead has no assignee; opt-out only
+            suppresses AUTOMATED calls, a human rep may still dial back. */}
+        {canCall && (
           <div className="space-y-1">
             <CallButton leadId={lead.id} repName={lead.assignedRep?.name} />
             {lead.optedOut && !lead.assignedRep && (
@@ -241,7 +244,7 @@ export default async function LeadDetailPage({
 
         {lead.callbackAt && (
           <div className="rounded border border-blue-500/40 bg-blue-500/5 px-3 py-2 text-sm">
-            📞 <span className="font-medium">Callback requested</span> for{" "}
+            📞 <span className="font-medium">Follow-up requested</span> for{" "}
             {formatIst(lead.callbackAt)} — auto-retries cancelled, a call is scheduled for this time.
           </div>
         )}
@@ -255,7 +258,7 @@ export default async function LeadDetailPage({
             label="Source"
             value={lead.source ? (SOURCE_LABELS[lead.source] ?? lead.source) : null}
           />
-          <Field label="Interest" value={lead.interest} />
+          <Field label="Treatment" value={lead.interest} />
           <Field label="Interest level" value={lead.interestLevel} />
           <Field
             label="Tag (asked for)"
@@ -264,7 +267,7 @@ export default async function LeadDetailPage({
           <Field label="Campaign" value={lead.campaign} />
           <Field label="Ad ID" value={lead.adId} />
           <Field
-            label="Callback at"
+            label="Follow Up"
             value={lead.callbackAt ? formatIst(lead.callbackAt) : null}
           />
           <Field label="Created" value={formatIst(lead.createdAt)} />

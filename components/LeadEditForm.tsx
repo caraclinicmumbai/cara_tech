@@ -53,7 +53,7 @@ export function LeadEditForm({
         <input className={inputCls} placeholder="Name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
         <input className={inputCls} placeholder="Phone" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
         <input className={inputCls} placeholder="Email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
-        <input className={`${inputCls} min-w-[16rem] flex-1`} placeholder="Interest" value={f.interest} onChange={(e) => setF({ ...f, interest: e.target.value })} />
+        <input className={`${inputCls} min-w-[16rem] flex-1`} placeholder="Treatment" value={f.interest} onChange={(e) => setF({ ...f, interest: e.target.value })} />
       </div>
       {phoneChanged && (
         <input className={`${inputCls} w-full`} placeholder="Reason for changing the phone number (required)"

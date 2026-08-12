@@ -19,3 +19,17 @@ export function formatIst(d: Date | string | number): string {
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-IN", IST_DATETIME).format(date) + " IST";
 }
+
+const IST_DATE: Intl.DateTimeFormatOptions = {
+  timeZone: "Asia/Kolkata",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+};
+
+/// Format a date in IST (date only), e.g. "4 Jul 2026". For compact table columns.
+export function formatIstDate(d: Date | string | number): string {
+  const date = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-IN", IST_DATE).format(date);
+}

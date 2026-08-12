@@ -55,6 +55,12 @@ export async function createLeadQuote(input: {
   const treatment = (input.treatment ?? "").trim().slice(0, TREATMENT_MAX);
   if (!treatment) return { ok: false, error: "Treatment is required" };
 
+  // Source is compulsory on a quote (server-enforced — the action is reachable
+  // via direct POST, so the client-side gate isn't sufficient on its own).
+  if (!input.source || !String(input.source).trim()) {
+    return { ok: false, error: "Source is required" };
+  }
+
   const price = parsePrice(input.price);
   if (price === "invalid") return { ok: false, error: "Price must be a whole number of rupees" };
 
@@ -134,6 +140,12 @@ export async function reviseLeadQuotePrice(input: {
   if (price === "invalid" || price == null)
     return { ok: false, error: "Price must be a whole number of rupees" };
 
+  // Capture the prior price for the audit trail (reviseQuotePrice returns void).
+  const before = await prisma.quote.findUnique({
+    where: { id: input.quoteId },
+    select: { price: true },
+  });
+
   try {
     await reviseQuotePrice({
       quoteId: input.quoteId,
@@ -146,6 +158,17 @@ export async function reviseLeadQuotePrice(input: {
     logger.error(`reviseLeadQuotePrice failed for ${input.quoteId}: ${String(err)}`);
     return { ok: false, error: "Could not revise the quote" };
   }
+  await writeAudit({
+    actorId: user.id,
+    actorEmail: user.email,
+    action: "lead.quote.revise",
+    entityType: "lead",
+    entityId: input.leadId,
+    oldValue: before?.price != null ? String(before.price) : null,
+    newValue: String(price),
+    reason: input.note?.trim().slice(0, NOTE_MAX) || null,
+    meta: { quoteId: input.quoteId },
+  });
   revalidatePath(`/leads/${input.leadId}`);
   return { ok: true };
 }
