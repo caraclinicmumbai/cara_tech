@@ -59,10 +59,10 @@ export function StageSelect({
           }
           submitStage(next);
         }}
-        className={`rounded border border-black/15 bg-transparent px-2 py-1 text-xs disabled:opacity-50 dark:border-white/20 ${className}`}
+        className={`rounded border border-black/15 bg-cara-surface px-2 py-1 text-xs text-cara-ink disabled:opacity-50 dark:border-white/20 ${className}`}
       >
         {LEAD_STAGES.map((s) => (
-          <option key={s} value={s}>
+          <option key={s} value={s} className="bg-cara-surface text-cara-ink">
             {STAGE_LABELS[s]}
           </option>
         ))}

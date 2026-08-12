@@ -270,6 +270,7 @@ export function actionLabel(action: string): string {
     "lead.quote.create": "Quote created",
     "lead.quote.status": "Quote status",
     "lead.quote.owner": "Quote owner",
+    "lead.quote.revise": "Quote price revised",
     "lead.comment.add": "Comment added",
     "lead.comment.delete": "Comment deleted",
     "lead.softDelete": "Moved to trash",

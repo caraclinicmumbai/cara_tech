@@ -17,6 +17,7 @@ export type LeadRow = {
   tag: string | null;
   interest: string | null;
   status: string;
+  created: string;
   calls: number;
   cqs: number | null;
   duplicateOfId: string | null;
@@ -77,7 +78,7 @@ export function LeadsTable({
         filter: "enum",
       },
       { key: "tag", label: "Tag", value: (l) => l.tag ?? "", filter: "text" },
-      { key: "interest", label: "Interest", value: (l) => l.interest ?? "", filter: "text" },
+      { key: "interest", label: "Treatment", value: (l) => l.interest ?? "", filter: "text" },
       { key: "status", label: "Status", value: (l) => l.status, filter: "enum" },
       { key: "calls", label: "Calls", value: (l) => String(l.calls), filter: "enum", number: true },
       {
@@ -88,6 +89,7 @@ export function LeadsTable({
         filter: "enum",
         number: true,
       },
+      { key: "created", label: "Created", value: (l) => l.created, filter: "none" },
     ],
     [sourceLabels, stageLabels],
   );
@@ -317,6 +319,9 @@ export function LeadsTable({
                     "—"
                   )}
                 </td>
+                <td className="whitespace-nowrap px-4 py-2 text-black/60 dark:text-white/60">
+                  {lead.created}
+                </td>
                 <td className="whitespace-nowrap px-4 py-2 text-right">
                   {canDelete ? (
                     <LeadDeleteButton leadId={lead.id} name={lead.name} />
@@ -328,7 +333,7 @@ export function LeadsTable({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td className="px-3 py-6 text-center text-black/50" colSpan={11}>
+                <td className="px-3 py-6 text-center text-black/50" colSpan={12}>
                   No leads match the current filters.
                 </td>
               </tr>
