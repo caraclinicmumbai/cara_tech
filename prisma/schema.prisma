@@ -146,6 +146,7 @@ model Lead {
   accessGrants        LeadAccessGrant[]
   campaignEnrollments CampaignEnrollment[]
   comments            LeadComment[]
+  followUpSteps       LeadFollowUpStep[]
 
   @@index([status])
   @@index([phone])
@@ -196,15 +197,46 @@ model SalesRep {
   branchId String?
   branch   Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
-  leads        Lead[]  @relation("LeadAssignee")
-  handledCalls Call[]  @relation("CallHandler")
-  ownedQuotes  Quote[] @relation("QuoteOwner")
+  leads        Lead[]             @relation("LeadAssignee")
+  handledCalls Call[]             @relation("CallHandler")
+  ownedQuotes  Quote[]            @relation("QuoteOwner")
+  followUpSteps LeadFollowUpStep[] @relation("FollowUpOwner")
   user         User? // the login account linked to this rep (§3.1 RBAC)
 
   @@index([active, lastAssignedAt])
   // Fast lookup for the round-robin (available reps) and the idle-sweep.
   @@index([availability, salesHead, active])
   @@index([lastActivityAt])
+}
+
+/// Per-lead follow-up roadmap step (§follow-up roadmap). An ordered, editable
+/// sales-roadmap entry with its own status + accountable owner. Seeded from a
+/// standard template at intake (lib/followups.ts) and hand-editable thereafter.
+/// "Missed" (overdue) is DERIVED at read time from dueAt vs now — never stored —
+/// so only pending | done | skipped are persisted.
+model LeadFollowUpStep {
+  id            String    @id @default(cuid())
+  leadId        String
+  lead          Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  order         Int // position in the lead's roadmap (0-based)
+  title         String
+  channel       String    @default("custom") // ai_call | call | whatsapp | quote | custom
+  dueAt         DateTime?
+  status        String    @default("pending") // pending | done | skipped
+  completedAt   DateTime?
+  completedById String? // User.id who marked it done/skipped (audit convenience)
+  // Accountable actor. ownerKind = ai | rep | sales_head. For rep/sales_head the
+  // ownerRepId points at the SalesRep; for ai it's null (system/ElevenLabs).
+  ownerKind     String    @default("rep")
+  ownerRepId    String?
+  ownerRep      SalesRep? @relation("FollowUpOwner", fields: [ownerRepId], references: [id], onDelete: SetNull)
+  source        String    @default("template") // template | manual
+  note          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([leadId, order])
+  @@index([ownerRepId])
 }
 
 /// A single WhatsApp message exchanged with a lead (§3.1.3). Both automated
