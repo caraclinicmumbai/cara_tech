@@ -88,10 +88,14 @@ open:
 - **Reports module (L).** No `reports/` route exists — only Dashboard + CQS. Build on
   `computeDigestMetrics` (`lib/digest.ts`); add date-range/branch/rep filtering, quote-revenue
   and call-stats reporting, export.
-- **Quote treatment catalog is empty (config/data).** The searchable picker works but
-  `CatalogItem` is populated only by `npm run import:catalog` (not seeded, no admin UI). An empty
-  catalog blocks quote creation (no free-text fallback). Run the import; consider a free-text
-  fallback or a catalog admin UI later.
+- **Quote treatment catalog — mostly done (correction).** Verified 2026-08-11: the catalog IS
+  populated in prod AND local (371 items = 182 services + 189 packages from `data/catalog.csv`),
+  so quote creation is **NOT blocked**. Still deferred (needs source data + decisions, not just a
+  re-run): (1) the **Campaigns sheet** (Bridal / Anti-Ageing / Groom tiered option bundles) — a
+  different shape needing its own import mapping + likely a new catalog `type`; (2) **4 skipped
+  package rows** — 1 duplicate name collapsed by the (type,name) unique key + 3 no-fixed-price
+  "budget-envelope" wrappers. See [[cara-catalog-deferred]]. Also still open: no free-text quote
+  fallback and no catalog admin UI (both nice-to-haves, not blockers).
 - **Quote WhatsApp-share disabled (config).** Enabled only when the 24h window is open OR
   `QUOTE_DOC_TEMPLATE_NAME` is set. Set an approved doc template env to allow proactive sharing.
 _Added 2026-08-11._
