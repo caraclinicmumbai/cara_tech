@@ -8,6 +8,7 @@
 // date), so no background sweep is needed to turn a step red.
 import { prisma } from "@/lib/prisma";
 import { getSalesHead } from "@/lib/salesReps";
+import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -142,6 +143,89 @@ export function summariseRoadmap(steps: FollowUpStepView[]): string {
   if (todo) parts.push(`${todo} to do`);
   if (skipped) parts.push(`${skipped} skipped`);
   return parts.join(" · ");
+}
+
+/// React to a call outcome so the roadmap tracks reality (§follow-up roadmap,
+/// dynamic). Called post-commit from the call write-back — best-effort, never
+/// throws into the caller. Two reactions:
+///   • Consultation booked (outcome "confirmed") → complete every still-open step
+///     and append a "Consultation booked" done milestone, owned by the lead's
+///     counsellor (or AI if unassigned).
+///   • Rescheduled / callback → realign the next pending call step's due date to
+///     the scheduled callback time, so it reflects the plan and stops showing red.
+export async function applyCallOutcomeToRoadmap(input: {
+  leadId: string;
+  outcome: string | null; // confirmed | no_answer | rescheduled | not_interested
+  callbackAt: Date | null;
+  assignedRepId: string | null;
+  now?: Date;
+}): Promise<void> {
+  const now = input.now ?? new Date();
+  try {
+    if (input.outcome === "confirmed") {
+      const pendingCount = await prisma.leadFollowUpStep.count({
+        where: { leadId: input.leadId, status: "pending" },
+      });
+      if (pendingCount > 0) {
+        await prisma.leadFollowUpStep.updateMany({
+          where: { leadId: input.leadId, status: "pending" },
+          data: { status: "done", completedAt: now },
+        });
+      }
+      const max = await prisma.leadFollowUpStep.aggregate({
+        where: { leadId: input.leadId },
+        _max: { order: true },
+      });
+      const hasRep = !!input.assignedRepId;
+      await prisma.leadFollowUpStep.create({
+        data: {
+          leadId: input.leadId,
+          order: (max._max.order ?? -1) + 1,
+          title: "Consultation booked",
+          channel: "custom",
+          status: "done",
+          completedAt: now,
+          ownerKind: hasRep ? "rep" : "ai",
+          ownerRepId: hasRep ? input.assignedRepId : null,
+          source: "auto",
+        },
+      });
+      await writeAudit({
+        action: "lead.followup.autobook",
+        entityType: "lead",
+        entityId: input.leadId,
+        newValue: `Consultation booked — ${pendingCount} open step(s) auto-completed`,
+      });
+      logger.info(`Roadmap: lead ${input.leadId} consultation booked — completed ${pendingCount} open step(s)`);
+      return;
+    }
+
+    // Rescheduled / explicit callback (not an opt-out): realign the next pending
+    // call step to the scheduled time so it isn't left showing red.
+    if (input.callbackAt && input.outcome !== "not_interested") {
+      const pending = await prisma.leadFollowUpStep.findMany({
+        where: { leadId: input.leadId, status: "pending" },
+        orderBy: { order: "asc" },
+      });
+      const next = pending.find((s) => s.channel === "call") ?? pending[0];
+      if (next) {
+        await prisma.leadFollowUpStep.update({
+          where: { id: next.id },
+          data: { dueAt: input.callbackAt },
+        });
+        await writeAudit({
+          action: "lead.followup.reschedule",
+          entityType: "lead",
+          entityId: input.leadId,
+          field: next.title,
+          newValue: input.callbackAt.toISOString(),
+        });
+        logger.info(`Roadmap: lead ${input.leadId} step "${next.title}" due date moved to callback ${input.callbackAt.toISOString()}`);
+      }
+    }
+  } catch (err) {
+    logger.error(`applyCallOutcomeToRoadmap failed for lead ${input.leadId}: ${String(err)}`);
+  }
 }
 
 // Best-effort seed helper for intake — logs and swallows failures so a roadmap
