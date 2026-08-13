@@ -22,6 +22,8 @@ import { RecordViewLogger } from "@/components/RecordViewLogger";
 import { getLeadCampaign } from "@/lib/campaigns/enrollments";
 import { LeadCampaignCard } from "@/components/LeadCampaignCard";
 import { LeadComments } from "@/components/LeadComments";
+import { FollowUpRoadmap } from "@/components/FollowUpRoadmap";
+import { listFollowUpSteps, summariseRoadmap } from "@/lib/followups";
 
 export const dynamic = "force-dynamic";
 
@@ -140,6 +142,17 @@ export default async function LeadDetailPage({
     createdAt: formatIst(c.createdAt),
     canDelete: canComment && (c.authorId === viewer.id || isManagerScope),
   }));
+  // Follow-up roadmap (§follow-up roadmap): the lead's ordered steps + the reps
+  // assignable as the accountable owner (active reps incl. sales heads).
+  const followUpSteps = await listFollowUpSteps(lead.id);
+  const roadmapSummary = summariseRoadmap(followUpSteps);
+  const followUpReps = canEditLead
+    ? await prisma.salesRep.findMany({
+        where: { active: true },
+        select: { id: true, name: true, salesHead: true },
+        orderBy: { name: "asc" },
+      })
+    : [];
   const ownershipReps = handoverReps.map((r) => ({ id: r.id, name: r.name, branchId: r.branchId, branchName: r.branch?.name ?? null }));
   const granteeOptions = granteeUsers
     .filter((u) => u.id !== viewer.id)
@@ -297,6 +310,17 @@ export default async function LeadDetailPage({
           history={ownershipHistory}
           canHandover={canHandover}
           canGrant={canGrant}
+        />
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Follow-up roadmap</h2>
+        <FollowUpRoadmap
+          leadId={lead.id}
+          steps={followUpSteps}
+          reps={followUpReps}
+          summary={roadmapSummary}
+          canEdit={canEditLead}
         />
       </section>
 

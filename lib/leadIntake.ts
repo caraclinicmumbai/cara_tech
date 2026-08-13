@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { placeOutboundCall } from "@/lib/providers/elevenlabs";
 import { scheduleCallAttempt, cancelScheduledCalls, aiCallsPaused } from "@/lib/queue";
 import { pickNextRep, assignLeadToRep } from "@/lib/salesReps";
+import { seedFollowUpStepsSafe } from "@/lib/followups";
 import { isWithinDnd } from "@/lib/callWindow";
 import { sendAutomatedTemplate, outreachTemplate, firstName } from "@/lib/outreach";
 import { writeAudit } from "@/lib/audit";
@@ -216,11 +217,22 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
   // gets a telecaller owner (round-robin) at intake, so "my leads" scoping works
   // and there's someone to follow up. NO notification here; a later handover pings
   // this owner (see notifyHandover). Best-effort — no reps configured → unassigned.
+  let ownerRepId: string | null = null;
   try {
     const owner = await pickNextRep();
-    if (owner) await assignLeadToRep(lead.id, owner.id);
+    if (owner) {
+      await assignLeadToRep(lead.id, owner.id);
+      ownerRepId = owner.id;
+    }
   } catch (err) {
     logger.error(`Failed to assign owner for lead ${lead.id}: ${String(err)}`);
+  }
+
+  // Seed the follow-up roadmap (§follow-up roadmap) for leads we'll actively
+  // pursue — skip duplicates and held-for-review leads (no AI call, manual vetting
+  // first), so their roadmap starts empty and staff add steps by hand. Best-effort.
+  if (!dup && !held) {
+    await seedFollowUpStepsSafe({ leadId: lead.id, ownerRepId, startAt: now });
   }
 
   // Duplicate → manual queue, no AI call, merge prompt surfaced via the result.
