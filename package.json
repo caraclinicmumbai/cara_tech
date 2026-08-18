@@ -20,7 +20,8 @@
     "import:catalog": "dotenv -e .env.local -- tsx scripts/importCatalog.ts",
     "seed:branch": "dotenv -e .env.local -- tsx scripts/seedDefaultBranch.ts",
     "protect:audit": "dotenv -e .env.local -- tsx scripts/protectAuditLog.ts",
-    "backfill:journeys": "dotenv -e .env.local -- tsx scripts/backfillPostSalesJourneys.ts"
+    "backfill:journeys": "dotenv -e .env.local -- tsx scripts/backfillPostSalesJourneys.ts",
+    "backfill:capabilities": "dotenv -e .env.local -- tsx scripts/backfillRoleCapabilities.ts"
   },
   "engines": {
     "node": "22.x"

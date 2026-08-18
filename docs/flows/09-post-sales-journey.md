@@ -58,6 +58,36 @@ there is no route from the ERP to a call recording, a transcript or a CQS score 
 The handover summary is their entire view of the patient — which is the spec's
 requirement, expressed as access control rather than as a hidden button.
 
+### ⚠️ Customised roles do not receive new capabilities
+
+`RolePermission` override rows (written by the Hierarchy screen) are **authoritative**:
+`buildMatrix()` in [lib/permissions.ts](../../lib/permissions.ts) uses a row's capability
+list verbatim and ignores that role's built-in defaults. That's correct for a capability the
+admin decided about — revoking `leads.export` must survive a deploy — but it means a
+capability that **did not exist** when the row was saved never reaches that role. The admin
+can't have had an opinion about a key that wasn't in the matrix yet.
+
+This bit on this very change: the local DB had override rows for `front_desk`, `telecaller`
+and `branch_manager` (saved 2026-07-21), so none of them received any `postsales.*`
+capability and the ERP was simply invisible to them.
+
+Fix, and the pattern for any future capability addition:
+
+```
+npm run backfill:capabilities                    # dry run — shows what it would grant
+BACKFILL_APPLY=1 npm run backfill:capabilities   # live
+```
+
+[scripts/backfillRoleCapabilities.ts](../../scripts/backfillRoleCapabilities.ts) unions in
+**only** the keys listed in its `NEW_CAPABILITIES` constant, and only where the role has
+them by default — it never removes anything and never overrides an admin decision. When you
+add capabilities in future, add them to that list and re-run.
+
+The same script also **reports** (without changing) any customised role that can't reach a
+gated route. That surfaced a second problem worth knowing about: gating `/leads` turns a
+missing `leads.view` on a customised role from harmless into a lockout. Those are judgement
+calls for a human — review them in `/hierarchy`.
+
 Two supporting pieces make that safe:
 
 - `leadScope()` lists the clinical roles as `own`-scoped, so if an admin ever grants one

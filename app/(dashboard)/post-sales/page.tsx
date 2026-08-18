@@ -147,12 +147,16 @@ export default async function PostSalesBoardPage({
           moment a quote converts.
         </p>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        // A pipeline reads left-to-right, so the stages stay on ONE row and the row
+        // scrolls — wrapping them into a grid breaks the sequence (and strands an empty
+        // column mid-flow). Columns hold their width so a long procedure name can't
+        // squash the neighbours.
+        <div className="-mx-2 flex gap-4 overflow-x-auto px-2 pb-3">
           {columns.map((stage) => {
             const col = board.columns.find((c) => c.stage === stage);
             const cards = col?.cards ?? [];
             return (
-              <section key={stage} className="space-y-2">
+              <section key={stage} className="w-70 shrink-0 space-y-2">
                 <div className="flex items-baseline justify-between gap-2">
                   <h2 className="cara-sec-hd">{JOURNEY_STAGE_LABELS[stage]}</h2>
                   <span className="cara-badge">{cards.length}</span>

@@ -75,6 +75,27 @@ alert + dedup + reset.
 no-show, the authenticated invoice webhook driving conversion, 7-day branch-credit
 disputes, daily ad-spend import.
 
+### Follow-up, same day — found by running it
+
+Driving the app in a browser (rather than trusting the assertions) turned up three things:
+
+- **Customised roles never received the new capabilities.** `RolePermission` override rows
+  replace a role's defaults wholesale, so the override rows for `front_desk`, `telecaller`
+  and `branch_manager` meant the ERP was invisible to exactly the staff meant to use it. New
+  `scripts/backfillRoleCapabilities.ts` (`npm run backfill:capabilities`, dry-run by
+  default, audited) unions in only newly-introduced keys, only where the role has them by
+  default — it never overrides an admin decision. It also reports customised roles that
+  can't reach a gated route without changing them.
+- **Login always redirected to `/dashboard`** and let the route guard bounce whoever
+  couldn't see it. That worked, but the bounce happens inside the Server Action's soft
+  navigation, so the URL bar was left reading `/dashboard` while a different page rendered —
+  for every role without `analytics.view`, not just the new clinical ones. `authenticate`
+  now resolves the role's real landing page up front (`landingPath`), and the login page
+  redirects an already-signed-in user the same way. Access control was never bypassed — the
+  rendered content was always the permitted page.
+- **The board wrapped 5 stages into a 3+2 grid**, breaking the left-to-right pipeline
+  reading and stranding an empty column mid-flow. Now one horizontally-scrolling row.
+
 ---
 
 ## 2026-07-29 — Compliance set (DPDP): recording consent, digital-source consent, retention/erasure
