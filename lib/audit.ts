@@ -277,6 +277,8 @@ export function actionLabel(action: string): string {
     "lead.followup.reopen": "Follow-up step reopened",
     "lead.followup.reassign": "Follow-up owner changed",
     "lead.followup.delete": "Follow-up step removed",
+    "lead.followup.autobook": "Consultation booked (roadmap)",
+    "lead.followup.reschedule": "Follow-up step rescheduled",
     "lead.comment.add": "Comment added",
     "lead.comment.delete": "Comment deleted",
     "lead.softDelete": "Moved to trash",

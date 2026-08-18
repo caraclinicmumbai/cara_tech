@@ -19,6 +19,7 @@ import { scoreCQS } from "@/lib/cqs";
 import { runStageChange } from "@/lib/chatbotRuntime";
 import { enrollLead } from "@/lib/campaigns/engine";
 import { classifyFromCall } from "@/lib/campaigns/classify";
+import { applyCallOutcomeToRoadmap } from "@/lib/followups";
 import { logger } from "@/lib/logger";
 
 // Outcomes that END the attempt ladder — the lead was reached and a decision
@@ -335,6 +336,18 @@ export async function recordCall(input: RecordCallInput): Promise<RecordCallResu
         ? `Lead ${lead.id} auto-enrolled in "${campaign}" campaign (${res.enrollmentId})`
         : `Auto-enroll ("${campaign}") skipped for lead ${lead.id}: ${res.reason}`,
     );
+  });
+
+  // Follow-up roadmap (§follow-up roadmap, dynamic) — react to the outcome: a booked
+  // consultation completes the roadmap + adds a "Consultation booked" milestone; a
+  // reschedule realigns the next call step to the callback time. Best-effort.
+  afterCommit.push(async () => {
+    await applyCallOutcomeToRoadmap({
+      leadId: lead.id,
+      outcome: input.outcome ?? null,
+      callbackAt: callbackAt ?? null,
+      assignedRepId: lead.assignedRepId,
+    });
   });
 
   // Atomic write (§ reliability): the Call and the Lead update land together, or

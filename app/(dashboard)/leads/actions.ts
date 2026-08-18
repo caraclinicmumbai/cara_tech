@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { isLeadStage, LOST_STAGE, isPreConsultation, stageLabel, isLostTag } from "@/lib/leadStages";
 import { notifyCounsellor } from "@/lib/counsellor";
 import { runStageChange } from "@/lib/chatbotRuntime";
+import { applyStageChangeToRoadmap } from "@/lib/followups";
 import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
 import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
 import { clickToCall, isTwilioConfigured, deleteTwilioRecording } from "@/lib/providers/twilio";
@@ -44,7 +45,7 @@ export async function setLeadStage(
 
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
-    select: { stage: true, name: true, phone: true },
+    select: { stage: true, name: true, phone: true, assignedRepId: true },
   });
   if (!lead) throw new Error("Lead not found");
   const stageChanged = lead.stage !== stage;
@@ -87,6 +88,13 @@ export async function setLeadStage(
     await runStageChange(leadId, stage).catch((err) =>
       logger.error(`Stage-change chatbot trigger failed for ${leadId}: ${String(err)}`),
     );
+  }
+
+  // Follow-up roadmap (§follow-up roadmap, dynamic) — moving a lead to Appointment
+  // Scheduled is the human-call equivalent of a booked consultation: complete the
+  // roadmap + add the "Consultation booked" milestone (idempotent). Best-effort.
+  if (stageChanged) {
+    await applyStageChangeToRoadmap({ leadId, stage, assignedRepId: lead.assignedRepId });
   }
 
   // Premature lost (§3.1): the lead was marked Lost before ever completing a
