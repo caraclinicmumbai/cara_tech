@@ -153,6 +153,57 @@ export function summariseRoadmap(steps: FollowUpStepView[]): string {
 ///     counsellor (or AI if unassigned).
 ///   • Rescheduled / callback → realign the next pending call step's due date to
 ///     the scheduled callback time, so it reflects the plan and stops showing red.
+/// The "consultation booked" reaction, shared by the AI-call outcome path and the
+/// manual stage-move path. IDEMPOTENT: if a booking milestone already exists it does
+/// nothing, so it's safe to call from more than one trigger for the same lead.
+export async function bookConsultationOnRoadmap(input: {
+  leadId: string;
+  assignedRepId: string | null;
+  now?: Date;
+}): Promise<void> {
+  const now = input.now ?? new Date();
+  const already = await prisma.leadFollowUpStep.findFirst({
+    where: { leadId: input.leadId, title: "Consultation booked", source: "auto" },
+    select: { id: true },
+  });
+  if (already) return; // already recorded — don't append a second milestone
+
+  const pendingCount = await prisma.leadFollowUpStep.count({
+    where: { leadId: input.leadId, status: "pending" },
+  });
+  if (pendingCount > 0) {
+    await prisma.leadFollowUpStep.updateMany({
+      where: { leadId: input.leadId, status: "pending" },
+      data: { status: "done", completedAt: now },
+    });
+  }
+  const max = await prisma.leadFollowUpStep.aggregate({
+    where: { leadId: input.leadId },
+    _max: { order: true },
+  });
+  const hasRep = !!input.assignedRepId;
+  await prisma.leadFollowUpStep.create({
+    data: {
+      leadId: input.leadId,
+      order: (max._max.order ?? -1) + 1,
+      title: "Consultation booked",
+      channel: "custom",
+      status: "done",
+      completedAt: now,
+      ownerKind: hasRep ? "rep" : "ai",
+      ownerRepId: hasRep ? input.assignedRepId : null,
+      source: "auto",
+    },
+  });
+  await writeAudit({
+    action: "lead.followup.autobook",
+    entityType: "lead",
+    entityId: input.leadId,
+    newValue: `Consultation booked — ${pendingCount} open step(s) auto-completed`,
+  });
+  logger.info(`Roadmap: lead ${input.leadId} consultation booked — completed ${pendingCount} open step(s)`);
+}
+
 export async function applyCallOutcomeToRoadmap(input: {
   leadId: string;
   outcome: string | null; // confirmed | no_answer | rescheduled | not_interested
@@ -163,40 +214,7 @@ export async function applyCallOutcomeToRoadmap(input: {
   const now = input.now ?? new Date();
   try {
     if (input.outcome === "confirmed") {
-      const pendingCount = await prisma.leadFollowUpStep.count({
-        where: { leadId: input.leadId, status: "pending" },
-      });
-      if (pendingCount > 0) {
-        await prisma.leadFollowUpStep.updateMany({
-          where: { leadId: input.leadId, status: "pending" },
-          data: { status: "done", completedAt: now },
-        });
-      }
-      const max = await prisma.leadFollowUpStep.aggregate({
-        where: { leadId: input.leadId },
-        _max: { order: true },
-      });
-      const hasRep = !!input.assignedRepId;
-      await prisma.leadFollowUpStep.create({
-        data: {
-          leadId: input.leadId,
-          order: (max._max.order ?? -1) + 1,
-          title: "Consultation booked",
-          channel: "custom",
-          status: "done",
-          completedAt: now,
-          ownerKind: hasRep ? "rep" : "ai",
-          ownerRepId: hasRep ? input.assignedRepId : null,
-          source: "auto",
-        },
-      });
-      await writeAudit({
-        action: "lead.followup.autobook",
-        entityType: "lead",
-        entityId: input.leadId,
-        newValue: `Consultation booked — ${pendingCount} open step(s) auto-completed`,
-      });
-      logger.info(`Roadmap: lead ${input.leadId} consultation booked — completed ${pendingCount} open step(s)`);
+      await bookConsultationOnRoadmap({ leadId: input.leadId, assignedRepId: input.assignedRepId, now });
       return;
     }
 
@@ -225,6 +243,25 @@ export async function applyCallOutcomeToRoadmap(input: {
     }
   } catch (err) {
     logger.error(`applyCallOutcomeToRoadmap failed for lead ${input.leadId}: ${String(err)}`);
+  }
+}
+
+/// React to a manual pipeline-stage move (§follow-up roadmap, dynamic). This is the
+/// HUMAN-call equivalent of the AI "confirmed" outcome: a counsellor who books a
+/// consultation on a rep call records it by moving the lead to Appointment Scheduled.
+/// Best-effort; never throws into the caller. Idempotent via bookConsultationOnRoadmap.
+export async function applyStageChangeToRoadmap(input: {
+  leadId: string;
+  stage: string;
+  assignedRepId: string | null;
+  now?: Date;
+}): Promise<void> {
+  try {
+    if (input.stage === "appointment_scheduled") {
+      await bookConsultationOnRoadmap({ leadId: input.leadId, assignedRepId: input.assignedRepId, now: input.now });
+    }
+  } catch (err) {
+    logger.error(`applyStageChangeToRoadmap failed for lead ${input.leadId}: ${String(err)}`);
   }
 }
 
