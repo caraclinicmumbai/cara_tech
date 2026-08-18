@@ -96,8 +96,21 @@ model Lead {
   onDnd            Boolean   @default(false)
   dndCheckedAt     DateTime?
 
+  // ── Clinical consent (§post-sales) — DELIBERATELY SEPARATE from marketing consent.
+  //    Post-op care messages are medical, not promotional: they go out even to someone
+  //    who opted out of promotions, governed by clinical consent alone. Null = not
+  //    explicitly recorded, which for a patient with a converted quote is treated as
+  //    consenting (they are under the clinic's care). Only an explicit `false` blocks
+  //    care messages. See lib/postSales/checkins.ts. ──
+  consentClinical Boolean?
+  // The language the patient is comfortable in, e.g. "Hindi", "Marathi" (§post-sales
+  // handover summary). Carried into the handover so post-sales never has to guess.
+  preferredLanguage String?
+
   // ── Opt-out / suppression (§3.1.10) — hard flag: once true, NO outreach (calls,
-  //    retries, callbacks) is allowed. Set on "not interested" or WhatsApp STOP. ──
+  //    retries, callbacks) is allowed. Set on "not interested" or WhatsApp STOP.
+  //    NOTE: this is a MARKETING/sales suppression. It does not suppress clinical
+  //    post-op care messages (see `consentClinical` above). ──
   optedOut       Boolean   @default(false)
   optedOutAt     DateTime?
   optedOutReason String?
@@ -147,6 +160,8 @@ model Lead {
   campaignEnrollments CampaignEnrollment[]
   comments            LeadComment[]
   followUpSteps       LeadFollowUpStep[]
+  postSalesJourneys   PostSalesJourney[]
+  postSalesCheckIns   PostSalesCheckIn[]
 
   @@index([status])
   @@index([phone])
@@ -355,6 +370,13 @@ model User {
 
   // Temporary lead-access grants received (§handover — cover a colleague's lead).
   leadGrants LeadAccessGrant[] @relation("LeadGrantee")
+
+  // ── Post-sales assignments (§post-sales) — the clinical team on a journey. A
+  //    doctor/OT lead/consultant is a staff LOGIN (role doctor | ot_team |
+  //    post_sales_consultant), so the person accountable for a stage can act on it. ──
+  doctorJourneys     PostSalesJourney[] @relation("JourneyDoctor")
+  otJourneys         PostSalesJourney[] @relation("JourneyOtLead")
+  consultantJourneys PostSalesJourney[] @relation("JourneyConsultant")
 }
 
 /// A temporary grant of access to a lead (§handover) — lets a counsellor act on a
@@ -570,6 +592,7 @@ model Branch {
   invoicedQuotes   Quote[]           @relation("QuoteInvoicedBranch")
   chatbotFlows     ChatbotFlow[]
   campaignSettings CampaignSetting[]
+  postSalesJourneys PostSalesJourney[] @relation("JourneyBranch")
 
   @@index([active])
 }
@@ -644,9 +667,6 @@ model Quote {
   // drafted | sent | viewed | accepted | awaiting_payment | converted |
   // in_treatment | completed | rejected | expired | replaced | withdrawn
   status       String  @default("drafted")
-  // Post-sales journey once converted (§post-sales): pre_op | surgery_done |
-  // post_op_followup | recovery_monitoring | closed_successfully. Null pre-conversion.
-  journeyStage String?
 
   // Cycle: 1 = first time we've quoted this person for this treatment, 2 = repeat, …
   cycle Int @default(1)
@@ -700,6 +720,9 @@ model Quote {
   updatedAt   DateTime @updatedAt
 
   versions QuoteVersion[]
+  // The post-sales journey this quote opened on conversion (§post-sales) — at most
+  // one per quote. Two converted treatments = two journeys, running independently.
+  journey  PostSalesJourney?
 
   @@index([leadId])
   @@index([status])
@@ -722,6 +745,202 @@ model QuoteVersion {
   createdAt   DateTime @default(now())
 
   @@index([quoteId, createdAt])
+}
+
+// ── Post-sales ERP (§post-sales) ─────────────────────────────────────
+// The clinical side of the house: doctors, the OT team, post-sales consultants and
+// the front desk work here, NOT in the sales pipeline. The unit of work is the
+// converted QUOTE, never the lead — a patient who converts a hair transplant and a
+// PRP course has TWO journeys, running at their own speeds, and sees ONE
+// coordinated stream of messages.
+
+/// One post-sales journey per CONVERTED quote (§post-sales). Opened automatically
+/// the moment a quote reaches `converted` (an invoice exists) and never before.
+/// `stage` is the clinical track — entirely separate from Quote.status (commercial)
+/// and Lead.stage (the person's sales track). Only the post-sales team may move it;
+/// sales counsellors have read-only sight of it (capability `postsales.manage`).
+///
+/// The stage clock: `stageDueAt` is computed on every stage move from the treatment's
+/// TreatmentStagePolicy — hair-transplant recovery is not PRP recovery. Past it, the
+/// journey is OVERDUE and the sweep alerts the accountable staff once per stall
+/// (`overdueNotifiedAt`, reset on each move).
+model PostSalesJourney {
+  id      String @id @default(cuid())
+  /// The converted quote this journey belongs to. UNIQUE — one journey per quote.
+  quoteId String @unique
+  quote   Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  /// Denormalised from the quote so patient-level queries (the one-message-per-day
+  /// check-in coordination, "all journeys for this patient") don't need a join.
+  leadId  String
+  lead    Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  /// converted | pre_op | surgery_done | post_op_followup | recovery_monitoring |
+  /// closed_successfully. Keys in lib/postSales/stages.ts.
+  stage             String    @default("converted")
+  stageChangedAt    DateTime  @default(now())
+  /// When the CURRENT stage breaches its time limit (from the treatment policy).
+  /// Null = this stage has no limit (e.g. the terminal stage).
+  stageDueAt        DateTime?
+  /// Dedups the overdue alert per stall — cleared on every stage move.
+  overdueNotifiedAt DateTime?
+
+  /// Resolved policy key for this treatment (e.g. "hair_transplant", "prp",
+  /// "default") — snapshotted so a later policy rename can't silently re-time a
+  /// journey already in flight. See lib/postSales/policy.ts.
+  treatmentType String @default("default")
+
+  // ── The clinical team on this journey. Staff LOGINS, so the accountable person
+  //    can act on their own stage. SetNull so removing a login keeps the journey. ──
+  doctorId     String?
+  doctor       User?   @relation("JourneyDoctor", fields: [doctorId], references: [id], onDelete: SetNull)
+  otLeadId     String?
+  otLead       User?   @relation("JourneyOtLead", fields: [otLeadId], references: [id], onDelete: SetNull)
+  consultantId String?
+  consultant   User?   @relation("JourneyConsultant", fields: [consultantId], references: [id], onDelete: SetNull)
+
+  /// When surgery actually happened. Set on the move to `surgery_done` and it is
+  /// the ANCHOR for the whole check-in schedule (day 1 / 7 / 30 / 90 after this).
+  surgeryAt DateTime?
+  /// Set once the check-in rows have been generated for `surgeryAt`, so re-entering
+  /// the stage doesn't duplicate them. Cleared when the surgery date is corrected.
+  checkInsScheduledAt DateTime?
+
+  /// Branch snapshot at handover — the branch that INVOICED where known (that branch
+  /// earned the credit), else the branch the quote was raised at.
+  branchId String?
+  branch   Branch? @relation("JourneyBranch", fields: [branchId], references: [id], onDelete: SetNull)
+
+  /// The handover summary generated at conversion (§post-sales "Handing Over Cleanly")
+  /// — name, procedure, price, invoicing branch, notes, language, comms preferences,
+  /// safety flags, other open quotes. A SNAPSHOT of what was handed over, kept for the
+  /// record; the journey page renders the volatile parts (flags, open quotes) live.
+  /// Never contains call recordings or transcripts — post-sales sees the summary only.
+  handoverSummary     Json?
+  handoverGeneratedAt DateTime?
+
+  openedAt   DateTime  @default(now())
+  closedAt   DateTime?
+  closedNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  checkIns PostSalesCheckIn[]
+  notes    PostSalesNote[]
+
+  @@index([stage])
+  @@index([stageDueAt])
+  @@index([leadId])
+  @@index([branchId])
+  @@index([consultantId])
+  @@index([doctorId])
+  @@index([otLeadId])
+}
+
+/// A scheduled post-surgery clinical check-in (§post-sales: day 1, 7, 30, 90 after
+/// each surgery, over WhatsApp). Rows are generated when a journey reaches
+/// `surgery_done`; the worker tick sends whatever is due.
+///
+/// These are MEDICAL CARE messages, not marketing: they are governed by clinical
+/// consent and go out even to a patient who opted out of promotions, and they do not
+/// count against the marketing 12-in-30 ceiling.
+///
+/// COORDINATION (§post-sales "the patient sees one relationship, not two"): at most
+/// ONE check-in per PATIENT per day across every journey they have running. When two
+/// journeys land a check-in on the same morning the clinically closer one (smaller
+/// dayOffset) goes and the other is pushed a day, recording `deferredReason`.
+model PostSalesCheckIn {
+  id        String           @id @default(cuid())
+  journeyId String
+  journey   PostSalesJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  /// Denormalised for the one-per-patient-per-day coordination query.
+  leadId    String
+  lead      Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  /// Days after surgery this check-in is for: 1 | 7 | 30 | 90 (per-treatment override
+  /// possible via TreatmentStagePolicy.checkInDays).
+  dayOffset Int
+  /// When it should go out (may be pushed by coordination / quiet hours).
+  scheduledFor DateTime
+  /// The un-nudged surgeryAt + dayOffset, so the UI can show that it was moved.
+  originalFor  DateTime
+
+  /// pending — due to send · sent — delivered to WhatsApp · done_manually — a human
+  /// checked in instead · skipped — deliberately not sent · blocked — cannot be
+  /// automated (no template, safety flag, no clinical consent): needs a person ·
+  /// failed — send errored after retries.
+  status String @default("pending")
+
+  sentAt        DateTime?
+  /// The Message row this produced, so the check-in links into the patient's thread.
+  messageId     String?
+  attempts      Int       @default(0)
+  lastError     String?
+  /// Why it can't be automated (status=blocked) — shown to the consultant as a task.
+  blockedReason String?
+  /// Why the date moved (coordination clash / quiet hours), for the UI + audit.
+  deferredReason String?
+  /// How many times it has been pushed — a safety valve so a clash can't push forever.
+  deferrals      Int      @default(0)
+
+  /// Who marked it done/skipped by hand (User.id), mirroring the audit convention.
+  completedById String?
+  note          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// One check-in per day-offset per journey — makes generation idempotent.
+  @@unique([journeyId, dayOffset])
+  @@index([status, scheduledFor])
+  @@index([leadId, scheduledFor])
+  @@index([journeyId])
+}
+
+/// A clinical / operational note on a post-sales journey (§post-sales). Journey-scoped
+/// rather than lead-scoped so a note about the hair transplant doesn't surface on the
+/// PRP journey. Mirrors LeadComment's conventions: human-authored, author name
+/// snapshotted so attribution survives the login being removed, deletable by the
+/// author or a manager (unlike the immutable AuditLog).
+model PostSalesNote {
+  id         String           @id @default(cuid())
+  journeyId  String
+  journey    PostSalesJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  authorId   String?
+  authorName String?
+  /// clinical (medical observation) | admin (logistics, scheduling, billing chase)
+  kind       String           @default("clinical")
+  body       String
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@index([journeyId, createdAt])
+}
+
+/// Per-treatment-type post-sales timings (§post-sales: "Time limits per stage, per
+/// treatment type. Hair transplant recovery is not PRP recovery. Overdue = alert.").
+///
+/// `stageDays` is a JSON map of journey-stage key → allowed days in that stage, e.g.
+/// `{"converted":3,"pre_op":14,"surgery_done":2,"post_op_followup":30,"recovery_monitoring":120}`.
+/// A missing key means that stage has no limit. `checkInDays` overrides the standard
+/// [1,7,30,90] schedule for this treatment. Exactly one row should carry
+/// `isDefault` — it is the fallback for any treatment with no policy of its own.
+/// Absence of ALL rows falls back to the code defaults in lib/postSales/policy.ts.
+model TreatmentStagePolicy {
+  id            String  @id @default(cuid())
+  /// Stable policy key, e.g. "hair_transplant" | "prp" | "default".
+  treatmentType String  @unique
+  label         String
+  stageDays     Json    @default("{}")
+  checkInDays   Int[]   @default([1, 7, 30, 90])
+  active        Boolean @default(true)
+  isDefault     Boolean @default(false)
+
+  updatedById String? // User.id of the admin who last edited (no FK, like AuditLog.actorId)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
 }
 
 /// Append-only audit trail (Phase 2 §audit). Every mutation, consent change,

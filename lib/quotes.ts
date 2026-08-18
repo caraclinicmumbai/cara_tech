@@ -21,6 +21,7 @@ import {
   isQuoteLocked,
   isQuoteStatus,
 } from "@/lib/quoteStages";
+import { openJourneyForQuoteSafe } from "@/lib/postSales/journeys";
 
 /// Normalise a treatment name for the "one open quote per treatment" comparison —
 /// case/space-insensitive so "Hair Transplant" and "hair transplant " collide.
@@ -233,6 +234,15 @@ export async function transitionQuote(input: {
     }
   }
   await prisma.quote.update({ where: { id: input.quoteId }, data });
+
+  // §post-sales: "every converted patient is in the post-sales pipeline automatically".
+  // The journey opens as a side-effect of the conversion, AFTER the quote row is
+  // committed, and is best-effort — the money has already moved, so a journey hiccup
+  // must never fail the conversion. Anything missed is picked up by
+  // reconcileMissingJourneys() in the worker sweep.
+  if (nextStatus === "converted") {
+    await openJourneyForQuoteSafe(input.quoteId);
+  }
 }
 
 /// Reassign a quote to a different counsellor (§multi-quote: a quote's owner may

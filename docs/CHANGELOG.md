@@ -7,6 +7,76 @@ Format: newest first.
 
 ---
 
+## 2026-08-18 — Post-sales ERP: one journey per converted quote (§post-sales)
+
+New flow doc: **[flows/09-post-sales-journey.md](flows/09-post-sales-journey.md)**.
+Migration `20260818084432_post_sales_erp`.
+
+The clinical side of the clinic — doctors, OT team, post-sales consultants, front desk —
+now has its own pipeline, attached to the **converted quote** rather than the lead. A
+patient who converts a hair transplant and a PRP course gets two journeys running at their
+own speeds.
+
+- **Three new RBAC roles** — `doctor`, `ot_team`, `post_sales_consultant` — and four
+  capabilities (`postsales.view` / `.manage` / `.checkins` / `.policy`). The spec's "the
+  post-sales team owns these stages, sales counsellors can't edit them" is expressed as the
+  capability split: counsellors get `view`, not `manage`.
+- **The clinical roles hold neither `leads.view` nor `calls.view`**, and `/leads` + `/calls`
+  are now capability-gated in `routeCapability()` (previously open to any signed-in user).
+  So "the post-sales team sees the summary — not the full call recordings" is access
+  control, not a hidden button. `leadScope()` also lists them as `own`-scoped as defence in
+  depth. New always-reachable `/no-access` page + `landingPath(role)` so gating `/leads`
+  can't bounce a doctor in a redirect loop.
+- **`PostSalesJourney`** (one per quote, `quoteId @unique`) — six stages
+  `converted → pre_op → surgery_done → post_op_followup → recovery_monitoring →
+  closed_successfully`. Opens automatically on conversion; forward moves are one click, a
+  **backward move needs a written reason**; entering `surgery_done` requires the surgery
+  date, which anchors the check-in schedule.
+- **Per-treatment stage time limits** (`TreatmentStagePolicy`, editable at
+  `/post-sales/policies`, built-in defaults live from day one): hair-transplant recovery
+  120d vs PRP 45d. Overdue → a `postsales.stage.overdue` audit row + a Slack alert to the
+  accountable consultant/doctor, deduped per stall via `overdueNotifiedAt`.
+- **`reconcileMissingJourneys()`** in the same worker pass opens a journey for any converted
+  quote that lacks one — closing the gap the spec calls "the single most likely bug in the
+  whole change".
+- **Care check-ins day 1/7/30/90** (`PostSalesCheckIn`). These are **medical messages, not
+  marketing**: a new explicit `SendOpts.clinical` flag exempts them from the `optedOut`
+  marketing suppression and the 12-in-30 ceiling, gated instead on the new
+  `Lead.consentClinical` (null = assumed for a patient under care; only explicit `false`
+  withholds). Safety flags and a missing template don't drop a check-in — they set it to
+  **`blocked` with a reason** so it stays on the board as a task for a person.
+- **The coordination rule** — at most **one care message per patient per IST day across all
+  their journeys**. Due rows are processed by ascending day-offset so the clinically closer
+  check-in claims the day and the other is pushed, with the reason shown in the UI. Keyed on
+  the day the message actually goes out, so two rows overdue from different days can't both
+  fire the same morning.
+- **Handover summary per converted quote** — name, procedure, price, **which branch
+  invoiced** (explicitly "not reported by billing" rather than passing the quoting branch
+  off as fact), language, comms preferences, clinical-consent state, safety flags,
+  counsellor notes, and every other quote open on the person. Snapshotted for the record,
+  recomputed live for the volatile parts. Reads no transcripts or recordings.
+- **Quote unlock now writes to the permanent log.** `unlockLeadQuote` required an admin and
+  a reason but only wrote a Winston line; it now writes a `lead.quote.unlock` audit row with
+  the reason, per "with a written reason in the permanent log".
+- **Removed `Quote.journeyStage`** — an unwritten scaffold column that would have been a
+  second source of truth beside `PostSalesJourney.stage`.
+- Screens: `/post-sales` board, `/post-sales/[id]` journey, `/post-sales/policies`. Worker:
+  check-in tick + SLA/reconcile pass. Backfill: `npm run backfill:journeys`.
+- **Off by default:** `POSTSALES_CHECKINS_ENABLED` unset = schedules generate and display
+  but nothing sends. The four WhatsApp templates are not yet approved, so every check-in
+  currently lands as a human task.
+
+Verified end-to-end against the local DB (40 assertions): two independent journeys on one
+patient, per-treatment timings differing, backward-move reason enforcement, schedule
+anchoring + idempotency, the coordination deferral, safety-flag blocking, and overdue
+alert + dedup + reset.
+
+**Not in this build** (next commit, design settled): calendar/appointments + reminders +
+no-show, the authenticated invoice webhook driving conversion, 7-day branch-credit
+disputes, daily ad-spend import.
+
+---
+
 ## 2026-07-29 — Compliance set (DPDP): recording consent, digital-source consent, retention/erasure
 
 Backlog items C1–C3 (`docs/gaps-and-roadmap.md`). Additive schema change

@@ -9,6 +9,13 @@ export const ROLES = [
   "telecalling_head",
   "branch_manager",
   "sales_head",
+  // ── Post-sales / clinical roles (§post-sales) — the ERP side of the house. They
+  //    work inside /post-sales and are deliberately NOT granted leads.view or
+  //    calls.view: "the post-sales team sees the summary — not the full call
+  //    recordings", so there is no route from the ERP to a recording at all. ──
+  "doctor",
+  "ot_team",
+  "post_sales_consultant",
   "crm_admin",
 ] as const;
 
@@ -20,6 +27,9 @@ export const ROLE_LABELS: Record<Role, string> = {
   telecalling_head: "Telecalling Head",
   branch_manager: "Branch Manager",
   sales_head: "Sales Head",
+  doctor: "Doctor / Surgeon",
+  ot_team: "OT Team",
+  post_sales_consultant: "Post-Sales Consultant",
   crm_admin: "CRM Admin",
 };
 
@@ -59,6 +69,16 @@ export const CAPABILITIES = [
   "quotes.manage",
   "quotes.convert",
   "quotes.unlock",
+  // Post-sales ERP (§post-sales). `view` = see the board, a journey and its handover
+  // summary — granted to sales too, so a counsellor can see where their patient got
+  // to. `manage` = move journey stages, assign the clinical team, record the surgery
+  // date: the POST-SALES TEAM OWNS THESE STAGES and sales counsellors deliberately do
+  // NOT get it. `checkins` = resolve / reschedule a care check-in. `policy` = edit the
+  // per-treatment stage time limits.
+  "postsales.view",
+  "postsales.manage",
+  "postsales.checkins",
+  "postsales.policy",
   "calls.view",
   "analytics.view",
   "templates.manage",
@@ -129,6 +149,16 @@ export const CAPABILITY_GROUPS: {
     ],
   },
   {
+    key: "postsales",
+    label: "Post-Sales (ERP)",
+    capabilities: [
+      { key: "postsales.view", label: "View journeys & handover summary" },
+      { key: "postsales.manage", label: "Move stages / assign clinical team" },
+      { key: "postsales.checkins", label: "Manage care check-ins" },
+      { key: "postsales.policy", label: "Edit per-treatment stage limits" },
+    ],
+  },
+  {
     key: "calls",
     label: "Calls",
     capabilities: [{ key: "calls.view", label: "View call history" }],
@@ -179,6 +209,10 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "leads.comment",
     "calls.view",
     "analytics.view",
+    // Front desk is part of the post-sales floor (§post-sales): they see the board and
+    // close out care check-ins they made by phone, but they don't move clinical stages.
+    "postsales.view",
+    "postsales.checkins",
   ],
   telecaller: [
     "leads.view",
@@ -198,6 +232,10 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "quotes.convert",
     "calls.view",
     "campaigns.manage",
+    // A counsellor can SEE where their converted patient got to, but not edit the
+    // clinical stages — "The Post-Sales team owns these stages. Sales counsellors
+    // can't edit them." (§post-sales)
+    "postsales.view",
   ],
   telecalling_head: [
     "leads.view",
@@ -221,6 +259,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     // Runs the telecalling floor — approves lost leads for a win-back retry.
     "campaigns.winback",
     "campaigns.manage",
+    "postsales.view",
   ],
   branch_manager: [
     "leads.view",
@@ -249,6 +288,12 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "chatbot.manage",
     "reps.manage",
     "campaigns.manage",
+    // Runs the clinic floor end to end — including the post-sales pipeline and the
+    // per-treatment stage limits.
+    "postsales.view",
+    "postsales.manage",
+    "postsales.checkins",
+    "postsales.policy",
   ],
   sales_head: [
     "leads.view",
@@ -275,6 +320,29 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "reps.manage",
     "campaigns.winback",
     "campaigns.manage",
+    // Oversight of the clinical pipeline, but not editing it — the post-sales team owns
+    // those stages.
+    "postsales.view",
+  ],
+
+  // ── The post-sales / clinical roles (§post-sales). Note what is ABSENT from all
+  //    three: leads.view and calls.view. They never reach the sales lead record, so
+  //    they cannot reach a call recording or transcript — the handover summary on the
+  //    journey page is their whole view of the patient, by design. ──
+  doctor: [
+    "postsales.view",
+    "postsales.manage",
+    "postsales.checkins",
+  ],
+  ot_team: [
+    "postsales.view",
+    // The OT team drives Pre-Op → Surgery Done and records the surgery date.
+    "postsales.manage",
+  ],
+  post_sales_consultant: [
+    "postsales.view",
+    "postsales.manage",
+    "postsales.checkins",
   ],
 };
 
@@ -287,6 +355,9 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
   telecalling_head: new Set(CAPS.telecalling_head),
   branch_manager: new Set(CAPS.branch_manager),
   sales_head: new Set(CAPS.sales_head),
+  doctor: new Set(CAPS.doctor),
+  ot_team: new Set(CAPS.ot_team),
+  post_sales_consultant: new Set(CAPS.post_sales_consultant),
   crm_admin: new Set(CAPABILITIES), // super-user
 };
 
@@ -323,17 +394,35 @@ export function can(role: string | undefined | null, capability: Capability): bo
   return matrix[role].has(capability);
 }
 
+/// Roles scoped to only the leads they own. Front-Desk and Telecaller work their own
+/// book. The post-sales/clinical roles are listed here as a DEFENCE IN DEPTH measure:
+/// they hold no `leads.view` capability, so they never reach a lead list at all — but
+/// if one were ever granted it from the Hierarchy screen, they'd see only leads they
+/// own (which is none) rather than the entire patient database.
+const OWN_SCOPE_ROLES: readonly string[] = [
+  "front_desk",
+  "telecaller",
+  "doctor",
+  "ot_team",
+  "post_sales_consultant",
+];
+
 /// Lead visibility scope for a role: "own" = only leads they own; "all" = everything.
-/// Front-Desk and Telecaller are scoped to their own leads; everyone else sees all.
 export function leadScope(role: string | undefined | null): "own" | "all" {
-  return role === "front_desk" || role === "telecaller" ? "own" : "all";
+  return role && OWN_SCOPE_ROLES.includes(role) ? "own" : "all";
 }
 
 /// The capability a top-level route requires, or null for routes any signed-in user
-/// may reach (e.g. /leads, /calls). Used by the proxy route guard. Order matters —
-/// more specific paths first.
+/// may reach. Used by the proxy route guard. Order matters — more specific paths first.
+///
+/// /leads and /calls are gated on `leads.view` / `calls.view` rather than left open:
+/// the post-sales roles hold neither, which is what keeps the clinical team out of the
+/// sales record and away from call recordings (§post-sales "the post-sales team sees
+/// the summary — not the full call recordings").
 export function routeCapability(pathname: string): Capability | null {
   if (pathname.startsWith("/dashboard") || pathname.startsWith("/cqs")) return "analytics.view";
+  if (pathname.startsWith("/post-sales/policies")) return "postsales.policy";
+  if (pathname.startsWith("/post-sales")) return "postsales.view";
   if (pathname.startsWith("/templates")) return "templates.manage";
   if (pathname.startsWith("/chatbot")) return "chatbot.manage";
   if (pathname.startsWith("/settings")) return "settings.manage";
@@ -345,5 +434,27 @@ export function routeCapability(pathname: string): Capability | null {
   if (pathname.startsWith("/users")) return "users.manage";
   if (pathname.startsWith("/leads/deleted")) return "leads.restore";
   if (pathname.startsWith("/leads/walk-in")) return "leads.walkin";
+  if (pathname.startsWith("/leads")) return "leads.view";
+  if (pathname.startsWith("/calls")) return "calls.view";
   return null;
+}
+
+/// A page every signed-in user can reach, whatever their capabilities. It exists so
+/// the route guard always has somewhere safe to send a denied user — without it, a role
+/// that can reach neither /leads nor /post-sales would bounce between a gated page and
+/// the redirect target forever.
+export const NO_ACCESS_PATH = "/no-access";
+
+/// Where a role lands after signing in, and where the route guard sends someone who
+/// lacks a page's capability. The clinical roles have no business on the sales lead
+/// list — and /leads is gated on `leads.view`, which they don't hold — so they go
+/// straight to the post-sales board. Falls back to NO_ACCESS_PATH when the role can't
+/// reach its own landing page (possible once an admin edits the Hierarchy matrix),
+/// which is what keeps the guard loop-free.
+export function landingPath(role: string | undefined | null): string {
+  const preferred =
+    role === "doctor" || role === "ot_team" || role === "post_sales_consultant" ? "/post-sales" : "/leads";
+  const cap = routeCapability(preferred);
+  if (cap && !can(role, cap)) return NO_ACCESS_PATH;
+  return preferred;
 }

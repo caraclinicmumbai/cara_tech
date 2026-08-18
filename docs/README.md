@@ -26,6 +26,8 @@ data model, integrations), then dip into the flow you care about.
 | 5 | [Counsellor & manager alerts](flows/05-counsellor-and-manager-alerts.md) | Counsellor oversight feed, premature-lost, stuck-in-stage, daily digest |
 | 6 | [WhatsApp messaging](flows/06-whatsapp-messaging.md) | Unified inbound/outbound thread, templates, media, automated outreach |
 | 7 | [System health monitor](flows/07-system-health-monitor.md) | Downtime / API-failure alerts to admin + branch manager |
+| 8 | [Follow-up campaigns](flows/08-follow-up-campaigns.md) | Automated nurture campaigns for leads that go quiet, and the guardrails that keep them from becoming harassment |
+| 9 | [Post-sales journey / ERP](flows/09-post-sales-journey.md) | The clinical side: one journey per converted quote, per-treatment stage limits, coordinated day 1/7/30/90 care check-ins, handover summary |
 
 **Also:** [ElevenLabs agent ↔ CRM integration contract](elevenlabs-agent-integration.md) —
 what the AI first-call agent must emit (outcome, handover keys, callback time, tag,
@@ -50,6 +52,9 @@ Each flow lists its own limitations; the cross-cutting ones worth knowing up fro
   do-not-call _time window_ is enforced; statutory DND scrubbing is not. See flow 2.
 - **Meta lead auto-calling is paused** for `facebook`/`instagram` pending App Review of
   `leads_retrieval` advanced access. See flow 1.
+- **Post-sales care check-ins send nothing yet.** The engine, schedule and coordination are
+  live, but the four WhatsApp templates aren't approved, so every check-in lands as a task
+  for a person. `POSTSALES_CHECKINS_ENABLED` is also off by default. See flow 9.
 
 ## Maintenance convention
 

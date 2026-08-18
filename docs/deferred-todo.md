@@ -102,5 +102,50 @@ _Added 2026-08-11._
 
 ---
 
+## Post-sales spec — deferred from the ERP core build
+
+The post-sales ERP core shipped 2026-08-18 (see
+[flows/09-post-sales-journey.md](flows/09-post-sales-journey.md)). These items are from the
+**same spec section** and were explicitly scoped to the following commit — they are the
+rest of "Connecting to Calendar and Billing", not new ideas.
+
+- **Post-sales WhatsApp templates (BLOCKER for automation) (S).** The engine, schedule and
+  coordination are live, but no approved template exists for day 1/7/30/90, so every
+  check-in lands as a human task. Needs four templates submitted to Meta, then
+  `POSTSALES_TEMPLATE_CHECKIN_D1|D7|D30|D90` set and `POSTSALES_CHECKINS_ENABLED=true`.
+  Template body vars are `{{1}}` first name, `{{2}}` procedure, `{{3}}` "day N".
+- **Calendar & appointments (L).** Booking link showing **real** availability (no
+  double-booked slot); a booking auto-updates the CRM (stage move, counsellor assigned,
+  campaign messages cancelled); the appointment is **linked to a quote** where one exists,
+  so a first consultation is distinguishable from a pre-op visit for a specific procedure;
+  confirmation + a 24h and a 2h reminder; a no-show flags the lead, creates a task, and
+  drops them into a gentle follow-up. Relates to the older **F3** gap in
+  `gaps-and-roadmap.md` ("no structured appointment / no-show handling").
+- **Invoice webhook — "converted" means an invoice exists (M).** Design settled: an
+  authenticated `/api/webhooks/invoice` plus an `Invoice` model attached to the **quote**
+  (never the lead), so billing tells the CRM which branch invoiced and nobody types it.
+  The journey trigger is already decoupled — it fires on the quote reaching `converted`
+  however that happened — so this slots in without touching the ERP. **The CRM stores no
+  card or bank details, ever.**
+- **Branch credit + 7-day dispute (M).** The invoicing branch gets the credit for that
+  quote, system-enforced; a losing branch has 7 days to dispute with the Sales Head;
+  decision final and logged; **disputes are per quote**. `Quote.invoicedBranchId` and the
+  handover summary already surface the credit — the dispute workflow is what's missing.
+- **Ad-spend import (M).** Daily import for next month's cost reports, and a missing day
+  must show **"unavailable", never zero**.
+- **Post-sales branch scoping (S).** The board filters by branch but doesn't restrict:
+  any `postsales.manage` holder can act on any branch's journey. Decide whether clinical
+  staff should be branch-scoped like leads are.
+- **Post-sales overdue escalation ladder (S).** One Slack alert per stall, no second
+  reminder and no manager escalation (the handover SLA has both). Reuse `lib/handoverSla.ts`
+  shape if the clinic wants it.
+- **Treatment→policy matching from the catalog (S).** `resolveTreatmentType()` keyword-matches
+  the quote's free text; reading `CatalogItem.category` would be more reliable. Falls back
+  to `default` safely today.
+
+_Added 2026-08-18._
+
+---
+
 ## Done
 _(nothing yet — move completed items here with the date + commit)_
