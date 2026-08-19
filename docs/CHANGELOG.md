@@ -7,6 +7,39 @@ Format: newest first.
 
 ---
 
+## 2026-08-19 — Open Quotes desk (`/quotes`)
+
+New nav section, gated on `quotes.view` (route guard: `routeCapability("/quotes")`).
+Files: `lib/openQuotes.ts` (read model), `app/(dashboard)/quotes/page.tsx`,
+`app/(dashboard)/layout.tsx`, `lib/rbac.ts`. No schema change.
+
+Every quote still in play — `drafted` / `sent` / `viewed` / `accepted` /
+`awaiting_payment` — on one screen, so a manager can see the money in the pipeline
+without opening leads one at a time.
+
+- **Five roll-up tiles**: open count, pipeline value (total payable), *gone quiet*
+  (no activity in `STALE_AFTER_DAYS` = 7d), *lapsing* (expired or inside
+  `EXPIRING_WITHIN_DAYS` = 7d), and *unassigned* (no counsellor on the quote).
+- **Money broken out per row** the way the quote itself computes it: base →
+  discount (as entered — `12.5%` or flat ₹ — plus the rupees it took off) → GST at
+  the quote's own stored rate → payable. Shared with the quote PDF via
+  `computeQuoteTotals()`, so the desk can't drift from the document.
+- **What has been DONE on the quote.** Quote actions are audited against the *lead*
+  with `meta.quoteId` (`leads/quoteActions.ts`), so the read model fetches the trail
+  by lead and regroups it by quote. Each row shows its last action and expands
+  (native `<details>`, no client JS) into the full trail — raised / price revised /
+  status moved / reassigned, each with actor, timestamp, and the `from → to`.
+  Revision count excludes the opening version a priced quote is created with.
+- **Filters are links**, not client state: status (with per-status count and value),
+  owner, branch, and the three problem pills. Owner and the pills filter in memory so
+  the tiles and the owner list keep showing the whole scope — the header reads
+  "Showing 3 of 27 · ₹x of ₹y".
+- **Scoped by lead visibility** (`leadWhereForUser`): a counsellor sees quotes on
+  their own leads; a manager sees the branch. Read-only by design — a quote is still
+  edited on its lead, where the rest of the person's context is.
+
+Known gap: the quote lifecycle (§multi-quote) still has no `flows/*.md` of its own.
+
 ## 2026-08-19 — Leads table: six new columns (owner, follow-up, deal, last call, remark, updated)
 
 Migration `20260819135141_lead_remark`. Files: `app/(dashboard)/leads/page.tsx`,
