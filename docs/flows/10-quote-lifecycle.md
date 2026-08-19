@@ -148,6 +148,40 @@ swept up by `reconcileMissingJourneys()` in the worker. See
 Reopening a converted quote is `unlockQuote()` — Admin only (`quotes.unlock`), always with
 a written reason, and it drops the quote back to `accepted`.
 
+### 7. The internal history summary
+
+Once a quote has converted, a **Patient History Summary** PDF becomes downloadable from
+the quote's card on the lead (`🗂 History PDF` → `/api/quotes/[id]/history`). It is
+rendered on demand and never stored, like the quotation itself.
+
+It contains, for that converted treatment:
+
+| Section | Content |
+|---|---|
+| Ownership | Quote owner (the telecaller who sold it), lead owner, stage, first-contact date, source, campaign |
+| Quotation | Status, attribution, base → discount → GST → payable, branches, the full price trail, and the patient's other quotes |
+| Clinical context | Stated interest, what they asked for, preferred language, clinical consent, safety flags, and clinical notes from the post-sales journey |
+| Conversations | Every call: outcome, sentiment, duration, CQS, objection type, handler, and the one-line AI summary |
+| Every contact, in order | One chronological log merging calls, WhatsApp both ways, staff notes, completed follow-up steps, care check-ins, and the quote/conversion events |
+| Transcripts | Verbatim call transcripts, appended (each capped at 6,000 characters, with the truncation stated in the document) |
+
+**This is the deliberate inverse of the post-sales handover summary.** That document
+withholds transcripts and recordings because the clinical team must not see them
+([flow 9](09-post-sales-journey.md)). This one includes them, so the route is gated on
+**both `quotes.view` and `calls.view`** — and none of `doctor`, `ot_team` or
+`post_sales_consultant` hold either, which is what keeps that rule intact. Lead-ownership
+scoping applies on top, so a counsellor cannot pull a patient they can't already see.
+
+Every download writes a `record.view` audit row naming the actor and how much they got
+(call count, message count, transcript count). The document is stamped
+`INTERNAL — not for the patient` on every page.
+
+> **There is no medical history in the CRM to include.** The schema has no field for
+> conditions, allergies, medications or an intake questionnaire. The PDF says so in
+> plain words rather than leaving a blank section that reads like a clean bill of
+> health, and prints the clinically-relevant data that *does* exist. If a real medical
+> history is wanted here, it has to be modelled and captured first.
+
 ## Who can do what
 
 | Capability | Holders | What it unlocks |
@@ -185,6 +219,9 @@ authoritative and replaces a role's built-in list wholesale — see the warning 
 | [lib/quotePdf.ts](../../lib/quotePdf.ts) | The quotation document, rendered on demand |
 | [app/api/quotes/[id]/pdf/route.ts](<../../app/api/quotes/[id]/pdf/route.ts>) | PDF download — gated, ownership-scoped, audited |
 | [lib/openQuotes.ts](../../lib/openQuotes.ts) | Read model for the Open Quotes desk |
+| [lib/patientHistory.ts](../../lib/patientHistory.ts) | Assembles the internal history record for a converted quote |
+| [lib/historyPdf.ts](../../lib/historyPdf.ts) | Renders that record as the multi-page history PDF |
+| [app/api/quotes/[id]/history/route.ts](<../../app/api/quotes/[id]/history/route.ts>) | History download — gated on `quotes.view` + `calls.view`, ownership-scoped, audited |
 | [lib/catalog.ts](../../lib/catalog.ts) | Treatment picker — prices, GST, package discounts |
 
 ## Configuration
@@ -195,6 +232,7 @@ authoritative and replaces a role's built-in list wholesale — see the warning 
 | `CGST_RATE` / `SGST_RATE` = 2.5 each | `lib/quoteStages.ts` | Default GST; the rate is then stored per quote |
 | `STALE_AFTER_DAYS` = 7 | `lib/openQuotes.ts` | "Gone quiet" threshold on the desk |
 | `EXPIRING_WITHIN_DAYS` = 7 | `lib/openQuotes.ts` | "Lapsing" threshold on the desk |
+| `TRANSCRIPT_MAX` = 6000 | `lib/historyPdf.ts` | Characters of each transcript printed in the history PDF before it is cut (truncation is stated in the output) |
 | `QUOTE_DOC_TEMPLATE_NAME` / `_LANG` | env | Approved WhatsApp document template for sending a quote outside the 24h window |
 | Catalog items | `CatalogItem` table, admin-managed | The treatment picker's prices, GST rates, package discounts |
 
@@ -221,5 +259,11 @@ authoritative and replaces a role's built-in list wholesale — see the warning 
 - **No bulk actions and no quote-level search.** The desk filters by status, owner, branch
   and the three problem pills; there's no free-text search across patients or treatments,
   and no way to act on several quotes at once.
+- **The history PDF has no medical history to print.** No conditions, allergies,
+  medications or intake questionnaire exist in the schema, so the document prints the
+  clinically-relevant data that does exist and states the absence outright.
+- **The history PDF is generated on demand, not at conversion.** Nothing is snapshotted,
+  so a record pulled today reflects the patient as they are today, not as they were the
+  day they converted. The handover summary on the journey is the frozen snapshot.
 - **A withdrawn/rejected quote can't be reopened** — only a *converted* one can, via
   `quotes.unlock`. Reviving a rejected quote means raising a new cycle.

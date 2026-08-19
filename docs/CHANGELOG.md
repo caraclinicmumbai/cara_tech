@@ -7,6 +7,39 @@ Format: newest first.
 
 ---
 
+## 2026-08-19 — Internal patient history summary PDF (converted quotes)
+
+Files: `lib/patientHistory.ts` (read model), `lib/historyPdf.ts` (renderer),
+`app/api/quotes/[id]/history/route.ts`, `components/QuotesPanel.tsx`,
+`app/(dashboard)/leads/[id]/page.tsx`. Flow doc: **[flows/10-quote-lifecycle.md](flows/10-quote-lifecycle.md)
+§7**. No schema change.
+
+A converted quote now offers `🗂 History PDF` on its card — the whole file on that
+patient, for internal use: ownership (the telecaller who sold it, and the lead owner),
+the quotation with its full price trail, the clinical context on record, every call with
+outcome/sentiment/CQS/objection and its AI summary, one chronological log of **every**
+contact (calls, WhatsApp both ways, staff notes, completed follow-up steps, care
+check-ins, the quote and the conversion), and the verbatim transcripts appended.
+
+- **Gated harder than the quote PDF**: `quotes.view` **and** `calls.view`, plus lead
+  ownership. The clinical roles hold neither capability, so this cannot become a back
+  door into the recordings the post-sales team is deliberately denied (§post-sales,
+  flow 9). This module is the inverse of `lib/postSales/handover.ts` and must never be
+  wired into the ERP UI.
+- Every download writes a `record.view` audit row naming the actor and the volume
+  pulled (calls, messages, transcripts). Stamped `INTERNAL` on every page.
+- Only converted quotes qualify — an open quote returns 409, since a history file of a
+  live negotiation reads as a closed one.
+- Rendered on demand, nothing stored; transcripts capped at 6,000 chars each with the
+  truncation stated in the document.
+
+**No medical history is included, because the CRM holds none.** There is no field for
+conditions, allergies, medications or an intake questionnaire anywhere in the schema.
+The PDF states that outright and prints the clinically-relevant data that does exist
+(stated interest, what they asked for, language, clinical consent, safety flags,
+post-sales clinical notes) rather than leaving a blank section that would read as a
+clean bill of health.
+
 ## 2026-08-19 — Open Quotes desk (`/quotes`)
 
 New nav section, gated on `quotes.view` (route guard: `routeCapability("/quotes")`).
