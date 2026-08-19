@@ -96,7 +96,8 @@ export async function createQuote(input: {
     Date.now() + (input.validityDays ?? QUOTE_DEFAULT_VALIDITY_DAYS) * 24 * 60 * 60 * 1000,
   );
 
-  // GST-before-discount total (whole rupees), stored for display + reporting.
+  // Total in whole rupees (discount off the base, then GST on the rest), stored for
+  // display + reporting.
   const gstRate = input.gstRate ?? DEFAULT_GST_RATE;
   const totals = computeQuoteTotals({
     base: input.price ?? 0,
