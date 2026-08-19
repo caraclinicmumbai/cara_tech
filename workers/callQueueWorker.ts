@@ -26,6 +26,8 @@ import { sweepIdle, IDLE_MINUTES } from "@/lib/presence";
 import { runCampaignTick } from "@/lib/campaigns/engine";
 import { runWinBackSweep } from "@/lib/campaigns/winback";
 import { runRetentionPurge, retentionMonths } from "@/lib/dataRetention";
+import { runCheckInTick, checkInsEnabled } from "@/lib/postSales/checkins";
+import { runPostSalesSlaScan, reconcileMissingJourneys } from "@/lib/postSales/sla";
 import { campaignsEnabled } from "@/lib/campaigns/types";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
@@ -170,6 +172,36 @@ const runWinBack = () =>
 runWinBack();
 setInterval(runWinBack, WINBACK_SWEEP_MS);
 logger.info(`Win-back sweep active (every ${WINBACK_SWEEP_MS / 3_600_000} h)`);
+
+// Post-sales care check-ins (§post-sales) — send every day 1/7/30/90 check-in that is
+// due, coordinated so no patient gets two care messages on the same day across their
+// journeys. A DB-polling tick like the campaign engine, so the clinical-consent and
+// safety gates re-evaluate on every attempt. Gated by POSTSALES_CHECKINS_ENABLED (off =
+// the tick is a no-op, schedules still build but nothing sends).
+const CHECKIN_TICK_MS = Number(process.env.POSTSALES_CHECKIN_TICK_MINUTES ?? 15) * 60_000;
+const runCheckIns = () =>
+  runCheckInTick().catch((err) => logger.error(`Post-sales check-in tick error: ${String(err)}`));
+runCheckIns();
+setInterval(runCheckIns, CHECKIN_TICK_MS);
+logger.info(
+  `Post-sales check-ins ${checkInsEnabled() ? "active" : "idle (POSTSALES_CHECKINS_ENABLED off)"} (tick every ${CHECKIN_TICK_MS / 60_000} min)`,
+);
+
+// Post-sales stage SLA (§post-sales) — flag journeys past their per-treatment stage
+// limit and alert the accountable consultant/doctor, once per stall. The same pass
+// reconciles any converted quote that somehow has no journey, so "every converted
+// patient is in the post-sales pipeline automatically" holds even if the conversion
+// crashed between committing the quote and opening the journey.
+const POSTSALES_SLA_MS = Number(process.env.POSTSALES_SLA_SCAN_HOURS ?? 6) * 60 * 60_000;
+const runPostSalesSla = async () => {
+  await reconcileMissingJourneys().catch((err) =>
+    logger.error(`Post-sales journey reconcile error: ${String(err)}`),
+  );
+  await runPostSalesSlaScan().catch((err) => logger.error(`Post-sales SLA scan error: ${String(err)}`));
+};
+runPostSalesSla();
+setInterval(runPostSalesSla, POSTSALES_SLA_MS);
+logger.info(`Post-sales SLA scan active (every ${POSTSALES_SLA_MS / 3_600_000} h)`);
 
 // Data-retention purge (§compliance C3) — once a day, redact recordings + transcripts
 // on calls older than DATA_RETENTION_MONTHS. OFF unless that env is set (runRetentionPurge

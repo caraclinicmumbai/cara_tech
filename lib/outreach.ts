@@ -32,22 +32,38 @@ export function istTime(d: Date): string {
   }).format(d);
 }
 
+/// Outcome of an automated send. Callers that only fire-and-forget can ignore it;
+/// the post-sales check-in engine needs to know whether it went and which Message
+/// row it produced, so the check-in can link into the patient's thread.
+export type AutomatedSendResult =
+  | { ok: true; messageId: string }
+  /// Nothing was attempted — the trigger is unset, WhatsApp isn't configured, or the
+  /// template isn't approved. Distinct from a failed send: retrying won't help until
+  /// someone configures it.
+  | { ok: false; sent: false; reason: string }
+  /// The send was attempted and failed (provider error) — worth retrying.
+  | { ok: false; sent: true; reason: string };
+
 /// Fire a configured automated template for a lead. No-op (safe) when the trigger
 /// is unset, WhatsApp isn't configured, or the template isn't approved. `vars` are
 /// candidate body values in order, sliced to the template's actual parameter count.
+///
+/// `opts.clinical` marks the send as a MEDICAL CARE message (§post-sales): exempt
+/// from the marketing opt-out, still refused if clinical consent is withheld.
 export async function sendAutomatedTemplate(
   leadId: string,
   templateName: string | undefined,
   vars: string[],
-): Promise<void> {
+  opts: { clinical?: boolean } = {},
+): Promise<AutomatedSendResult> {
   try {
-    if (!templateName) return; // trigger disabled
-    if (!isWhatsAppConfigured()) return;
+    if (!templateName) return { ok: false, sent: false, reason: "No template configured for this trigger" };
+    if (!isWhatsAppConfigured()) return { ok: false, sent: false, reason: "WhatsApp is not configured" };
 
     const tpl = (await listApprovedTemplates()).find((t) => t.name === templateName);
     if (!tpl) {
       logger.warn(`Automated WA template "${templateName}" not approved/found — skip lead ${leadId}`);
-      return;
+      return { ok: false, sent: false, reason: `Template "${templateName}" is not approved` };
     }
 
     const params = vars.slice(0, tpl.paramCount);
@@ -55,20 +71,29 @@ export async function sendAutomatedTemplate(
       logger.warn(
         `Automated WA "${templateName}" needs ${tpl.paramCount} var(s), have ${params.filter(Boolean).length} — skip lead ${leadId}`,
       );
-      return;
+      return {
+        ok: false,
+        sent: false,
+        reason: `Template "${templateName}" needs ${tpl.paramCount} variable(s)`,
+      };
     }
 
-    // sendLeadTemplate handles lead-not-found + opt-out + logging the Message.
+    // sendLeadTemplate handles lead-not-found + consent/opt-out + logging the Message.
     const res = await sendLeadTemplate(
       leadId,
       tpl.name,
       tpl.language,
       buildTemplateComponents(params),
-      { automated: true },
+      { automated: true, clinical: opts.clinical },
     );
-    if (res.ok) logger.info(`Automated WA "${templateName}" sent to lead ${leadId}`);
-    else logger.warn(`Automated WA "${templateName}" not sent (lead ${leadId}): ${res.error}`);
+    if (res.ok) {
+      logger.info(`Automated WA "${templateName}" sent to lead ${leadId}`);
+      return { ok: true, messageId: res.message.id };
+    }
+    logger.warn(`Automated WA "${templateName}" not sent (lead ${leadId}): ${res.error}`);
+    return { ok: false, sent: true, reason: res.error };
   } catch (err) {
     logger.error(`Automated WA "${templateName}" errored for lead ${leadId}: ${String(err)}`);
+    return { ok: false, sent: true, reason: String(err) };
   }
 }

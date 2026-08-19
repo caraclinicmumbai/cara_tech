@@ -49,15 +49,28 @@ triggered automatically on push to `main` (both web and worker rebuild:
   duration, recording URL, and `cqs` + `cqsBreakdown`.
 - **Message** — one WhatsApp message (inbound or outbound) — the unified thread.
 - **SalesRep** — a counsellor/telecaller who receives handovers (round-robin).
+- **Quote** — one *treatment* on a lead. The lead is the person; each quote converts on
+  its own, with its own price, status, invoice and journey (`cycle` numbers repeat
+  requests for the same treatment).
+- **PostSalesJourney** — the clinical track for one **converted quote**. Plus
+  **PostSalesCheckIn** (day 1/7/30/90 care messages), **PostSalesNote**, and
+  **TreatmentStagePolicy** (per-treatment stage time limits). See
+  [flow 9](flows/09-post-sales-journey.md).
 - **User / Account / Session** — Auth.js.
 
-### Two state fields, on purpose
+### Three state fields, on purpose
 
-`Lead.status` is the **internal automation state** (`new`, `manual_followup`,
-`confirmed`, `rescheduled`, `unreachable`, `not_interested`, …). `Lead.stage` is the
-**human-facing sales pipeline** (`fresh_inquiry` → … → `converted` / `lost`). They
-move independently: the automation drives `status`; `stage` is auto-advanced
-forward-only by call outcomes and freely editable by staff.
+Each belongs to a different thing, and they move independently:
+
+| Field | Belongs to | What it tracks |
+|---|---|---|
+| `Lead.status` | the person | **internal automation state** (`new`, `manual_followup`, `confirmed`, `unreachable`, …) — driven by the call pipeline |
+| `Lead.stage` | the person | **sales pipeline** (`ai_contacted` → … → `consultation_done` / `lost`) — auto-advanced forward-only by call outcomes, freely editable by staff |
+| `Quote.status` | the treatment | **commercial state** (`drafted` → … → `converted`). `converted` means a real invoice exists for that quote |
+| `PostSalesJourney.stage` | the treatment | **clinical state** (`converted` → … → `closed_successfully`) — owned by the post-sales team, not sales |
+
+A lead never "converts": it summarises its quotes. A patient with two converted
+treatments has two `Quote` rows and two `PostSalesJourney` rows, at different points.
 
 ## Conventions
 

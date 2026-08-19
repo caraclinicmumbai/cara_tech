@@ -7,6 +7,155 @@ Format: newest first.
 
 ---
 
+## 2026-08-19 — Open Quotes desk (`/quotes`)
+
+New nav section, gated on `quotes.view` (route guard: `routeCapability("/quotes")`).
+Files: `lib/openQuotes.ts` (read model), `app/(dashboard)/quotes/page.tsx`,
+`app/(dashboard)/layout.tsx`, `lib/rbac.ts`. No schema change.
+
+Every quote still in play — `drafted` / `sent` / `viewed` / `accepted` /
+`awaiting_payment` — on one screen, so a manager can see the money in the pipeline
+without opening leads one at a time.
+
+- **Five roll-up tiles**: open count, pipeline value (total payable), *gone quiet*
+  (no activity in `STALE_AFTER_DAYS` = 7d), *lapsing* (expired or inside
+  `EXPIRING_WITHIN_DAYS` = 7d), and *unassigned* (no counsellor on the quote).
+- **Money broken out per row** the way the quote itself computes it: base →
+  discount (as entered — `12.5%` or flat ₹ — plus the rupees it took off) → GST at
+  the quote's own stored rate → payable. Shared with the quote PDF via
+  `computeQuoteTotals()`, so the desk can't drift from the document.
+- **What has been DONE on the quote.** Quote actions are audited against the *lead*
+  with `meta.quoteId` (`leads/quoteActions.ts`), so the read model fetches the trail
+  by lead and regroups it by quote. Each row shows its last action and expands
+  (native `<details>`, no client JS) into the full trail — raised / price revised /
+  status moved / reassigned, each with actor, timestamp, and the `from → to`.
+  Revision count excludes the opening version a priced quote is created with.
+- **Filters are links**, not client state: status (with per-status count and value),
+  owner, branch, and the three problem pills. Owner and the pills filter in memory so
+  the tiles and the owner list keep showing the whole scope — the header reads
+  "Showing 3 of 27 · ₹x of ₹y".
+- **Scoped by lead visibility** (`leadWhereForUser`): a counsellor sees quotes on
+  their own leads; a manager sees the branch. Read-only by design — a quote is still
+  edited on its lead, where the rest of the person's context is.
+
+Known gap: the quote lifecycle (§multi-quote) still has no `flows/*.md` of its own.
+
+## 2026-08-19 — Leads table: six new columns (owner, follow-up, deal, last call, remark, updated)
+
+Migration `20260819135141_lead_remark`. Files: `app/(dashboard)/leads/page.tsx`,
+`components/LeadsTable.tsx`, `components/RemarkField.tsx`,
+`app/(dashboard)/leads/actions.ts`.
+
+The `/leads` table now carries the six fields a counsellor was previously opening each
+lead to read:
+
+- **Owner** — `Lead.assignedRep.name`, enum-filterable (blank shows as "Unassigned").
+- **Next follow-up** — the earliest *pending* `LeadFollowUpStep` with a due date, rendered
+  in IST with the step title as its tooltip; an overdue one (same `visualStatus()` rule as
+  the roadmap) renders red.
+- **Deal amount** — the total of the lead's **won** quotes (`converted` / `in_treatment` /
+  `completed`, `totalPayable` falling back to `price`). Before anything converts, the
+  latest still-open quote stands in, greyed, tooltipped "not converted yet".
+- **Calls / Last call** — the newest `Call.createdAt`. The page now loads each lead's calls
+  once (newest-first) and derives both the last-call date and the latest *scored* call's
+  CQS from that one list.
+- **Remark** — new `Lead.remark` column: a single mutable one-line staff note, edited
+  inline in the table like the tag (500 chars, audited old → new via
+  `setLeadRemark`, gated on `leads.comment`; read-only text without it). Deliberately
+  distinct from `LeadComment`, which stays the append-only authored thread.
+- **Updated** — `Lead.updatedAt` in IST.
+
+## 2026-08-18 — Post-sales ERP: one journey per converted quote (§post-sales)
+
+New flow doc: **[flows/09-post-sales-journey.md](flows/09-post-sales-journey.md)**.
+Migration `20260818084432_post_sales_erp`.
+
+The clinical side of the clinic — doctors, OT team, post-sales consultants, front desk —
+now has its own pipeline, attached to the **converted quote** rather than the lead. A
+patient who converts a hair transplant and a PRP course gets two journeys running at their
+own speeds.
+
+- **Three new RBAC roles** — `doctor`, `ot_team`, `post_sales_consultant` — and four
+  capabilities (`postsales.view` / `.manage` / `.checkins` / `.policy`). The spec's "the
+  post-sales team owns these stages, sales counsellors can't edit them" is expressed as the
+  capability split: counsellors get `view`, not `manage`.
+- **The clinical roles hold neither `leads.view` nor `calls.view`**, and `/leads` + `/calls`
+  are now capability-gated in `routeCapability()` (previously open to any signed-in user).
+  So "the post-sales team sees the summary — not the full call recordings" is access
+  control, not a hidden button. `leadScope()` also lists them as `own`-scoped as defence in
+  depth. New always-reachable `/no-access` page + `landingPath(role)` so gating `/leads`
+  can't bounce a doctor in a redirect loop.
+- **`PostSalesJourney`** (one per quote, `quoteId @unique`) — six stages
+  `converted → pre_op → surgery_done → post_op_followup → recovery_monitoring →
+  closed_successfully`. Opens automatically on conversion; forward moves are one click, a
+  **backward move needs a written reason**; entering `surgery_done` requires the surgery
+  date, which anchors the check-in schedule.
+- **Per-treatment stage time limits** (`TreatmentStagePolicy`, editable at
+  `/post-sales/policies`, built-in defaults live from day one): hair-transplant recovery
+  120d vs PRP 45d. Overdue → a `postsales.stage.overdue` audit row + a Slack alert to the
+  accountable consultant/doctor, deduped per stall via `overdueNotifiedAt`.
+- **`reconcileMissingJourneys()`** in the same worker pass opens a journey for any converted
+  quote that lacks one — closing the gap the spec calls "the single most likely bug in the
+  whole change".
+- **Care check-ins day 1/7/30/90** (`PostSalesCheckIn`). These are **medical messages, not
+  marketing**: a new explicit `SendOpts.clinical` flag exempts them from the `optedOut`
+  marketing suppression and the 12-in-30 ceiling, gated instead on the new
+  `Lead.consentClinical` (null = assumed for a patient under care; only explicit `false`
+  withholds). Safety flags and a missing template don't drop a check-in — they set it to
+  **`blocked` with a reason** so it stays on the board as a task for a person.
+- **The coordination rule** — at most **one care message per patient per IST day across all
+  their journeys**. Due rows are processed by ascending day-offset so the clinically closer
+  check-in claims the day and the other is pushed, with the reason shown in the UI. Keyed on
+  the day the message actually goes out, so two rows overdue from different days can't both
+  fire the same morning.
+- **Handover summary per converted quote** — name, procedure, price, **which branch
+  invoiced** (explicitly "not reported by billing" rather than passing the quoting branch
+  off as fact), language, comms preferences, clinical-consent state, safety flags,
+  counsellor notes, and every other quote open on the person. Snapshotted for the record,
+  recomputed live for the volatile parts. Reads no transcripts or recordings.
+- **Quote unlock now writes to the permanent log.** `unlockLeadQuote` required an admin and
+  a reason but only wrote a Winston line; it now writes a `lead.quote.unlock` audit row with
+  the reason, per "with a written reason in the permanent log".
+- **Removed `Quote.journeyStage`** — an unwritten scaffold column that would have been a
+  second source of truth beside `PostSalesJourney.stage`.
+- Screens: `/post-sales` board, `/post-sales/[id]` journey, `/post-sales/policies`. Worker:
+  check-in tick + SLA/reconcile pass. Backfill: `npm run backfill:journeys`.
+- **Off by default:** `POSTSALES_CHECKINS_ENABLED` unset = schedules generate and display
+  but nothing sends. The four WhatsApp templates are not yet approved, so every check-in
+  currently lands as a human task.
+
+Verified end-to-end against the local DB (40 assertions): two independent journeys on one
+patient, per-treatment timings differing, backward-move reason enforcement, schedule
+anchoring + idempotency, the coordination deferral, safety-flag blocking, and overdue
+alert + dedup + reset.
+
+**Not in this build** (next commit, design settled): calendar/appointments + reminders +
+no-show, the authenticated invoice webhook driving conversion, 7-day branch-credit
+disputes, daily ad-spend import.
+
+### Follow-up, same day — found by running it
+
+Driving the app in a browser (rather than trusting the assertions) turned up three things:
+
+- **Customised roles never received the new capabilities.** `RolePermission` override rows
+  replace a role's defaults wholesale, so the override rows for `front_desk`, `telecaller`
+  and `branch_manager` meant the ERP was invisible to exactly the staff meant to use it. New
+  `scripts/backfillRoleCapabilities.ts` (`npm run backfill:capabilities`, dry-run by
+  default, audited) unions in only newly-introduced keys, only where the role has them by
+  default — it never overrides an admin decision. It also reports customised roles that
+  can't reach a gated route without changing them.
+- **Login always redirected to `/dashboard`** and let the route guard bounce whoever
+  couldn't see it. That worked, but the bounce happens inside the Server Action's soft
+  navigation, so the URL bar was left reading `/dashboard` while a different page rendered —
+  for every role without `analytics.view`, not just the new clinical ones. `authenticate`
+  now resolves the role's real landing page up front (`landingPath`), and the login page
+  redirects an already-signed-in user the same way. Access control was never bypassed — the
+  rendered content was always the permitted page.
+- **The board wrapped 5 stages into a 3+2 grid**, breaking the left-to-right pipeline
+  reading and stranding an empty column mid-flow. Now one horizontally-scrolling row.
+
+---
+
 ## 2026-07-29 — Compliance set (DPDP): recording consent, digital-source consent, retention/erasure
 
 Backlog items C1–C3 (`docs/gaps-and-roadmap.md`). Additive schema change

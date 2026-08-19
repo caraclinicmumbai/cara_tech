@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/password";
 import { getClientIp } from "@/lib/rateLimit";
 import { isLoginLocked, recordLoginFailure, clearLoginFailures } from "@/lib/loginThrottle";
-import { can, routeCapability } from "@/lib/rbac";
+import { can, routeCapability, landingPath, NO_ACCESS_PATH } from "@/lib/rbac";
 import { ensurePermissions } from "@/lib/permissions";
 import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
@@ -68,18 +68,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async authorized({ auth: session, request: { nextUrl } }) {
       const isLoggedIn = !!session?.user;
       const isOnLogin = nextUrl.pathname === "/login";
+      const role = (session?.user as { role?: string } | undefined)?.role;
       if (isOnLogin) {
-        if (isLoggedIn) return Response.redirect(new URL("/leads", nextUrl));
+        // Sign-in landing depends on the role: sales staff go to the pipeline, the
+        // clinical roles (doctor / OT / post-sales consultant) go to the ERP board.
+        if (isLoggedIn) {
+          await ensurePermissions();
+          return Response.redirect(new URL(landingPath(role), nextUrl));
+        }
         return true;
       }
       if (!isLoggedIn) return false;
-      // RBAC route guard: bounce users who lack the page's capability to /leads
-      // (reachable by everyone). Defense-in-depth alongside per-action checks.
-      const role = (session!.user as { role?: string }).role;
+      // RBAC route guard — defense-in-depth alongside the per-action checks. A denied
+      // user is sent to their own landing page, which resolves to /no-access if they
+      // can't reach that either, so the guard can never bounce in a loop.
       const cap = routeCapability(nextUrl.pathname);
       if (cap) {
         await ensurePermissions(); // respect admin overrides on the route matrix
-        if (!can(role, cap)) return Response.redirect(new URL("/leads", nextUrl));
+        if (!can(role, cap)) {
+          const target = landingPath(role);
+          if (nextUrl.pathname === target) return Response.redirect(new URL(NO_ACCESS_PATH, nextUrl));
+          return Response.redirect(new URL(target, nextUrl));
+        }
       }
       return true;
     },

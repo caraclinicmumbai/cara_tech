@@ -110,6 +110,12 @@ type SendOpts = {
   automated?: boolean;
   /// agent email for manual sends (shown in the thread; null for automated).
   sentBy?: string;
+  /// true = a MEDICAL CARE message, not marketing (§post-sales check-ins). Care
+  /// messages are governed by CLINICAL consent, so they are exempt from the
+  /// `optedOut` marketing suppression — a patient who unsubscribed from promotions
+  /// still gets their day-7 post-op check-in. An explicit `consentClinical === false`
+  /// still refuses. Only lib/postSales/ sets this; nothing else should.
+  clinical?: boolean;
 };
 
 /// Log a blocked/undelivered outbound so it's VISIBLE in the thread instead of
@@ -315,7 +321,14 @@ export async function sendLeadTemplate(
 ): Promise<{ ok: true; message: Message } | { ok: false; error: string }> {
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) return { ok: false, error: "Lead not found" };
-  if (lead.optedOut) return { ok: false, error: "Lead has opted out of messaging" };
+  // A clinical care message is exempt from the marketing opt-out (§post-sales), but
+  // never from clinical consent being explicitly withheld.
+  if (opts.clinical) {
+    if (lead.consentClinical === false)
+      return { ok: false, error: "Clinical consent withheld — care messages are not permitted" };
+  } else if (lead.optedOut) {
+    return { ok: false, error: "Lead has opted out of messaging" };
+  }
 
   const res = await sendWhatsAppTemplate(lead.phone, templateName, languageCode, components);
   const message = await prisma.message.create({

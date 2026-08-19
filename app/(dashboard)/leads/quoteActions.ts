@@ -351,7 +351,13 @@ export async function unlockLeadQuote(input: {
   reason: string;
 }): Promise<Result> {
   const user = await requireCapability("quotes.unlock");
-  if (!input.reason?.trim()) return { ok: false, error: "A reason is required to unlock" };
+  const reason = input.reason?.trim();
+  if (!reason) return { ok: false, error: "A reason is required to unlock" };
+
+  const before = await prisma.quote.findUnique({
+    where: { id: input.quoteId },
+    select: { status: true, journey: { select: { id: true, stage: true } } },
+  });
 
   try {
     await unlockQuote(input.quoteId);
@@ -360,8 +366,31 @@ export async function unlockLeadQuote(input: {
     logger.error(`unlockLeadQuote failed for ${input.quoteId}: ${String(err)}`);
     return { ok: false, error: "Could not unlock the quote" };
   }
-  logger.info(`Quote ${input.quoteId} unlocked by ${user.email ?? "?"}: ${input.reason.trim()}`);
+  // §multi-quote: "Only the Admin can unlock a converted quote, with a written reason
+  // in the permanent log." The AuditLog IS that log (append-only, hash-chained) — a
+  // Winston line is not, so the reason is written here as well as logged.
+  // The post-sales journey is deliberately NOT torn down: care already given is a
+  // record, and the journey page shows the quote as unlocked so the clinical team
+  // knows the commercial side is being edited under them.
+  await writeAudit({
+    actorId: user.id,
+    actorEmail: user.email,
+    action: "lead.quote.unlock",
+    entityType: "quote",
+    entityId: input.quoteId,
+    field: "lockedAt",
+    oldValue: before?.status ?? null,
+    newValue: "accepted",
+    reason,
+    meta: {
+      leadId: input.leadId,
+      journeyId: before?.journey?.id ?? null,
+      journeyStage: before?.journey?.stage ?? null,
+    },
+  });
+  logger.info(`Quote ${input.quoteId} unlocked by ${user.email ?? "?"}: ${reason}`);
   revalidatePath(`/leads/${input.leadId}`);
+  if (before?.journey?.id) revalidatePath(`/post-sales/${before.journey.id}`);
   return { ok: true };
 }
 

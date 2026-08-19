@@ -49,9 +49,19 @@ export default async function DashboardLayout({
           {can(role, "analytics.view") && (
             <Link href="/dashboard" className={navLink}>Dashboard</Link>
           )}
-          <Link href="/leads" className={navLink}>Leads</Link>
+          {can(role, "leads.view") && (
+            <Link href="/leads" className={navLink}>Leads</Link>
+          )}
           {can(role, "leads.walkin") && (
             <Link href="/leads/walk-in" className={navLink}>Walk-in</Link>
+          )}
+          {/* Every quote still in play — the money side of the pipeline (§multi-quote). */}
+          {can(role, "quotes.view") && (
+            <Link href="/quotes" className={navLink}>Open Quotes</Link>
+          )}
+          {/* Post-Sales ERP (§post-sales) — for the clinical roles this is the whole app. */}
+          {can(role, "postsales.view") && (
+            <Link href="/post-sales" className={navLink}>Post-Sales</Link>
           )}
           {can(role, "calls.view") && (
             <Link href="/calls" className={navLink}>Calls</Link>
