@@ -89,6 +89,9 @@ export default async function LeadDetailPage({
   const windowOpen = await isServiceWindowOpen(lead.id);
   const canViewQuotes = can(viewer.role, "quotes.view");
   const canManageQuotes = can(viewer.role, "quotes.manage");
+  // The internal history summary carries call transcripts, so it needs `calls.view`
+  // on top of `quotes.view` — matching the route that serves it.
+  const canViewQuoteHistory = canViewQuotes && can(viewer.role, "calls.view");
   const quoteSummary = summariseQuotes(lead.quotes);
   // Assignable owners for the per-quote owner picker (active, non-sales-head reps).
   const quoteReps = canManageQuotes
@@ -338,6 +341,7 @@ export default async function LeadDetailPage({
           <QuotesPanel
             leadId={lead.id}
             canManage={canManageQuotes}
+            canViewHistory={canViewQuoteHistory}
             windowOpen={windowOpen}
             templateConfigured={!!process.env.QUOTE_DOC_TEMPLATE_NAME}
             reps={quoteReps}

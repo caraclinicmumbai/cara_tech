@@ -91,6 +91,7 @@ export function QuotesPanel({
   reps,
   catalog,
   canManage,
+  canViewHistory = false,
   windowOpen,
   templateConfigured,
 }: {
@@ -99,6 +100,9 @@ export function QuotesPanel({
   reps: Rep[];
   catalog: CatalogGroups[];
   canManage: boolean;
+  /// Staff who may pull the internal history summary (needs `calls.view` too — the
+  /// document contains transcripts).
+  canViewHistory?: boolean;
   windowOpen: boolean;
   templateConfigured: boolean;
 }) {
@@ -207,6 +211,19 @@ export function QuotesPanel({
                   >
                     📄 PDF
                   </a>
+                  {/* Internal history summary — converted quotes only, and only for
+                      staff who can see calls (it carries transcripts). */}
+                  {canViewHistory && isQuoteLocked(q.status) && (
+                    <a
+                      href={`/api/quotes/${q.id}/history`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Internal history summary: ownership, quotation, every conversation and contact. Not for the patient."
+                      className="text-purple-700 hover:underline dark:text-purple-400"
+                    >
+                      🗂 History PDF
+                    </a>
+                  )}
                   {canManage && (
                     <button
                       disabled={pending || !canSendWhatsApp}
