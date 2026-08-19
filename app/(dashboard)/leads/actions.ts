@@ -20,6 +20,7 @@ import { writeAudit, auditLeadFieldUpdate, auditLeadFieldChanges } from "@/lib/a
 import { logger } from "@/lib/logger";
 
 const TAG_MAX = 120;
+const REMARK_MAX = 500;
 const REASON_MAX = 300;
 const MESSAGE_MAX = 4096; // WhatsApp text body limit
 const COMMENT_MAX = 4000;
@@ -203,6 +204,25 @@ export async function setLeadTag(leadId: string, tag: string): Promise<void> {
     data: { tag: trimmed || null },
   });
   await auditLeadFieldUpdate(user, leadId, "tag", before?.tag ?? null, trimmed || null);
+
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${leadId}`);
+}
+
+/// Edit the lead's one-line staff remark, inline from the leads dashboard.
+/// Audited like any other staff field edit (old → new).
+export async function setLeadRemark(leadId: string, remark: string): Promise<void> {
+  const user = await requireCapability("leads.comment");
+  if (!(await userCanAccessLead(user, leadId))) throw new Error("Lead not found");
+
+  const trimmed = remark.trim().slice(0, REMARK_MAX);
+  const before = await prisma.lead.findUnique({ where: { id: leadId }, select: { remark: true } });
+  if (!before) throw new Error("Lead not found");
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { remark: trimmed || null },
+  });
+  await auditLeadFieldUpdate(user, leadId, "remark", before.remark, trimmed || null);
 
   revalidatePath("/leads");
   revalidatePath(`/leads/${leadId}`);

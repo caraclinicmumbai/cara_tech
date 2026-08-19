@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { StageSelect } from "@/components/StageSelect";
 import { TagField } from "@/components/TagField";
 import { LeadDeleteButton } from "@/components/LeadDeleteButton";
+import { RemarkField } from "@/components/RemarkField";
 
 export type LeadRow = {
   id: string;
@@ -18,6 +19,19 @@ export type LeadRow = {
   interest: string | null;
   status: string;
   created: string;
+  updated: string;
+  /// Name of the sales rep who owns the lead (null = unassigned).
+  assignedRep: string | null;
+  /// Earliest pending follow-up step: pre-formatted time + its title (tooltip).
+  /// `nextFollowUpOverdue` is derived server-side (dueAt in the past).
+  nextFollowUp: string | null;
+  nextFollowUpTitle: string | null;
+  nextFollowUpOverdue: boolean;
+  /// Rupee value of the lead's won quotes, or the latest open quote if none won.
+  dealAmount: number | null;
+  dealWon: boolean;
+  lastCall: string | null;
+  remark: string | null;
   calls: number;
   cqs: number | null;
   duplicateOfId: string | null;
@@ -47,11 +61,13 @@ export function LeadsTable({
   sourceLabels,
   stageLabels,
   canDelete = false,
+  canRemark = false,
 }: {
   leads: LeadRow[];
   sourceLabels: Record<string, string>;
   stageLabels: Record<string, string>;
   canDelete?: boolean;
+  canRemark?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [enumFilters, setEnumFilters] = useState<Record<string, Set<string>>>({});
@@ -80,7 +96,27 @@ export function LeadsTable({
       { key: "tag", label: "Tag", value: (l) => l.tag ?? "", filter: "text" },
       { key: "interest", label: "Treatment", value: (l) => l.interest ?? "", filter: "text" },
       { key: "status", label: "Status", value: (l) => l.status, filter: "enum" },
+      {
+        key: "assignedRep",
+        label: "Owner",
+        value: (l) => l.assignedRep ?? "",
+        display: (v) => v || "Unassigned",
+        filter: "enum",
+      },
+      {
+        key: "nextFollowUp",
+        label: "Next follow-up",
+        value: (l) => l.nextFollowUp ?? "",
+        filter: "none",
+      },
+      {
+        key: "dealAmount",
+        label: "Deal amount",
+        value: (l) => (l.dealAmount == null ? "" : String(l.dealAmount)),
+        filter: "none",
+      },
       { key: "calls", label: "Calls", value: (l) => String(l.calls), filter: "enum", number: true },
+      { key: "lastCall", label: "Last call", value: (l) => l.lastCall ?? "", filter: "none" },
       {
         key: "cqs",
         label: "CQS",
@@ -89,7 +125,9 @@ export function LeadsTable({
         filter: "enum",
         number: true,
       },
+      { key: "remark", label: "Remark", value: (l) => l.remark ?? "", filter: "text" },
       { key: "created", label: "Created", value: (l) => l.created, filter: "none" },
+      { key: "updated", label: "Updated", value: (l) => l.updated, filter: "none" },
     ],
     [sourceLabels, stageLabels],
   );
@@ -300,7 +338,47 @@ export function LeadsTable({
                   </span>
                 </td>
                 <td className="whitespace-nowrap px-4 py-2">{lead.status}</td>
+                <td className="whitespace-nowrap px-4 py-2">
+                  {lead.assignedRep ?? (
+                    <span className="text-black/40 dark:text-white/40">Unassigned</span>
+                  )}
+                </td>
+                <td className="whitespace-nowrap px-4 py-2">
+                  {lead.nextFollowUp ? (
+                    <span
+                      title={lead.nextFollowUpTitle ?? undefined}
+                      className={
+                        lead.nextFollowUpOverdue
+                          ? "rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-700 dark:text-red-400"
+                          : "text-black/60 dark:text-white/60"
+                      }
+                    >
+                      {lead.nextFollowUp}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums">
+                  {lead.dealAmount == null ? (
+                    "—"
+                  ) : (
+                    <span
+                      title={
+                        lead.dealWon
+                          ? "Total of won quotes"
+                          : "Latest open quote — not converted yet"
+                      }
+                      className={lead.dealWon ? "font-medium" : "text-black/60 dark:text-white/60"}
+                    >
+                      ₹{lead.dealAmount.toLocaleString("en-IN")}
+                    </span>
+                  )}
+                </td>
                 <td className="whitespace-nowrap px-4 py-2">{lead.calls}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-black/60 dark:text-white/60">
+                  {lead.lastCall ?? "—"}
+                </td>
                 <td className="whitespace-nowrap px-4 py-2">
                   {typeof lead.cqs === "number" ? (
                     <span
@@ -319,8 +397,23 @@ export function LeadsTable({
                     "—"
                   )}
                 </td>
+                <td className="px-4 py-2">
+                  {canRemark ? (
+                    <RemarkField leadId={lead.id} remark={lead.remark} />
+                  ) : (
+                    <span
+                      className="block max-w-[18rem] truncate text-xs"
+                      title={lead.remark ?? undefined}
+                    >
+                      {lead.remark ?? "—"}
+                    </span>
+                  )}
+                </td>
                 <td className="whitespace-nowrap px-4 py-2 text-black/60 dark:text-white/60">
                   {lead.created}
+                </td>
+                <td className="whitespace-nowrap px-4 py-2 text-black/60 dark:text-white/60">
+                  {lead.updated}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2 text-right">
                   {canDelete ? (
@@ -333,7 +426,7 @@ export function LeadsTable({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td className="px-3 py-6 text-center text-black/50" colSpan={12}>
+                <td className="px-3 py-6 text-center text-black/50" colSpan={columns.length + 1}>
                   No leads match the current filters.
                 </td>
               </tr>

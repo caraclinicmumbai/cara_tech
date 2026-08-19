@@ -29,6 +29,11 @@ model Lead {
   // the post-call write-back, staff-editable. Free text.
   tag   String?
 
+  // Short staff remark shown inline on the leads dashboard — the one-line "where
+  // this stands" note, edited straight from the table. DISTINCT from LeadComment:
+  // that's an append-only thread with authors; this is a single mutable field.
+  remark String?
+
   // ── Stage-age tracking (§3.1) — `stageChangedAt` is set whenever `stage` moves
   //    (auto-advance or manual), so the worker can flag a lead "stuck in stage"
   //    past the SLA and alert the counsellor. `stageStuckNotifiedAt` dedups that

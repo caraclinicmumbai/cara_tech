@@ -7,6 +7,31 @@ Format: newest first.
 
 ---
 
+## 2026-08-19 — Leads table: six new columns (owner, follow-up, deal, last call, remark, updated)
+
+Migration `20260819135141_lead_remark`. Files: `app/(dashboard)/leads/page.tsx`,
+`components/LeadsTable.tsx`, `components/RemarkField.tsx`,
+`app/(dashboard)/leads/actions.ts`.
+
+The `/leads` table now carries the six fields a counsellor was previously opening each
+lead to read:
+
+- **Owner** — `Lead.assignedRep.name`, enum-filterable (blank shows as "Unassigned").
+- **Next follow-up** — the earliest *pending* `LeadFollowUpStep` with a due date, rendered
+  in IST with the step title as its tooltip; an overdue one (same `visualStatus()` rule as
+  the roadmap) renders red.
+- **Deal amount** — the total of the lead's **won** quotes (`converted` / `in_treatment` /
+  `completed`, `totalPayable` falling back to `price`). Before anything converts, the
+  latest still-open quote stands in, greyed, tooltipped "not converted yet".
+- **Calls / Last call** — the newest `Call.createdAt`. The page now loads each lead's calls
+  once (newest-first) and derives both the last-call date and the latest *scored* call's
+  CQS from that one list.
+- **Remark** — new `Lead.remark` column: a single mutable one-line staff note, edited
+  inline in the table like the tag (500 chars, audited old → new via
+  `setLeadRemark`, gated on `leads.comment`; read-only text without it). Deliberately
+  distinct from `LeadComment`, which stays the append-only authored thread.
+- **Updated** — `Lead.updatedAt` in IST.
+
 ## 2026-08-18 — Post-sales ERP: one journey per converted quote (§post-sales)
 
 New flow doc: **[flows/09-post-sales-journey.md](flows/09-post-sales-journey.md)**.
