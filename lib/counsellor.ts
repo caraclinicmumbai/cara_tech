@@ -18,7 +18,8 @@ export type CounsellorAlertKind =
   | "fast_track"
   | "threat"
   | "premature_lost"
-  | "stage_sla";
+  | "stage_sla"
+  | "missed_inbound";
 
 const HEADERS: Record<CounsellorAlertKind, string> = {
   ai_handoff: "🤝 AI handoff — needs a counsellor",
@@ -26,6 +27,7 @@ const HEADERS: Record<CounsellorAlertKind, string> = {
   threat: "🚨 Threat / abusive lead flagged",
   premature_lost: "⚠️ Premature lost — review",
   stage_sla: "⏰ Lead stuck in stage",
+  missed_inbound: "📞 Missed inbound call — voicemail left",
 };
 
 /// Where counsellor notifications go — a counsellor/supervisor channel or Slack

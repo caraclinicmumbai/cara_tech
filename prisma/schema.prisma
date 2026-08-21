@@ -290,7 +290,9 @@ model Call {
   id           String  @id @default(cuid())
   leadId       String
   lead         Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  callType     String // initial | reconfirmation | human_handover
+  // initial | reconfirmation | human_handover — outbound; plus the two inbound kinds
+  // from the clinic line (§presence): a connected patient call, and a voicemail.
+  callType     String // initial | reconfirmation | human_handover | inbound | inbound_voicemail
   transcript   String?
   outcome      String? // confirmed | no_answer | rescheduled | not_interested
   sentiment    String? // positive | neutral | negative

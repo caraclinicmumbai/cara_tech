@@ -7,6 +7,40 @@ Format: newest first.
 
 ---
 
+## 2026-08-22 — Inbound call routing for the published clinic number
+
+New flow doc: **[flows/11-inbound-call-routing.md](flows/11-inbound-call-routing.md)**.
+Files: `lib/inboundRouting.ts` (policy), `app/api/twilio/inbound/*` (Twilio adapter,
+whisper, voicemail), `lib/providers/twilio.ts` (TwiML builders), `lib/leadIntake.ts`
+(new `inbound_call` source), `lib/counsellor.ts` (`missed_inbound` alert). No schema
+change; `Call.callType` gains `inbound` / `inbound_voicemail` by convention.
+
+A patient ringing the number on the website now reaches **the counsellor they already
+spoke to**, and only falls elsewhere when that person genuinely can't take it:
+
+```
+owner (sticky) → same-speciality colleague → round-robin → ~25s hold → voicemail
+```
+
+- **Sticky is lead ownership** — the caller returns to `Lead.assignedRepId` for as long
+  as they own the lead. Unknown numbers become leads (source `inbound_call`, which
+  never triggers an AI cold-call) and are assigned once, so the second call is sticky.
+- **Reachable** = active, `available`, not already `onCall`, and holding a dialable
+  number. Answering flips the rep to In-Consultation via the whisper callback, so the
+  next call doesn't ring a handset already in use.
+- **The hold drops `tried` deliberately** — a counsellor who hangs up during the hold
+  takes the call rather than it going to voicemail because everyone was momentarily busy.
+- **Voicemail is accountable**: stored as a Call, transcribed, a "Return missed call"
+  step added to the owner's roadmap due now, and a Slack alert. Idempotent on CallSid
+  (Twilio fires the callback twice).
+- Every route verifies `X-Twilio-Signature`. The `tried` list uses repeated params of
+  bare cuids because Next re-encodes `,` → `%2C` in `req.url`, which would fail the
+  signature comparison and silently 403 the whole ladder.
+
+**Not live yet.** Production has no Twilio configuration and the website number is not
+pointed at the webhook; a Twilio +91 number also needs India regulatory approval before
+it can receive calls. Verified against signed simulated Twilio requests end to end.
+
 ## 2026-08-21 — Sales-rep speciality is a fixed list, not free text
 
 Files: `lib/specialities.ts` (new), `components/UsersAdmin.tsx`,

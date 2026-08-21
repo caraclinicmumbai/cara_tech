@@ -21,7 +21,8 @@ export type LeadSource =
   | "facebook"
   | "instagram"
   | "google"
-  | "whatsapp";
+  | "whatsapp"
+  | "inbound_call";
 
 export type NormalizedLead = {
   name: string;
@@ -63,6 +64,8 @@ function digitalConsentBasis(source: LeadSource): string | null {
       return "Google Lead Form — privacy policy accepted on the form";
     case "whatsapp":
       return "User-initiated WhatsApp contact";
+    case "inbound_call":
+      return "Patient called the clinic line — user-initiated contact";
     default:
       return null; // manual | referral | walk_in — consent captured elsewhere
   }
@@ -71,7 +74,10 @@ function digitalConsentBasis(source: LeadSource): string | null {
 /// Sources that must NEVER trigger an automated AI call (§3.1.2 exceptions):
 /// the lead is physically present or just spoken to, so we route to manual
 /// follow-up instead. Distinct from the env-configurable PAUSE_AUTO_CALL_SOURCES.
-const NEVER_AUTO_CALL: readonly LeadSource[] = ["walk_in"];
+/// `inbound_call` is here for the same reason as `walk_in`: the person is ON THE PHONE
+/// with us. Firing an automated AI cold-call at someone who just rang the clinic is the
+/// worst possible first impression, so inbound callers go to the manual queue instead.
+const NEVER_AUTO_CALL: readonly LeadSource[] = ["walk_in", "inbound_call"];
 
 function isNeverAutoCall(source: LeadSource): boolean {
   return NEVER_AUTO_CALL.includes(source);
