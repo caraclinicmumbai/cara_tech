@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/authz";
 import { hashPassword } from "@/lib/password";
 import { isRole } from "@/lib/rbac";
+import { SPECIALITIES, isSpeciality } from "@/lib/specialities";
 import { logger } from "@/lib/logger";
 
 type Result = { ok: boolean; error?: string };
@@ -145,13 +146,17 @@ export async function createRep(input: {
   const phone = input.phone?.trim();
   if (!name) return { ok: false, error: "Name required" };
   if (!phone) return { ok: false, error: "Phone (E.164) required" };
+  const speciality = input.speciality?.trim() || "";
+  if (speciality && !isSpeciality(speciality)) {
+    return { ok: false, error: `Speciality must be one of: ${SPECIALITIES.join(", ")}` };
+  }
   await prisma.salesRep.create({
     data: {
       name,
       phone,
       slackUserId: input.slackUserId?.trim() || null,
       salesHead: !!input.salesHead,
-      speciality: input.speciality?.trim() || null,
+      speciality: speciality || null,
       active: true,
     },
   });
@@ -175,12 +180,17 @@ export async function setRepSalesHead(repId: string, salesHead: boolean): Promis
 }
 
 /// Set a rep's speciality/skill (§presence) — an offline counsellor's leads prefer a
-/// colleague with the same speciality. Free text; blank = generalist.
+/// colleague with the same speciality. One of SPECIALITIES; blank = generalist.
+/// Validated here as well as in the dropdown: the action is reachable by direct POST.
 export async function setRepSpeciality(repId: string, speciality: string): Promise<Result> {
   await requireCapability("reps.manage");
+  const value = speciality.trim();
+  if (value && !isSpeciality(value)) {
+    return { ok: false, error: `Speciality must be one of: ${SPECIALITIES.join(", ")}` };
+  }
   await prisma.salesRep.update({
     where: { id: repId },
-    data: { speciality: speciality.trim() || null },
+    data: { speciality: value || null },
   });
   revalidatePath("/users");
   return { ok: true };

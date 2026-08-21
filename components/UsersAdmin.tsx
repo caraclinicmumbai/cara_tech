@@ -16,6 +16,7 @@ import {
   setRepSpeciality,
 } from "@/app/(dashboard)/users/actions";
 import { availabilityMeta } from "@/lib/presenceStatus";
+import { SPECIALITIES, isSpeciality, specialityLabel } from "@/lib/specialities";
 
 type UserRow = {
   id: string;
@@ -182,8 +183,11 @@ export function UsersAdmin({
             onChange={(e) => setNr({ ...nr, phone: e.target.value })} />
           <input className={inputCls} placeholder="Slack member ID (U…)" value={nr.slackUserId}
             onChange={(e) => setNr({ ...nr, slackUserId: e.target.value })} />
-          <input className={inputCls} placeholder="Speciality (e.g. Hair)" value={nr.speciality}
-            onChange={(e) => setNr({ ...nr, speciality: e.target.value })} />
+          <select className={inputCls} value={nr.speciality} aria-label="Speciality"
+            onChange={(e) => setNr({ ...nr, speciality: e.target.value })}>
+            <option value="">Speciality — Generalist</option>
+            {SPECIALITIES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
           <label className="flex items-center gap-1 text-sm">
             <input type="checkbox" checked={nr.salesHead}
               onChange={(e) => setNr({ ...nr, salesHead: e.target.checked })} />
@@ -224,16 +228,22 @@ export function UsersAdmin({
                     </span>
                   </td>
                   <td className="px-3 py-2">
-                    <input
-                      className={`${inputCls} w-28`}
+                    <select
+                      className={`${inputCls} w-32`}
+                      aria-label={`Speciality for ${r.name}`}
                       defaultValue={r.speciality ?? ""}
-                      placeholder="—"
                       disabled={pending}
-                      onBlur={(e) => {
-                        if ((e.target.value.trim() || null) !== (r.speciality ?? null))
-                          run(() => setRepSpeciality(r.id, e.target.value));
-                      }}
-                    />
+                      onChange={(e) => run(() => setRepSpeciality(r.id, e.target.value))}
+                    >
+                      <option value="">Generalist</option>
+                      {SPECIALITIES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      {/* A rep saved before the list existed can hold arbitrary text.
+                          Keep it selectable so the row shows what is actually stored
+                          rather than silently reading as Generalist. */}
+                      {r.speciality && !isSpeciality(r.speciality) && (
+                        <option value={r.speciality}>{specialityLabel(r.speciality)}</option>
+                      )}
+                    </select>
                   </td>
                   <td className="px-3 py-2">{r.userEmail ?? "—"}</td>
                   <td className="px-3 py-2">

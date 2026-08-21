@@ -7,6 +7,27 @@ Format: newest first.
 
 ---
 
+## 2026-08-21 — Sales-rep speciality is a fixed list, not free text
+
+Files: `lib/specialities.ts` (new), `components/UsersAdmin.tsx`,
+`app/(dashboard)/users/actions.ts`. No schema change — `SalesRep.speciality` stays a
+nullable string; the constraint is enforced in the app.
+
+The speciality box on the sales-rep roster (`/users`) was free text, so "Hair",
+"hair transplant" and a typo were all storable — and `pickReplacementFor()`
+(`lib/salesReps.ts`) matches on equality, so a mismatched string silently means an
+offline counsellor's leads never find the same-skill colleague they were meant to.
+
+- **Both controls are now dropdowns**: the Add-rep form and the per-row editor, offering
+  **Hair / Skin / Face** plus a blank "Generalist".
+- **Validated server-side too** in `createRep()` and `setRepSpeciality()` — the actions
+  are reachable by direct POST, so the dropdown alone isn't a constraint.
+- **Pre-existing values are preserved, not silently rewritten.** A rep saved before the
+  list existed (local dev has one holding `"hair transplant"`) keeps that value as a
+  selectable option labelled `(unrecognised)`, so the row shows what is actually stored
+  instead of reading as Generalist. Picking a real speciality replaces it; nothing
+  rewrites it in the background.
+
 ## 2026-08-19 — Internal patient history summary PDF (converted quotes)
 
 Files: `lib/patientHistory.ts` (read model), `lib/historyPdf.ts` (renderer),
