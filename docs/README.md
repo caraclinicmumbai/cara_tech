@@ -30,6 +30,8 @@ data model, integrations), then dip into the flow you care about.
 | 9 | [Post-sales journey / ERP](flows/09-post-sales-journey.md) | The clinical side: one journey per converted quote, per-treatment stage limits, coordinated day 1/7/30/90 care check-ins, handover summary |
 | 10 | [Quote lifecycle](flows/10-quote-lifecycle.md) | The commercial track: raise → price → revise → send → accept → convert, the money maths, the Open Quotes desk, and what locks on conversion |
 
+| 11 | [Inbound call routing](flows/11-inbound-call-routing.md) | Patients calling the published clinic number: sticky routing to their own counsellor, cover ladder, hold, voicemail |
+
 **Also:** [ElevenLabs agent ↔ CRM integration contract](elevenlabs-agent-integration.md) —
 what the AI first-call agent must emit (outcome, handover keys, callback time, tag,
 language) for the automation to fire correctly.
@@ -53,6 +55,10 @@ Each flow lists its own limitations; the cross-cutting ones worth knowing up fro
   do-not-call _time window_ is enforced; statutory DND scrubbing is not. See flow 2.
 - **Meta lead auto-calling is paused** for `facebook`/`instagram` pending App Review of
   `leads_retrieval` advanced access. See flow 1.
+- **Inbound call routing is built but not live.** Production has no Twilio config and
+  the website number isn't pointed at the webhook yet; the flow is verified against
+  signed simulated requests only. A Twilio +91 number also needs India regulatory
+  approval before it can receive calls. See flow 11.
 - **Nothing expires a quote automatically.** `expiresAt` is stamped at creation and shown
   in the UI, but no sweep flips a lapsed quote to `expired` and the spec's 48h expiry
   nudge doesn't exist — a lapsed quote keeps counting as open until someone moves it by

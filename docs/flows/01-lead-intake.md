@@ -45,9 +45,31 @@ A new lead arrives from one of these channels:
 4. **Attribution surfaces in the UI** — the Meta campaign shows as a column in the
    leads list.
 
+## Ownership at intake
+
+**Every lead gets a telecaller the moment it arrives** — before any AI call, not at
+handover. `pickOwnerRep` (`lib/salesReps.ts`) takes the least-recently-assigned active
+counsellor (sales heads excluded, `SalesRep.lastAssignedAt` is the rota cursor) and
+`assignLeadToRep` records it on the lead + the audit trail as a system assignment.
+
+- Applies to **every** lead — walk-ins, duplicates, held-for-review, and a cold
+  WhatsApp enquiry that auto-creates a lead (`findOrCreateLeadByPhone`, flow 6).
+- **Presence is a preference, not a filter.** An `available` counsellor is picked
+  first; if the whole team is on break/offline the lead still goes to the
+  least-recently-assigned active rep. Ownership means "whose lead is this to follow
+  up", not "who can answer right now" — an ownerless lead shows up in nobody's *my
+  leads* and gives a later handover nobody to notify.
+- **No notification fires here.** The counsellor is pinged when the AI hands the lead
+  over (flow 4), and that handover goes to **this same owner** rather than picking a
+  new one.
+- Only an empty roster (no active non-head rep) leaves a lead unowned; that logs a
+  warning. `scripts/backfillLeadOwners.ts` assigns any leads already in that state.
+
 ## Key files
 
 - `lib/leadIntake.ts` — `ingestLead`, `NEVER_AUTO_CALL`, `PAUSE_AUTO_CALL_SOURCES`
+- `lib/salesReps.ts` — `pickOwnerRep` (rota) / `assignLeadToRep` (ownership + audit)
+- `scripts/backfillLeadOwners.ts` — assign leads that predate ownership-at-intake
 - `lib/providers/meta.ts`, `lib/providers/google.ts` — channel adapters
 - `lib/rateLimit.ts` — IP throttle / held-for-review counters (Redis)
 - `app/api/intake/*` — intake endpoints

@@ -174,3 +174,89 @@ export async function fetchTwilioRecording(
     return null;
   }
 }
+
+// ── Inbound calls to the published clinic number (§presence) ──────────────────
+// The Voice webhook on that number answers, greets, and bridges the caller to the
+// counsellor chosen by lib/inboundRouting.ts. WHO to ring is decided there; these
+// helpers only render the call control.
+
+/// The clinic number patients dial. Used as the caller ID on the rep's leg, so an
+/// inbound patient call shows as "the clinic" rather than the patient's own number
+/// (the whisper names the patient instead). Falls back to the webhook's To.
+export function inboundCallerId(to?: string | null): string {
+  return process.env.TWILIO_INBOUND_NUMBER ?? to ?? process.env.TWILIO_CALLER_ID ?? "";
+}
+
+const GREETING =
+  process.env.CLINIC_CALL_GREETING ??
+  "Thank you for calling. Please hold while we connect you to a counsellor. This call may be recorded for quality and training purposes.";
+
+/// Ring one counsellor. `action` is fetched when the leg ends for ANY reason
+/// (no answer, busy, or a completed conversation), which is what drives the
+/// fall-through ladder. `whisperUrl` plays to the counsellor only.
+export function inboundDialRepTwiML(opts: {
+  repPhone: string;
+  callerId: string;
+  whisperUrl: string;
+  actionUrl: string;
+  recordingCallbackUrl: string;
+  timeoutSec: number;
+  greet: boolean;
+}): string {
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<Response>` +
+    (opts.greet ? `<Say>${xmlEscape(GREETING)}</Say>` : "") +
+    `<Dial timeout="${opts.timeoutSec}" callerId="${xmlEscape(opts.callerId)}" ` +
+    `action="${xmlEscape(opts.actionUrl)}" method="POST" ` +
+    `record="record-from-answer-dual" ` +
+    `recordingStatusCallback="${xmlEscape(opts.recordingCallbackUrl)}" ` +
+    `recordingStatusCallbackEvent="completed">` +
+    `<Number url="${xmlEscape(opts.whisperUrl)}">${xmlEscape(opts.repPhone)}</Number>` +
+    `</Dial>` +
+    `</Response>`
+  );
+}
+
+/// Played to the COUNSELLOR when they pick up, before the caller is bridged — so they
+/// know who is on the line and whether this is their own patient calling back.
+export function inboundWhisperTwiML(patientName: string, sticky: boolean): string {
+  const who = sticky ? "Your patient" : "Patient";
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<Response>` +
+    `<Say>${xmlEscape(`${who} ${patientName} is calling the clinic. Connecting now.`)}</Say>` +
+    `</Response>`
+  );
+}
+
+/// Nobody free on the first pass: hold the caller briefly and try again. A counsellor
+/// finishing a call in the next half-minute picks this up rather than the caller being
+/// dropped to voicemail the instant everyone happens to be busy.
+export function inboundHoldTwiML(retryUrl: string, holdSec: number): string {
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<Response>` +
+    `<Say>All our counsellors are with patients right now. Please hold for a moment.</Say>` +
+    `<Pause length="${holdSec}"/>` +
+    `<Redirect method="POST">${xmlEscape(retryUrl)}</Redirect>` +
+    `</Response>`
+  );
+}
+
+/// Last resort — take a message. The recording callback files it against the lead and
+/// puts a "return this call" step on the owner's roadmap.
+export function inboundVoicemailTwiML(recordActionUrl: string, maxSec = 120): string {
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<Response>` +
+    `<Say>We are sorry to keep you waiting. Please leave your name and message after the tone, ` +
+    `and a counsellor will call you back.</Say>` +
+    `<Record maxLength="${maxSec}" playBeep="true" trim="trim-silence" timeout="5" ` +
+    `action="${xmlEscape(recordActionUrl)}" method="POST" ` +
+    `recordingStatusCallback="${xmlEscape(recordActionUrl)}" recordingStatusCallbackEvent="completed"/>` +
+    `<Say>Thank you. We will call you back shortly. Goodbye.</Say>` +
+    `<Hangup/>` +
+    `</Response>`
+  );
+}

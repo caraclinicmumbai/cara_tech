@@ -21,6 +21,34 @@ export async function pickNextRep(): Promise<SalesRep | null> {
   return rep;
 }
 
+/// Pick the OWNER for a brand-new lead. Same round-robin as pickNextRep, but it
+/// never comes back empty-handed while any active counsellor exists: ownership is
+/// "whose lead is this to follow up", not "who can pick up the phone this minute",
+/// so a team that is entirely on break/offline must still end up with an owner —
+/// otherwise the lead lands nowhere, drops out of every "my leads" view, and there
+/// is nobody for the later handover to notify. Availability is still PREFERRED, so
+/// the rota keeps favouring people who are actually at their desk.
+/// `preferAvailable: false` ignores presence entirely and spreads strictly by the
+/// rota — for backfilling historical leads, where "who is at their desk right now"
+/// is meaningless and piling every old lead on the one available rep is worse.
+export async function pickOwnerRep(
+  opts: { preferAvailable?: boolean } = {},
+): Promise<SalesRep | null> {
+  const base = { active: true, salesHead: false };
+  const order = [
+    { lastAssignedAt: { sort: "asc" as const, nulls: "first" as const } },
+    { createdAt: "asc" as const },
+  ];
+  const rep =
+    (opts.preferAvailable === false
+      ? null
+      : await prisma.salesRep.findFirst({ where: { ...base, availability: "available" }, orderBy: order })) ??
+    (await prisma.salesRep.findFirst({ where: base, orderBy: order }));
+  if (!rep) return null;
+  await prisma.salesRep.update({ where: { id: rep.id }, data: { lastAssignedAt: new Date() } });
+  return rep;
+}
+
 /// Pick an AVAILABLE replacement when a lead's intended owner is unavailable
 /// (§presence). Prefers a rep with the SAME speciality as the unavailable owner —
 /// an offline counsellor's leads go to a colleague with the same skill — then falls

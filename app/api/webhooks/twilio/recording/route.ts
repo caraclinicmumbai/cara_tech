@@ -45,10 +45,15 @@ export async function POST(req: Request) {
     }
   }
 
+  // Same webhook serves both directions: a click-to-call the rep started, and a
+  // patient call that came in on the clinic line (§presence inbound routing). The
+  // inbound adapter marks its callbacks so the Call row records which it was.
+  const isInbound = url.searchParams.get("inbound") === "1";
+
   const call = await prisma.call.create({
     data: {
       leadId,
-      callType: "human_handover",
+      callType: isInbound ? "inbound" : "human_handover",
       recordingUrl,
       duration: Number.isFinite(duration) ? duration : undefined,
       providerSid: params.CallSid,

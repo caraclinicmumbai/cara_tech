@@ -5,8 +5,11 @@
 //
 // The low-level Graph API call lives in lib/providers/whatsapp.ts; this module
 // adds the lead lookup + persistence + window logic on top.
-import type { Message } from "@prisma/client";
+import type { Message, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { publishLeadMessageEvent } from "@/lib/realtime";
+import { pickOwnerRep, assignLeadToRep } from "@/lib/salesReps";
+import { extractBodyParams, renderTemplateBody } from "@/lib/whatsappTemplates";
 import {
   sendWhatsAppText,
   sendWhatsAppTemplate,
@@ -55,7 +58,28 @@ export async function findOrCreateLeadByPhone(
     },
   });
   logger.info(`Created lead ${lead.id} from inbound WhatsApp ${phone} (${waName ?? "no name"})`);
+
+  // Ownership (§3.1 RBAC) — a cold WhatsApp enquiry is a lead like any other, so it
+  // gets a counsellor round-robin the same way intake does. Without this the chat
+  // would sit in nobody's "my leads" and there'd be no owner to hand over to.
+  // Best-effort: an assignment failure must not lose the inbound message.
+  try {
+    const owner = await pickOwnerRep();
+    if (owner) await assignLeadToRep(lead.id, owner.id);
+    else logger.warn(`WhatsApp lead ${lead.id} has no owner — no active sales rep on the roster`);
+  } catch (err) {
+    logger.error(`Failed to assign owner for WhatsApp lead ${lead.id}: ${String(err)}`);
+  }
+
   return { lead, created: true };
+}
+
+/// Persist a message and nudge any open chat window for that lead (§realtime).
+/// Every write to the thread goes through here so the live stream can't miss one.
+async function saveMessage(data: Prisma.MessageUncheckedCreateInput): Promise<Message> {
+  const message = await prisma.message.create({ data });
+  void publishLeadMessageEvent(message.leadId);
+  return message;
 }
 
 /// Is the 24h free-form window currently open for this lead? True iff the lead's
@@ -91,9 +115,15 @@ export async function recordInbound(input: RecordInboundInput): Promise<Message>
     automated: false,
   };
   if (input.waId) {
-    return prisma.message.upsert({ where: { waId: input.waId }, create: data, update: {} });
+    const message = await prisma.message.upsert({
+      where: { waId: input.waId },
+      create: data,
+      update: {},
+    });
+    void publishLeadMessageEvent(message.leadId);
+    return message;
   }
-  return prisma.message.create({ data });
+  return saveMessage(data);
 }
 
 /// Update an outbound message's delivery status from a status webhook.
@@ -103,6 +133,9 @@ export async function updateMessageStatus(
   error?: string,
 ): Promise<void> {
   await prisma.message.updateMany({ where: { waId }, data: { status, error } });
+  // Push the sent→delivered→read tick to any open chat window (§realtime).
+  const row = await prisma.message.findFirst({ where: { waId }, select: { leadId: true } });
+  if (row) void publishLeadMessageEvent(row.leadId);
 }
 
 type SendOpts = {
@@ -128,15 +161,11 @@ async function logBlocked(
   error: string,
   opts: SendOpts,
 ): Promise<{ ok: false; error: string }> {
-  await prisma.message
-    .create({
-      data: {
-        leadId, direction: "outbound", type, body,
-        status: "failed", error,
-        automated: opts.automated ?? false, sentBy: opts.sentBy,
-      },
-    })
-    .catch(() => {});
+  await saveMessage({
+    leadId, direction: "outbound", type, body,
+    status: "failed", error,
+    automated: opts.automated ?? false, sentBy: opts.sentBy,
+  }).catch(() => {});
   return { ok: false, error };
 }
 
@@ -155,18 +184,16 @@ export async function sendLeadText(
   }
 
   const res = await sendWhatsAppText(lead.phone, body);
-  const message = await prisma.message.create({
-    data: {
-      leadId,
-      direction: "outbound",
-      waId: res.ok ? res.waId : undefined,
-      type: "text",
-      body,
-      status: res.ok ? "sent" : "failed",
-      error: res.ok ? undefined : res.error,
-      automated: opts.automated ?? false,
-      sentBy: opts.sentBy,
-    },
+  const message = await saveMessage({
+    leadId,
+    direction: "outbound",
+    waId: res.ok ? res.waId : undefined,
+    type: "text",
+    body,
+    status: res.ok ? "sent" : "failed",
+    error: res.ok ? undefined : res.error,
+    automated: opts.automated ?? false,
+    sentBy: opts.sentBy,
   });
   if (!res.ok) {
     logger.error(`WhatsApp text to lead ${leadId} failed: ${res.error}`);
@@ -212,19 +239,17 @@ export async function sendLeadDocument(
         opts.fallbackTemplate!.bodyParams,
       );
 
-  const message = await prisma.message.create({
-    data: {
-      leadId,
-      direction: "outbound",
-      waId: res.ok ? res.waId : undefined,
-      type: windowOpen ? "document" : "template",
-      body: caption ? `[document] ${file.filename} — ${caption}` : `[document] ${file.filename}`,
-      templateName: windowOpen ? undefined : opts.fallbackTemplate!.name,
-      status: res.ok ? "sent" : "failed",
-      error: res.ok ? undefined : res.error,
-      automated: opts.automated ?? false,
-      sentBy: opts.sentBy,
-    },
+  const message = await saveMessage({
+    leadId,
+    direction: "outbound",
+    waId: res.ok ? res.waId : undefined,
+    type: windowOpen ? "document" : "template",
+    body: caption ? `[document] ${file.filename} — ${caption}` : `[document] ${file.filename}`,
+    templateName: windowOpen ? undefined : opts.fallbackTemplate!.name,
+    status: res.ok ? "sent" : "failed",
+    error: res.ok ? undefined : res.error,
+    automated: opts.automated ?? false,
+    sentBy: opts.sentBy,
   });
   if (!res.ok) {
     logger.error(`WhatsApp document to lead ${leadId} failed: ${res.error}`);
@@ -248,13 +273,11 @@ export async function sendLeadButtons(
     return logBlocked(leadId, "interactive", `${text}  [${buttons.map((x) => x.title).join(" / ")}]`, "Outside the 24h window — needs an approved template", opts);
 
   const res = await sendWhatsAppButtons(lead.phone, text, buttons);
-  const message = await prisma.message.create({
-    data: {
-      leadId, direction: "outbound", waId: res.ok ? res.waId : undefined,
-      type: "interactive", body: `${text}  [${buttons.map((b) => b.title).join(" / ")}]`,
-      status: res.ok ? "sent" : "failed", error: res.ok ? undefined : res.error,
-      automated: opts.automated ?? true, sentBy: opts.sentBy,
-    },
+  const message = await saveMessage({
+    leadId, direction: "outbound", waId: res.ok ? res.waId : undefined,
+    type: "interactive", body: `${text}  [${buttons.map((b) => b.title).join(" / ")}]`,
+    status: res.ok ? "sent" : "failed", error: res.ok ? undefined : res.error,
+    automated: opts.automated ?? true, sentBy: opts.sentBy,
   });
   return res.ok ? { ok: true, message } : { ok: false, error: res.error };
 }
@@ -274,13 +297,11 @@ export async function sendLeadList(
     return logBlocked(leadId, "interactive", `${text}  [list: ${rows.map((r) => r.title).join(", ")}]`, "Outside the 24h window — needs an approved template", opts);
 
   const res = await sendWhatsAppList(lead.phone, text, buttonText, rows);
-  const message = await prisma.message.create({
-    data: {
-      leadId, direction: "outbound", waId: res.ok ? res.waId : undefined,
-      type: "interactive", body: `${text}  [list: ${rows.map((r) => r.title).join(", ")}]`,
-      status: res.ok ? "sent" : "failed", error: res.ok ? undefined : res.error,
-      automated: opts.automated ?? true, sentBy: opts.sentBy,
-    },
+  const message = await saveMessage({
+    leadId, direction: "outbound", waId: res.ok ? res.waId : undefined,
+    type: "interactive", body: `${text}  [list: ${rows.map((r) => r.title).join(", ")}]`,
+    status: res.ok ? "sent" : "failed", error: res.ok ? undefined : res.error,
+    automated: opts.automated ?? true, sentBy: opts.sentBy,
   });
   return res.ok ? { ok: true, message } : { ok: false, error: res.error };
 }
@@ -299,13 +320,11 @@ export async function sendLeadImage(
     return logBlocked(leadId, "image", caption ? `[image] ${caption}` : "[image]", "Outside the 24h window — needs an approved template", opts);
 
   const res = await sendWhatsAppImageLink(lead.phone, url, caption);
-  const message = await prisma.message.create({
-    data: {
-      leadId, direction: "outbound", waId: res.ok ? res.waId : undefined,
-      type: "image", body: caption ? `[image] ${caption}` : "[image]",
-      status: res.ok ? "sent" : "failed", error: res.ok ? undefined : res.error,
-      automated: opts.automated ?? true, sentBy: opts.sentBy,
-    },
+  const message = await saveMessage({
+    leadId, direction: "outbound", waId: res.ok ? res.waId : undefined,
+    type: "image", body: caption ? `[image] ${caption}` : "[image]",
+    status: res.ok ? "sent" : "failed", error: res.ok ? undefined : res.error,
+    automated: opts.automated ?? true, sentBy: opts.sentBy,
   });
   return res.ok ? { ok: true, message } : { ok: false, error: res.error };
 }
@@ -331,19 +350,27 @@ export async function sendLeadTemplate(
   }
 
   const res = await sendWhatsAppTemplate(lead.phone, templateName, languageCode, components);
-  const message = await prisma.message.create({
-    data: {
-      leadId,
-      direction: "outbound",
-      waId: res.ok ? res.waId : undefined,
-      type: "template",
-      body: `[template] ${templateName}`,
-      templateName,
-      status: res.ok ? "sent" : "failed",
-      error: res.ok ? undefined : res.error,
-      automated: opts.automated ?? true,
-      sentBy: opts.sentBy,
-    },
+  // Log what the PATIENT actually received — the approved body with its {{n}}
+  // variables filled in — not just the template's internal name. `templateName`
+  // is kept alongside it so the thread can still label the bubble. Falls back to
+  // the name when the template can't be resolved (WABA down / not approved).
+  const rendered = await renderTemplateBody(
+    templateName,
+    languageCode,
+    extractBodyParams(components),
+  ).catch(() => null);
+
+  const message = await saveMessage({
+    leadId,
+    direction: "outbound",
+    waId: res.ok ? res.waId : undefined,
+    type: "template",
+    body: rendered ?? `[template] ${templateName}`,
+    templateName,
+    status: res.ok ? "sent" : "failed",
+    error: res.ok ? undefined : res.error,
+    automated: opts.automated ?? true,
+    sentBy: opts.sentBy,
   });
   if (!res.ok) {
     logger.error(`WhatsApp template "${templateName}" to lead ${leadId} failed: ${res.error}`);

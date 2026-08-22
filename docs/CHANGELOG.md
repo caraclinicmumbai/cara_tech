@@ -7,6 +7,160 @@ Format: newest first.
 
 ---
 
+## 2026-08-23 — A handover reaches its telecaller in the software (header bell)
+
+Flow doc updated: **[flows/04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**.
+Files: `lib/notifications.ts` (new), `components/NotificationBell.tsx` (new),
+`app/api/notifications/route.ts` (new), `app/(dashboard)/notificationActions.ts` (new),
+`app/(dashboard)/layout.tsx`, `lib/handover.ts`. Schema: new `Notification` model
+(migration `20260822185231_notifications`).
+
+A handover only ever reached a counsellor on **Slack**. Now it reaches them where they
+work: a bell in the dashboard header with an unread count.
+
+- **Durable, not a toast.** One `Notification` row per recipient login, so a telecaller
+  who was away still sees the handover when they next sign in. Clicking an entry opens
+  the lead and marks it read; there's a "Mark all read".
+- **Deduped** on a unique `dedupeKey` (lead + trigger set), so a re-scored call or a
+  retried webhook doesn't stack identical bells.
+- Raised for the **owner**, plus a separate "please cover" bell for a colleague covering
+  an away owner, and on a hot-call escalation.
+- **Slack is now an addition, not the channel.** The DM still fires when
+  `SLACK_BOT_TOKEN` is set; unset it for in-app-only notification.
+- The bell polls its feed every 45s, pauses while the tab is hidden, catches up on focus.
+- Needs the counsellor to have a **login linked to their `SalesRep`** (`User.salesRepId`).
+  A rep with no login can only be reached on Slack — local dev now links
+  `telecaller@caraclinic.com` to a "Test Telecaller" rep.
+
+The lead's visibility in the owner's Leads section and its purple `handover` tag already
+worked (owner scoping + `LeadsTable`); both were verified rather than rebuilt.
+
+## 2026-08-23 — Every lead gets a telecaller at intake; handover keeps that owner
+
+Flow docs updated: **[flows/01-lead-intake.md](flows/01-lead-intake.md)** (new
+"Ownership at intake" section), **[flows/04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**.
+Files: `lib/salesReps.ts` (`pickOwnerRep`), `lib/leadIntake.ts`, `lib/messages.ts`,
+`lib/handover.ts`, `lib/leadOwnership.ts` (`grantCoverAccess`),
+`scripts/backfillLeadOwners.ts` (new). No schema change.
+
+Assignment-at-intake existed but wasn't firing: `pickNextRep()` only considered reps
+whose presence is `available`, so a team on break/offline left the lead with **no owner**
+and nothing ever fixed it (18 of 19 local leads were ownerless). A cold WhatsApp enquiry
+skipped assignment entirely.
+
+- **`pickOwnerRep()`** prefers an available counsellor but falls back to any active one.
+  Ownership answers "whose lead is this to follow up", not "who is at their desk";
+  only an empty roster leaves a lead unowned, and that logs a warning.
+- **Cold WhatsApp leads** (`findOrCreateLeadByPhone`) are assigned like every other source.
+- **A handover no longer re-assigns an away owner's lead.** The owner keeps it; an
+  available colleague gets the ping plus a **2-day temporary access grant**
+  (`grantCoverAccess` — audited as a system grant, idempotent), and the alert names both.
+- `scripts/backfillLeadOwners.ts` assigns leads that predate this, spreading them across
+  the whole active roster (presence is meaningless for historical leads).
+
+## 2026-08-23 — WhatsApp chat: real message text, auto-filled variables, live thread
+
+Flow doc updated: **[flows/06-whatsapp-messaging.md](flows/06-whatsapp-messaging.md)**.
+Files: `lib/messages.ts`, `lib/whatsappTemplates.ts`, `lib/templateFill.ts` (new),
+`lib/realtime.ts` (new), `app/api/leads/[id]/messages/stream/route.ts` (new),
+`components/WhatsAppChat.tsx`, `app/(dashboard)/leads/[id]/page.tsx`,
+`scripts/backfillTemplateBodies.ts` (new). Schema: `Message.updatedAt` (migrations
+`20260822113308_message_updated_at` + `..._backfill`).
+
+Three things testing caught in the chat panel:
+
+- **The thread showed the template's name, not the message.** A template send was logged
+  as `[template] <name>`; it now stores the approved BODY with its `{{n}}` values filled
+  in, with `templateName` kept as a chip on the bubble.
+  `scripts/backfillTemplateBodies.ts` repairs historical rows (their parameter values
+  were never recorded, so those keep visible `{{1}}` placeholders).
+- **The picker asked for variables already on the record.** `lib/templateFill.ts` guesses
+  each slot from the words before it (patient name / treatment / clinic / rep), pre-fills
+  it, labels where the value came from, and previews the exact outgoing message. A blank
+  slot blocks the send — Meta rejects an empty parameter.
+- **The chat wasn't live.** Every thread write publishes the lead id on a Redis channel;
+  `GET /api/leads/[id]/messages/stream` is an SSE endpoint that pushes the delta to open
+  chat windows. Redis is a nudge, not the transport — the stream also polls slowly, so an
+  outage costs latency, not chat. The cursor is `Message.updatedAt`, so delivery ticks
+  (sent → delivered → read) stream too, and an inbound reply re-opens the composer live.
+
+Also: `buildTemplateComponents` no longer drops blank params — that shifted later values
+into earlier slots and could send a scrambled message.
+
+**Migration note.** The first `updatedAt` migration seeded existing rows from
+`CURRENT_TIMESTAMP`, which Postgres evaluates on the DB's local clock while Prisma writes
+UTC — on an IST server every old row landed 5h30m in the future and jammed the stream
+cursor. The follow-up migration re-seeds `updatedAt` from `createdAt`; both must deploy
+together.
+
+## 2026-08-23 — Quote sharing outside the 24h window (config)
+
+Flow doc updated: **[flows/10-quote-lifecycle.md](flows/10-quote-lifecycle.md)** (env
+table already documented it); `docs/deferred-todo.md` item closed. Files: `.env.example`.
+No code change.
+
+The quote PDF send path already fell back to an approved **document-header template**
+when the 24h window is closed, but `QUOTE_DOC_TEMPLATE_NAME` was never set, so "Send on
+WhatsApp" read "(window closed)" and was disabled. The WABA already carries an APPROVED
+`quote_document` (en) with a DOCUMENT header and `{{1}}` = patient name, so local dev now
+sets it. **Production still needs `QUOTE_DOC_TEMPLATE_NAME` / `QUOTE_DOC_TEMPLATE_LANG`
+in the Railway environment** or proactive quote sharing stays disabled there.
+
+## 2026-08-22 — Inbound call routing for the published clinic number
+
+New flow doc: **[flows/11-inbound-call-routing.md](flows/11-inbound-call-routing.md)**.
+Files: `lib/inboundRouting.ts` (policy), `app/api/twilio/inbound/*` (Twilio adapter,
+whisper, voicemail), `lib/providers/twilio.ts` (TwiML builders), `lib/leadIntake.ts`
+(new `inbound_call` source), `lib/counsellor.ts` (`missed_inbound` alert). No schema
+change; `Call.callType` gains `inbound` / `inbound_voicemail` by convention.
+
+A patient ringing the number on the website now reaches **the counsellor they already
+spoke to**, and only falls elsewhere when that person genuinely can't take it:
+
+```
+owner (sticky) → same-speciality colleague → round-robin → ~25s hold → voicemail
+```
+
+- **Sticky is lead ownership** — the caller returns to `Lead.assignedRepId` for as long
+  as they own the lead. Unknown numbers become leads (source `inbound_call`, which
+  never triggers an AI cold-call) and are assigned once, so the second call is sticky.
+- **Reachable** = active, `available`, not already `onCall`, and holding a dialable
+  number. Answering flips the rep to In-Consultation via the whisper callback, so the
+  next call doesn't ring a handset already in use.
+- **The hold drops `tried` deliberately** — a counsellor who hangs up during the hold
+  takes the call rather than it going to voicemail because everyone was momentarily busy.
+- **Voicemail is accountable**: stored as a Call, transcribed, a "Return missed call"
+  step added to the owner's roadmap due now, and a Slack alert. Idempotent on CallSid
+  (Twilio fires the callback twice).
+- Every route verifies `X-Twilio-Signature`. The `tried` list uses repeated params of
+  bare cuids because Next re-encodes `,` → `%2C` in `req.url`, which would fail the
+  signature comparison and silently 403 the whole ladder.
+
+**Not live yet.** Production has no Twilio configuration and the website number is not
+pointed at the webhook; a Twilio +91 number also needs India regulatory approval before
+it can receive calls. Verified against signed simulated Twilio requests end to end.
+
+## 2026-08-21 — Sales-rep speciality is a fixed list, not free text
+
+Files: `lib/specialities.ts` (new), `components/UsersAdmin.tsx`,
+`app/(dashboard)/users/actions.ts`. No schema change — `SalesRep.speciality` stays a
+nullable string; the constraint is enforced in the app.
+
+The speciality box on the sales-rep roster (`/users`) was free text, so "Hair",
+"hair transplant" and a typo were all storable — and `pickReplacementFor()`
+(`lib/salesReps.ts`) matches on equality, so a mismatched string silently means an
+offline counsellor's leads never find the same-skill colleague they were meant to.
+
+- **Both controls are now dropdowns**: the Add-rep form and the per-row editor, offering
+  **Hair / Skin / Face** plus a blank "Generalist".
+- **Validated server-side too** in `createRep()` and `setRepSpeciality()` — the actions
+  are reachable by direct POST, so the dropdown alone isn't a constraint.
+- **Pre-existing values are preserved, not silently rewritten.** A rep saved before the
+  list existed (local dev has one holding `"hair transplant"`) keeps that value as a
+  selectable option labelled `(unrecognised)`, so the row shows what is actually stored
+  instead of reading as Generalist. Picking a real speciality replaces it; nothing
+  rewrites it in the background.
+
 ## 2026-08-19 — Internal patient history summary PDF (converted quotes)
 
 Files: `lib/patientHistory.ts` (read model), `lib/historyPdf.ts` (renderer),

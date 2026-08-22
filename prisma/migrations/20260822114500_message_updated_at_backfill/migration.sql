@@ -1,0 +1,12 @@
+-- Repair the Message.updatedAt backfill from the preceding migration.
+--
+-- That migration seeded existing rows from the column DEFAULT (CURRENT_TIMESTAMP),
+-- which is the DATABASE's local clock, while Prisma writes timestamps in UTC into
+-- the same `timestamp without time zone` column. On an IST server every pre-existing
+-- message ended up 5h30m in the FUTURE — enough to jam the live-chat cursor
+-- (/api/leads/[id]/messages/stream), which streams rows with updatedAt > cursor:
+-- a future cursor never advances past genuinely new messages.
+--
+-- The column had only just been introduced, so no real update history exists yet:
+-- seed each row from its own createdAt, which Prisma wrote in UTC.
+UPDATE "Message" SET "updatedAt" = "createdAt";
