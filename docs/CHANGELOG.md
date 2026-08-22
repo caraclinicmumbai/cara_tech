@@ -7,6 +7,53 @@ Format: newest first.
 
 ---
 
+## 2026-08-23 — Merging a duplicate keeps the original's counsellor
+
+Flow doc updated: **[flows/01-lead-intake.md](flows/01-lead-intake.md)**.
+Files: `app/(dashboard)/leads/actions.ts` (`mergeDuplicateLead`),
+`components/MergeLeadButton.tsx`, `app/(dashboard)/leads/[id]/page.tsx`. No schema change.
+
+A re-enquiry from a known patient is round-robined to whoever is next on the rota, so a
+merge could quietly hand the relationship to a second person mid-conversation.
+
+- **The merged record keeps the ORIGINAL's owner** — the counsellor already working that
+  patient. It was landing there by accident of the merge direction (the original
+  survives); it's now an explicit rule.
+- **Falls back to the duplicate's owner** only when the original has no counsellor at
+  all, so a merge can't produce an ownerless lead. The audit entry records `ownerRepId`
+  and `ownerFilledFromDuplicate`.
+- **The UI says so before you commit to it**: the duplicate banner names the original's
+  counsellor, the merge control reads "Stays with Rohit — leaves Hero", and the confirm
+  dialog repeats it. Merging takes the lead off the duplicate owner's list; nobody should
+  discover that afterwards.
+
+Not done: the duplicate's owner isn't notified when someone else merges their lead away.
+
+## 2026-08-23 — A handover no longer 404s the person who performed it
+
+Flow doc updated: **[flows/04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**
+(new "Staff-to-staff handover" section — that path wasn't documented anywhere).
+Files: `lib/leadOwnership.ts` (`recentHandoverForViewer`, `notifyRep`/`notifyUser` on
+handover + grant), `app/(dashboard)/leads/[id]/page.tsx`,
+`app/(dashboard)/leads/ownershipActions.ts`, `components/LeadOwnershipPanel.tsx`,
+`lib/notifications.ts` (`access_grant` kind). No schema change.
+
+Two gaps in the ownership panel, both reported from testing:
+
+- **The bell only covered the AI path.** Handing a lead to a colleague from the lead
+  page, and granting temporary access, went to Slack only — the receiving telecaller got
+  nothing in the software. `handoverLead` now notifies the receiving rep (naming who
+  handed it over and why) and `grantLeadAccess` notifies the grantee. A manager handing a
+  lead to their own rep identity is skipped.
+- **The giver got a 404.** Handing your own lead away costs you access to it, so the page
+  you were standing on answered "This page could not be found" the instant the transfer
+  landed. The lead page now shows **"{lead} is now with {rep}"** with the date, reason and
+  a way back — to exactly two people: the previous owner (matched on `meta.fromRepId`,
+  newly recorded on the handover audit entry) and whoever performed the transfer
+  (`actorId`). Everyone else still gets the plain not-found, so the record's existence
+  isn't leaked. It survives a reload and the back button because it's rendered from the
+  audit trail, not from client state.
+
 ## 2026-08-23 — A handover reaches its telecaller in the software (header bell)
 
 Flow doc updated: **[flows/04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**.
