@@ -5,6 +5,7 @@
 // let a colleague act on the lead without owning it), the active grants, and a
 // chronological history of every handover/grant/revoke.
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   handoverLeadAction,
@@ -73,6 +74,9 @@ export function LeadOwnershipPanel({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // Set once the handover has cost this user their access to the lead — the rest of
+  // the page is now stale and a refresh would 404, so we swap in a confirmation.
+  const [handedTo, setHandedTo] = useState<string | null>(null);
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
     startTransition(async () => {
       const res = await fn();
@@ -100,6 +104,29 @@ export function LeadOwnershipPanel({
     return { icon: "•", text: t.action };
   };
 
+  // The transfer went through and took this user's access with it. Refreshing here
+  // would land them on a 404 of a lead they just gave away, so confirm what happened
+  // and point them back to their list. (Reloading the page shows the same message —
+  // the lead page recognises the previous owner; see recentHandoverForViewer.)
+  if (handedTo) {
+    return (
+      <div className="space-y-3 rounded border border-black/10 p-4 text-center dark:border-white/15">
+        <div className="text-3xl">🔁</div>
+        <p className="text-sm font-medium">This lead is now with {handedTo}</p>
+        <p className="text-sm text-black/55 dark:text-white/55">
+          They&apos;ve been notified. It has left your list, so you can no longer open it —
+          ask a manager if you need it back.
+        </p>
+        <Link
+          href="/leads"
+          className="inline-block rounded bg-foreground px-4 py-2 text-sm font-medium text-background"
+        >
+          Back to leads
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 rounded border border-black/10 p-4 dark:border-white/15">
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -123,7 +150,21 @@ export function LeadOwnershipPanel({
             <button
               disabled={pending || !toRep || (crossBranch && !hReason.trim())}
               className="rounded bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
-              onClick={() => run(() => handoverLeadAction({ leadId, toRepId: toRep, reason: hReason || null }).then((r) => { if (r.ok) { setToRep(""); setHReason(""); } return r; }))}
+              onClick={() =>
+                startTransition(async () => {
+                  const res = await handoverLeadAction({ leadId, toRepId: toRep, reason: hReason || null });
+                  if (!res.ok) {
+                    window.alert(res.error ?? "Action failed");
+                    return;
+                  }
+                  setToRep("");
+                  setHReason("");
+                  // Only refresh while we can still read the lead; otherwise show the
+                  // confirmation rather than reloading into a not-found page.
+                  if (res.lostAccess) setHandedTo(res.toRepName ?? "another counsellor");
+                  else router.refresh();
+                })
+              }
             >
               Hand over
             </button>

@@ -58,6 +58,25 @@ thresholds.
 7. **Hot-call escalation (human path).** If a recorded human call itself scores ≥
    threshold, `escalateHotCall` raises the escalation flag and pings the owning rep.
 
+## Staff-to-staff handover (the lead page's ownership panel)
+
+Separate from the AI path above: a counsellor (or manager) transferring a lead to a
+colleague by hand — `handoverLead` in `lib/leadOwnership.ts`, via the **Ownership &
+access** panel on the lead page.
+
+- **Who may.** The current owner or a manager/admin. Cross-branch (both branches known
+  and different) additionally requires a manager **and** a written reason.
+- **The receiver is told in-app**, same as an AI handover: a bell naming who handed it
+  over and why, plus the Slack DM when configured. A **temporary access grant** raises
+  its own bell for the grantee.
+- **The giver doesn't get a 404.** Handing your own lead away usually costs you access
+  to it, so the page you're standing on would answer not-found the instant the transfer
+  lands. Instead the lead page shows **"{lead} is now with {rep}"** with the date, the
+  reason, and a way back to the list. It's shown to exactly two people — the previous
+  owner (matched on `meta.fromRepId` in the handover audit entry) and whoever performed
+  the transfer (`actorId`) — so the record's existence still isn't leaked to anyone
+  else, who continue to get the plain 404.
+
 ## Handover SLA (`lib/handoverSla.ts`)
 
 When a "call this lead" handover alert is sent, a **2-hour timer** is scheduled

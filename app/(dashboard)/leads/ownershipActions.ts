@@ -12,11 +12,17 @@ import { logger } from "@/lib/logger";
 
 type Result = { ok: boolean; error?: string; info?: string };
 
+/// A handover also reports whether the caller can still SEE the lead afterwards.
+/// Handing your own lead to a colleague usually costs you access, and refreshing
+/// the page you're standing on would then 404 — so the panel shows a confirmation
+/// instead of reloading (§handover).
+type HandoverResult = Result & { lostAccess?: boolean; toRepName?: string };
+
 export async function handoverLeadAction(input: {
   leadId: string;
   toRepId: string;
   reason?: string | null;
-}): Promise<Result> {
+}): Promise<HandoverResult> {
   const user = await requireCapability("leads.handover");
   if (!(await userCanAccessLead(user, input.leadId))) return { ok: false, error: "Not found" };
 
@@ -29,7 +35,15 @@ export async function handoverLeadAction(input: {
     });
     revalidatePath(`/leads/${input.leadId}`);
     revalidatePath("/leads");
-    return { ok: true, info: `Handed over to ${toRepName}${crossBranch ? " (cross-branch)" : ""}` };
+    // Re-check AFTER the transfer: a manager (or someone holding a grant) keeps the
+    // lead open, a line counsellor who owned it does not.
+    const lostAccess = !(await userCanAccessLead(user, input.leadId));
+    return {
+      ok: true,
+      info: `Handed over to ${toRepName}${crossBranch ? " (cross-branch)" : ""}`,
+      lostAccess,
+      toRepName,
+    };
   } catch (err) {
     if (err instanceof OwnershipError) return { ok: false, error: err.message };
     logger.error(`handoverLeadAction failed for ${input.leadId}: ${String(err)}`);
