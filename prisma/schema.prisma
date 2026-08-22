@@ -280,8 +280,13 @@ model Message {
   automated    Boolean  @default(false) // true = system/AI-sent; false = manual agent / inbound
   sentBy       String? // agent email for manual outbound; null for inbound/automated
   createdAt    DateTime @default(now())
+  // Touched on every write (including delivery-status updates). The live chat
+  // stream (§3.1.3 realtime) uses it as its cursor, so an agent sees a
+  // sent→delivered→read transition as well as brand-new messages.
+  updatedAt    DateTime @default(now()) @updatedAt
 
   @@index([leadId, createdAt])
+  @@index([leadId, updatedAt])
   @@index([status])
 }
 

@@ -72,6 +72,8 @@ export default async function LeadDetailPage({
       duplicates: { orderBy: { createdAt: "desc" } },
       messages: { orderBy: { createdAt: "asc" } },
       assignedRep: true,
+      // Branch name feeds the WhatsApp template auto-fill (a {{clinic}} slot).
+      branch: { select: { name: true } },
       quotes: { orderBy: { createdAt: "desc" }, include: { ownerRep: { select: { name: true } } } },
       // Active grants — makes the ownership scope check (canSeeLead) honour a covering
       // colleague, and feeds the ownership panel.
@@ -386,16 +388,29 @@ export default async function LeadDetailPage({
           leadId={lead.id}
           windowOpen={windowOpen}
           optedOut={lead.optedOut}
+          // Everything we know about the patient, so a template's {{n}} variables
+          // are pre-filled instead of retyped (§3.1.3).
+          leadContext={{
+            name: lead.name,
+            phone: lead.phone,
+            interest: lead.interest,
+            treatment: lead.tag,
+            repName: lead.assignedRep?.name ?? null,
+            branchName: lead.branch?.name ?? null,
+            clinicName: process.env.CLINIC_NAME ?? "Cara Clinic",
+          }}
           messages={lead.messages.map((m) => ({
             id: m.id,
             direction: m.direction,
             type: m.type,
             body: m.body,
             mediaId: m.mediaId,
+            templateName: m.templateName,
             status: m.status,
             sentBy: m.sentBy,
             automated: m.automated,
             createdAt: m.createdAt.toISOString(),
+            updatedAt: m.updatedAt.toISOString(),
           }))}
         />
       </section>

@@ -79,9 +79,67 @@ export async function listApprovedTemplates(): Promise<WhatsAppTemplate[]> {
 /// Build the Graph `components` array for a template send from body parameter
 /// values (in order). Returns undefined when there are no parameters.
 export function buildTemplateComponents(params: string[]): unknown[] | undefined {
-  const clean = params.map((p) => p.trim()).filter((p) => p.length > 0);
-  if (clean.length === 0) return undefined;
+  const clean = params.map((p) => p.trim());
+  // Nothing to fill → a static template. Otherwise keep every slot IN POSITION:
+  // dropping a blank would shift {{2}}'s value into {{1}} and send the patient a
+  // scrambled message. Meta rejects a blank parameter loudly, which is what we want.
+  if (clean.every((p) => p.length === 0)) return undefined;
   return [{ type: "body", parameters: clean.map((text) => ({ type: "text", text })) }];
+}
+
+/// Pull the body parameter values back out of a Graph `components` array — the
+/// inverse of buildTemplateComponents. Used to render what the patient actually
+/// received when logging a template send to the thread.
+export function extractBodyParams(components?: unknown[]): string[] {
+  if (!Array.isArray(components)) return [];
+  for (const c of components) {
+    const comp = c as { type?: string; parameters?: { type?: string; text?: string }[] };
+    if (comp?.type?.toLowerCase() !== "body") continue;
+    return (comp.parameters ?? []).map((p) => p?.text ?? "");
+  }
+  return [];
+}
+
+/// Substitute {{1}}, {{2}}… in a template body with the given values (in order).
+/// Placeholders with no value are left intact so the gap is visible.
+export function fillTemplateBody(bodyText: string, params: string[]): string {
+  return bodyText.replace(/\{\{(\d+)\}\}/g, (whole, n: string) => {
+    const v = params[Number(n) - 1];
+    return v && v.trim() ? v : whole;
+  });
+}
+
+// The approved-template list changes rarely (a Meta review cycle takes hours),
+// but we read it on every template send to render the message text. Cache it in
+// module memory for a few minutes so a chatbot burst isn't N Graph calls.
+const TEMPLATE_CACHE_MS = 5 * 60_000;
+let templateCache: { at: number; items: WhatsAppTemplate[] } | null = null;
+
+/// listApprovedTemplates() with a short in-process cache.
+export async function listApprovedTemplatesCached(): Promise<WhatsAppTemplate[]> {
+  const now = Date.now();
+  if (templateCache && now - templateCache.at < TEMPLATE_CACHE_MS) return templateCache.items;
+  const items = await listApprovedTemplates();
+  // Don't cache an empty list from a failed/misconfigured fetch — retry next time.
+  if (items.length > 0) templateCache = { at: now, items };
+  return items;
+}
+
+/// Render the text a template send actually delivers: the approved BODY with its
+/// {{n}} placeholders filled in. Null when the template can't be resolved (WABA
+/// not configured, Graph error, template not approved) — callers fall back to
+/// naming the template.
+export async function renderTemplateBody(
+  templateName: string,
+  languageCode: string | undefined,
+  params: string[],
+): Promise<string | null> {
+  const all = await listApprovedTemplatesCached();
+  const match =
+    all.find((t) => t.name === templateName && t.language === languageCode) ??
+    all.find((t) => t.name === templateName);
+  if (!match?.bodyText) return null;
+  return fillTemplateBody(match.bodyText, params);
 }
 
 // ── Template management (create + list all statuses) ─────────────────
