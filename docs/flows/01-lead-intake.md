@@ -30,6 +30,12 @@ A new lead arrives from one of these channels:
      duplicate's lead page shows a **Merge** button (`mergeDuplicateLead` action): it
      re-parents the duplicate's calls + messages onto the original, backfills fields
      the original is missing, deletes the duplicate, and opens the survivor.
+     **The merged record keeps the ORIGINAL's counsellor** — the person already working
+     this patient — even though the re-enquiry was round-robined to whoever was next on
+     the rota. The merge control names them up front ("Stays with Rohit — leaves Hero")
+     and repeats it in the confirm, because merging takes the lead off the duplicate
+     owner's list. Only when the original has no counsellor at all does the duplicate's
+     owner carry over (`meta.ownerFilledFromDuplicate` records that in the audit).
    - **Held-for-review (anti-spam):** more than 5 web-form submissions from one IP in
      10 minutes flags the lead `heldForReview` (status `manual_followup`, no AI call).
      A separate hard ceiling (50/10 min) returns HTTP 429 outright.

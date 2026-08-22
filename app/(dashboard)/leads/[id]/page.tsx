@@ -100,7 +100,9 @@ export default async function LeadDetailPage({
     where: { id },
     include: {
       calls: { orderBy: { createdAt: "desc" }, include: { handledBy: { select: { name: true } } } },
-      duplicateOf: true,
+      // The original's counsellor is shown on the merge control — merging hands the
+      // patient back to them (§3.1.1).
+      duplicateOf: { include: { assignedRep: { select: { name: true } } } },
       duplicates: { orderBy: { createdAt: "desc" } },
       messages: { orderBy: { createdAt: "asc" } },
       assignedRep: true,
@@ -281,8 +283,20 @@ export default async function LeadDetailPage({
                 {lead.duplicateOf.name} ({lead.duplicateOf.phone})
               </Link>
               . No AI call was placed; review/merge before contacting.
+              {lead.duplicateOf.assignedRep ? (
+                <>
+                  {" "}
+                  That record is with{" "}
+                  <span className="font-medium">{lead.duplicateOf.assignedRep.name}</span>.
+                </>
+              ) : null}
             </div>
-            <MergeLeadButton leadId={lead.id} originalName={lead.duplicateOf.name} />
+            <MergeLeadButton
+              leadId={lead.id}
+              originalName={lead.duplicateOf.name}
+              originalOwnerName={lead.duplicateOf.assignedRep?.name ?? null}
+              currentOwnerName={lead.assignedRep?.name ?? null}
+            />
           </div>
         )}
 
