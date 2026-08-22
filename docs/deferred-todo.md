@@ -96,8 +96,12 @@ open:
   package rows** — 1 duplicate name collapsed by the (type,name) unique key + 3 no-fixed-price
   "budget-envelope" wrappers. See [[cara-catalog-deferred]]. Also still open: no free-text quote
   fallback and no catalog admin UI (both nice-to-haves, not blockers).
-- **Quote WhatsApp-share disabled (config).** Enabled only when the 24h window is open OR
-  `QUOTE_DOC_TEMPLATE_NAME` is set. Set an approved doc template env to allow proactive sharing.
+- ~~**Quote WhatsApp-share disabled (config).** Enabled only when the 24h window is open OR
+  `QUOTE_DOC_TEMPLATE_NAME` is set.~~ **Done locally 2026-08-22** — the WABA already has an
+  APPROVED `quote_document` (en) template with a DOCUMENT header, so `.env.local` now sets
+  `QUOTE_DOC_TEMPLATE_NAME=quote_document` / `QUOTE_DOC_TEMPLATE_LANG=en` and a quote can be
+  shared on a closed window. **Still to do: set the same two vars in the Railway environment**,
+  or proactive quote sharing stays disabled in production.
 _Added 2026-08-11._
 
 ---
