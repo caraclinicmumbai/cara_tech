@@ -278,7 +278,7 @@ export async function mergeDuplicateLead(
 
   const dup = await prisma.lead.findUnique({
     where: { id: leadId },
-    include: { duplicateOf: true },
+    include: { duplicateOf: { include: { assignedRep: { select: { id: true, name: true } } } } },
   });
   if (!dup) return { ok: false, error: "Lead not found" };
   if (!dup.duplicateOfId || !dup.duplicateOf) {
@@ -286,6 +286,15 @@ export async function mergeDuplicateLead(
   }
   const original = dup.duplicateOf;
   const originalId = original.id;
+
+  // Ownership after a merge belongs to the counsellor who was already working the
+  // patient — the ORIGINAL's owner (§3.1.1). The re-enquiry that came in as this
+  // duplicate was round-robined to whoever was next on the rota, which would
+  // otherwise hand a relationship to a second person mid-conversation. Backfill
+  // semantics apply only when the original has nobody: then the duplicate's owner
+  // is better than none.
+  const keepRepId = original.assignedRepId ?? dup.assignedRepId;
+  const ownerChanged = keepRepId !== original.assignedRepId;
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -304,6 +313,11 @@ export async function mergeDuplicateLead(
           campaign: original.campaign ?? dup.campaign,
           adId: original.adId ?? dup.adId,
           externalId: original.externalId ?? dup.externalId,
+          // Stays with the original's counsellor; only filled from the duplicate
+          // when the original had no owner at all.
+          ...(ownerChanged && keepRepId
+            ? { assignedRepId: keepRepId, assignedAt: new Date() }
+            : {}),
         },
       });
       await tx.lead.delete({ where: { id: dup.id } });
@@ -321,9 +335,19 @@ export async function mergeDuplicateLead(
     entityId: originalId,
     oldValue: dup.name,
     newValue: original.name,
-    meta: { mergedFromId: dup.id, mergedFromPhone: dup.phone },
+    meta: {
+      mergedFromId: dup.id,
+      mergedFromPhone: dup.phone,
+      // Who the merged record belongs to afterwards, and whether that was inherited
+      // from the duplicate because the original had no owner.
+      ownerRepId: keepRepId,
+      ownerFilledFromDuplicate: ownerChanged,
+    },
   });
-  logger.info(`Merged duplicate lead ${dup.id} into ${originalId} by ${user.email ?? "?"}`);
+  logger.info(
+    `Merged duplicate lead ${dup.id} into ${originalId} by ${user.email ?? "?"}` +
+      ` (owner ${original.assignedRep?.name ?? (ownerChanged ? "inherited from the duplicate" : "none")})`,
+  );
   revalidatePath("/leads");
   revalidatePath(`/leads/${originalId}`);
   return { ok: true, originalId };

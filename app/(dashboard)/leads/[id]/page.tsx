@@ -14,7 +14,11 @@ import { can, leadScope } from "@/lib/rbac";
 import { summariseQuotes } from "@/lib/quotes";
 import { listCatalogGroups } from "@/lib/catalog";
 import { readLeadTimeline, readLeadAudit } from "@/lib/audit";
-import { listActiveGrants } from "@/lib/leadOwnership";
+import {
+  listActiveGrants,
+  recentHandoverForViewer,
+  type HandedOverNotice,
+} from "@/lib/leadOwnership";
 import { LeadOwnershipPanel } from "@/components/LeadOwnershipPanel";
 import { LeadEditForm } from "@/components/LeadEditForm";
 import { AuditTable } from "@/components/AuditTable";
@@ -57,6 +61,34 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+/// Shown to the counsellor who just handed a lead away, in place of the 404 their
+/// own action would otherwise produce.
+function HandedOverPage({ notice }: { notice: HandedOverNotice }) {
+  return (
+    <div className="mx-auto max-w-lg space-y-4 py-16 text-center">
+      <div className="text-4xl">🔁</div>
+      <h1 className="text-xl font-semibold">
+        {notice.leadName} is now with {notice.toRepName}
+      </h1>
+      <p className="text-sm text-black/55 dark:text-white/55">
+        You handed this lead over on {formatIst(notice.at)}, so it&apos;s left your list and you
+        no longer have access to it.
+        {notice.reason ? ` Reason given: “${notice.reason}”.` : ""}
+      </p>
+      <p className="text-sm text-black/55 dark:text-white/55">
+        {notice.toRepName} has been notified. Ask a manager if you need it back or need
+        temporary access to keep working on it.
+      </p>
+      <Link
+        href="/leads"
+        className="inline-block rounded bg-foreground px-4 py-2 text-sm font-medium text-background"
+      >
+        Back to leads
+      </Link>
+    </div>
+  );
+}
+
 export default async function LeadDetailPage({
   params,
 }: {
@@ -68,7 +100,9 @@ export default async function LeadDetailPage({
     where: { id },
     include: {
       calls: { orderBy: { createdAt: "desc" }, include: { handledBy: { select: { name: true } } } },
-      duplicateOf: true,
+      // The original's counsellor is shown on the merge control — merging hands the
+      // patient back to them (§3.1.1).
+      duplicateOf: { include: { assignedRep: { select: { name: true } } } },
       duplicates: { orderBy: { createdAt: "desc" } },
       messages: { orderBy: { createdAt: "asc" } },
       assignedRep: true,
@@ -86,7 +120,15 @@ export default async function LeadDetailPage({
   // Ownership scope (§3.1 RBAC): front-desk/telecaller may only open their own
   // leads. Treat others as not found rather than leaking the record's existence.
   const viewer = await currentUser();
-  if (!viewer || !canSeeLead(viewer, lead)) notFound();
+  if (!viewer) notFound();
+  if (!canSeeLead(viewer, lead)) {
+    // …with one exception: the person who JUST handed this lead over. They lost
+    // access by their own action a second ago, and a 404 reads like the app broke.
+    // Tell them where the lead went (§handover). Everyone else still gets not-found.
+    const handed = await recentHandoverForViewer(lead.id, viewer);
+    if (handed) return <HandedOverPage notice={handed} />;
+    notFound();
+  }
 
   const windowOpen = await isServiceWindowOpen(lead.id);
   const canViewQuotes = can(viewer.role, "quotes.view");
@@ -241,8 +283,20 @@ export default async function LeadDetailPage({
                 {lead.duplicateOf.name} ({lead.duplicateOf.phone})
               </Link>
               . No AI call was placed; review/merge before contacting.
+              {lead.duplicateOf.assignedRep ? (
+                <>
+                  {" "}
+                  That record is with{" "}
+                  <span className="font-medium">{lead.duplicateOf.assignedRep.name}</span>.
+                </>
+              ) : null}
             </div>
-            <MergeLeadButton leadId={lead.id} originalName={lead.duplicateOf.name} />
+            <MergeLeadButton
+              leadId={lead.id}
+              originalName={lead.duplicateOf.name}
+              originalOwnerName={lead.duplicateOf.assignedRep?.name ?? null}
+              currentOwnerName={lead.assignedRep?.name ?? null}
+            />
           </div>
         )}
 

@@ -12,7 +12,11 @@ import { logger } from "@/lib/logger";
 
 /// What a notification is about. Kept as strings (not an enum) to match the rest of
 /// the schema and so a new kind doesn't need a migration.
-export type NotificationKind = "handover" | "handover_cover";
+///   handover       — the lead is now yours to work (AI escalation, or a colleague
+///                    handed it to you from the lead page)
+///   handover_cover — someone else's lead needs covering while its owner is away
+///   access_grant   — you were given temporary access to a lead you don't own
+export type NotificationKind = "handover" | "handover_cover" | "access_grant";
 
 export type NotifyInput = {
   /// Recipient login (User.id).

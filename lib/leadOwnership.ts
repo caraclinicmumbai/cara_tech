@@ -12,6 +12,7 @@
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
+import { notifyRep, notifyUser } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
 
 export class OwnershipError extends Error {}
@@ -72,8 +73,27 @@ export async function handoverLead(input: {
     oldValue: lead.assignedRep?.name ?? "Unassigned",
     newValue: toRep.name,
     reason: reason || null,
-    meta: { crossBranch, toRepId: toRep.id },
+    // fromRepId lets the lead page recognise the person who just gave the lead away
+    // and show them "handed over to X" instead of a bare 404 (§handover).
+    meta: { crossBranch, toRepId: toRep.id, fromRepId: lead.assignedRepId },
   });
+  // In-app bell first — a colleague handing you a lead is exactly the kind of thing
+  // you must see in the software, not only in Slack. Skipped when a manager hands the
+  // lead to their OWN rep identity (they just did it; they don't need telling).
+  if (input.actor.salesRepId !== toRep.id) {
+    await notifyRep(toRep.id, {
+      kind: "handover",
+      title: `🔁 Lead handed to you — ${lead.name}`,
+      body: [
+        `From ${lead.assignedRep?.name ?? "Unassigned"}`,
+        input.actor.email ? `by ${input.actor.email}` : null,
+        reason || null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      leadId: lead.id,
+    });
+  }
   await dm(toRep.slackUserId, `🔁 You've been handed lead *${lead.name}* (${lead.phone})${reason ? ` — ${reason}` : ""}.`);
   logger.info(`Lead ${lead.id} handed to rep ${toRep.id} by ${input.actor.email ?? "?"}${crossBranch ? " (cross-branch)" : ""}`);
   return { crossBranch, toRepName: toRep.name };
@@ -112,6 +132,20 @@ export async function grantLeadAccess(input: {
     newValue: grantee.name ?? grantee.email,
     reason,
     meta: { granteeId: grantee.id, expiresAt: expiresAt?.toISOString() ?? null },
+  });
+  // Same rule as a handover: the person who can now act on the lead is told in-app.
+  await notifyUser({
+    userId: grantee.id,
+    kind: "access_grant",
+    title: `🔓 Access granted — ${lead.name}`,
+    body: [
+      expiresAt ? `Until ${expiresAt.toDateString()}` : "Until revoked",
+      input.actor.email ? `by ${input.actor.email}` : null,
+      reason,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    leadId: lead.id,
   });
   await dm(
     grantee.salesRep?.slackUserId,
@@ -198,6 +232,49 @@ export async function revokeLeadAccess(input: {
     oldValue: grant.grantee.name ?? grant.grantee.email,
   });
   return { leadId: grant.leadId };
+}
+
+export type HandedOverNotice = {
+  leadName: string;
+  toRepName: string;
+  at: string;
+  reason: string | null;
+};
+
+/// Did THIS viewer just hand this lead away? Handing a lead over usually costs the
+/// previous owner their access to it, so the page they were looking at would answer
+/// 404 the moment the transfer lands. This lets it say what actually happened
+/// instead — but only to the two people who already know the lead exists: the
+/// previous owner and whoever performed the transfer. Anyone else still gets the
+/// plain not-found, so the record's existence isn't leaked.
+///
+/// Reads the most recent handover from the audit trail; returns null when this
+/// viewer wasn't part of it (or the entry predates `meta.fromRepId`).
+export async function recentHandoverForViewer(
+  leadId: string,
+  viewer: { id?: string; salesRepId?: string | null },
+): Promise<HandedOverNotice | null> {
+  const entry = await prisma.auditLog.findFirst({
+    where: { entityType: "lead", entityId: leadId, action: "lead.handover" },
+    orderBy: { at: "desc" },
+    select: { actorId: true, newValue: true, reason: true, at: true, meta: true },
+  });
+  if (!entry) return null;
+
+  const meta = (entry.meta ?? {}) as { fromRepId?: string | null };
+  const wasOwner = !!viewer.salesRepId && meta.fromRepId === viewer.salesRepId;
+  const didIt = !!viewer.id && entry.actorId === viewer.id;
+  if (!wasOwner && !didIt) return null;
+
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { name: true } });
+  if (!lead) return null;
+
+  return {
+    leadName: lead.name,
+    toRepName: entry.newValue ?? "another counsellor",
+    at: entry.at.toISOString(),
+    reason: entry.reason,
+  };
 }
 
 export type ActiveGrantView = {
