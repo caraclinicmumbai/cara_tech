@@ -27,9 +27,18 @@ thresholds.
 2. **No re-assignment — it goes to the owner.** The lead was assigned a counsellor
    round-robin **at intake** (flow 1), so the handover simply routes to that person.
    Only a legacy lead with no owner gets one picked here (`pickOwnerRep`).
-3. **Notify the rep.** `notifyHandover` DMs the owner on Slack (their `slackUserId`)
-   with the reason(s), transcript, and a tap-to-call link — falling back to the
-   default channel if no rep / no Slack id.
+3. **Notify the rep — in the software first.** `notifyHandover` raises an **in-app
+   notification** on the owner's login (`lib/notifications.ts`), shown on the **bell in
+   the dashboard header** with an unread count; clicking it opens the lead and marks it
+   read. It's a durable row, not a toast, so a telecaller who was away still sees the
+   handover when they next sign in. Deduped per lead + trigger set, so a re-scored call
+   doesn't stack bells.
+   - The bell needs the counsellor to have a **CRM login linked to their `SalesRep`**
+     (`User.salesRepId`). A rep with no login can only be reached on Slack.
+   - Slack is an **additional** channel, not a replacement: the same alert is DM'd to
+     the rep's `slackUserId` with the reason(s), transcript and a tap-to-call link
+     (default channel if no rep / no Slack id). Leave `SLACK_BOT_TOKEN` unset for
+     in-app-only notification.
    - **Owner away → a colleague covers, ownership doesn't move.** If the owner is
      `in_consultation` / `break` / `offline` (§presence), `pickReplacementFor` finds an
      available colleague — same speciality first — who gets the ping plus a **temporary
@@ -62,6 +71,8 @@ Skips if superseded by a newer handover or the lead is gone.
 - `lib/handover.ts` — triggers, `evaluateHandover`, `notifyHandover`, `escalateHotCall`
 - `lib/salesReps.ts` — round-robin rota (`pickOwnerRep`, `pickReplacementFor`)
 - `lib/leadOwnership.ts` — `grantCoverAccess` (cover an away owner without moving ownership)
+- `lib/notifications.ts` — in-app notifications (`notifyRep`, feed, mark-read)
+- `components/NotificationBell.tsx` + `app/api/notifications` — the header bell and its feed
 - `lib/providers/twilio.ts` — recorded click-to-call
 - `lib/handoverSla.ts` — 2h unattended-handover escalation (worker queue)
 - `app/api/twilio/*`, `app/api/webhooks/twilio/recording` — TwiML + recording webhook

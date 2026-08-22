@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
 import { pickOwnerRep, pickReplacementFor, assignLeadToRep, getLeadOwner } from "@/lib/salesReps";
 import { grantCoverAccess, COVER_GRANT_DAYS } from "@/lib/leadOwnership";
+import { notifyRep } from "@/lib/notifications";
 import { managerSlackTarget } from "@/lib/presence";
 import { logger } from "@/lib/logger";
 
@@ -236,6 +237,33 @@ export async function notifyHandover(
     }
   }
 
+  // ── In-app bell (§handover) ──────────────────────────────────────
+  // This is the notification that must not depend on Slack: the owner sees it in the
+  // header whenever they next sign in, and the covering colleague gets their own.
+  // Deduped per lead + handover cycle so a re-scored call doesn't stack bells.
+  const reasons = fired.map((f) => f.label).join("; ");
+  const cycle = lead.id;
+  if (rep) {
+    await notifyRep(rep.id, {
+      kind: "handover",
+      title: hot ? `🔥 Hot lead — ${lead.name}` : `🤝 Handover — ${lead.name}`,
+      body: cover
+        ? `${reasons}. ${cover.name} is covering while you're ${rep.availability.replace(/_/g, " ")} — the lead is still yours.`
+        : reasons,
+      leadId: lead.id,
+      dedupeKey: `handover:${cycle}:${rep.id}:${fired.map((f) => f.key).sort().join(",")}`,
+    });
+  }
+  if (cover && rep) {
+    await notifyRep(cover.id, {
+      kind: "handover_cover",
+      title: hot ? `🔥 Cover this hot lead — ${lead.name}` : `🤲 Please cover — ${lead.name}`,
+      body: `${reasons}. ${rep.name} is ${rep.availability.replace(/_/g, " ")} and still owns this lead; you have temporary access.`,
+      leadId: lead.id,
+      dedupeKey: `handover_cover:${cycle}:${cover.id}:${fired.map((f) => f.key).sort().join(",")}`,
+    });
+  }
+
   if (!isSlackConfigured()) return;
 
   // Ping whoever can act right now; the message still names the owner.
@@ -283,11 +311,23 @@ export async function escalateHotCall(
     },
   });
 
-  if (!isSlackConfigured()) return;
-
   const rep = lead.assignedRepId
     ? await prisma.salesRep.findUnique({ where: { id: lead.assignedRepId } })
     : null;
+
+  // Bell first — it's the channel the owner is guaranteed to see (§handover).
+  if (rep) {
+    await notifyRep(rep.id, {
+      kind: "handover",
+      title: `🔥 Hot lead — ${lead.name}`,
+      body: `Their last call scored CQS ${cqs}. High intent — prioritise the close.`,
+      leadId: lead.id,
+      dedupeKey: `hotcall:${lead.id}:${cqs}`,
+    });
+  }
+
+  if (!isSlackConfigured()) return;
+
   const assignee = rep?.slackUserId ? `<@${rep.slackUserId}>` : (rep?.name ?? "the team");
   const fired: FiredTrigger[] = [{ key: "high_cqs", label: HANDOVER_TRIGGERS.high_cqs }];
   const { text, blocks } = buildEscalationMessage({ lead, fired, assignee, transcript, cqs, hot: true });

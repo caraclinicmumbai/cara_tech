@@ -6,6 +6,7 @@ import { ensurePermissions } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { StatusSwitcher } from "@/components/StatusSwitcher";
+import { NotificationBell } from "@/components/NotificationBell";
 
 export default async function DashboardLayout({
   children,
@@ -129,6 +130,8 @@ export default async function DashboardLayout({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex items-center justify-end gap-3 border-b-[0.5px] border-cara-rule bg-cara-page/90 px-8 py-3 backdrop-blur">
           {rep && <StatusSwitcher initial={rep.availability} />}
+          {/* §handover — a handover reaches its telecaller here, in the software. */}
+          <NotificationBell />
           <ThemeToggle />
         </header>
         <main className="mx-auto w-full max-w-6xl px-8 py-8">{children}</main>
