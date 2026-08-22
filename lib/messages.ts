@@ -8,6 +8,7 @@
 import type { Message, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { publishLeadMessageEvent } from "@/lib/realtime";
+import { pickOwnerRep, assignLeadToRep } from "@/lib/salesReps";
 import { extractBodyParams, renderTemplateBody } from "@/lib/whatsappTemplates";
 import {
   sendWhatsAppText,
@@ -57,6 +58,19 @@ export async function findOrCreateLeadByPhone(
     },
   });
   logger.info(`Created lead ${lead.id} from inbound WhatsApp ${phone} (${waName ?? "no name"})`);
+
+  // Ownership (§3.1 RBAC) — a cold WhatsApp enquiry is a lead like any other, so it
+  // gets a counsellor round-robin the same way intake does. Without this the chat
+  // would sit in nobody's "my leads" and there'd be no owner to hand over to.
+  // Best-effort: an assignment failure must not lose the inbound message.
+  try {
+    const owner = await pickOwnerRep();
+    if (owner) await assignLeadToRep(lead.id, owner.id);
+    else logger.warn(`WhatsApp lead ${lead.id} has no owner — no active sales rep on the roster`);
+  } catch (err) {
+    logger.error(`Failed to assign owner for WhatsApp lead ${lead.id}: ${String(err)}`);
+  }
+
   return { lead, created: true };
 }
 

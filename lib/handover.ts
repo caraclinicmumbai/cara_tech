@@ -8,10 +8,11 @@
 //  • the ElevenLabs agent / scoring model, as explicit reason keys + booleans
 //    (it understands the conversation) — passed through as `reasons`;
 //  • thresholds we own here — CQS ≥ 75 (fast-track) and unsupported language.
-import type { Lead } from "@prisma/client";
+import type { Lead, SalesRep } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
-import { pickNextRep, pickReplacementFor, assignLeadToRep, getLeadOwner } from "@/lib/salesReps";
+import { pickOwnerRep, pickReplacementFor, assignLeadToRep, getLeadOwner } from "@/lib/salesReps";
+import { grantCoverAccess, COVER_GRANT_DAYS } from "@/lib/leadOwnership";
 import { managerSlackTarget } from "@/lib/presence";
 import { logger } from "@/lib/logger";
 
@@ -107,8 +108,11 @@ export function buildEscalationMessage(opts: {
   transcript?: string;
   cqs?: number;
   hot: boolean;
+  /// Set when the owner is away and a colleague is being asked to cover — the alert
+  /// then says who's acting and who still owns the lead.
+  coveringFor?: { coverName: string; ownerName: string; ownerState: string };
 }): { text: string; blocks: unknown[] } {
-  const { lead, fired, assignee, transcript, cqs, hot } = opts;
+  const { lead, fired, assignee, transcript, cqs, hot, coveringFor } = opts;
   const base = process.env.NEXTAUTH_URL;
   const telPhone = lead.phone.replace(/[^\d+]/g, "");
   const phoneLink = `<tel:${telPhone}|📞 ${lead.phone}>`;
@@ -122,6 +126,19 @@ export function buildEscalationMessage(opts: {
       text: { type: "mrkdwn", text: `*${lead.name}* — ${phoneLink}\nAssigned to ${assignee}` },
     },
   ];
+  if (coveringFor) {
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text:
+            `🤲 *${coveringFor.coverName}, please cover this one* — ${coveringFor.ownerName} is ` +
+            `${coveringFor.ownerState.replace(/_/g, " ")}. They keep the lead; you have temporary access for ${COVER_GRANT_DAYS} days.`,
+        },
+      ],
+    });
+  }
   if (hot) {
     blocks.push({
       type: "section",
@@ -180,20 +197,23 @@ export async function notifyHandover(
   if (fired.length === 0) return;
 
   // The lead already has an owner (assigned round-robin at intake, §3.1 RBAC) — the
-  // handover notifies THAT person, it doesn't re-assign. Fall back to round-robin
-  // only for legacy leads that predate ownership assignment.
-  let rep = await getLeadOwner(lead.id);
+  // handover notifies THAT person, it doesn't re-assign. Fall back to the rota only
+  // for legacy leads that predate ownership assignment.
+  const owner = await getLeadOwner(lead.id);
+  let rep = owner;
   if (!rep) {
-    rep = await pickNextRep();
+    rep = await pickOwnerRep();
     if (rep) await assignLeadToRep(lead.id, rep.id);
   }
 
   const hot = fired.some((f) => f.key === "high_cqs");
 
-  // §presence: if the owner isn't Active (on a call, on break, or offline), reassign
-  // the handover to an available colleague — preferring the same speciality — so
-  // "go call them now" lands with someone who can act. A hot lead that arrives while
-  // the owner is mid-consultation ALSO pings their manager (urgent escalation).
+  // §presence: OWNERSHIP NEVER MOVES HERE — the lead stays with the counsellor it was
+  // given at intake. But "go call them now" is useless to someone on break, so an
+  // available colleague (preferring the same speciality) is given TEMPORARY access and
+  // takes the ping instead; the grant lapses on its own and the owner keeps the lead.
+  // A hot lead that arrives while the owner is mid-consultation ALSO pings their manager.
+  let cover: SalesRep | null = null;
   let managerTarget: string | undefined;
   if (rep && rep.availability !== "available") {
     if (rep.availability === "in_consultation" && hot) {
@@ -201,21 +221,33 @@ export async function notifyHandover(
     }
     const replacement = await pickReplacementFor({ id: rep.id, speciality: rep.speciality });
     if (replacement) {
-      await assignLeadToRep(lead.id, replacement.id);
-      logger.info(`Handover rerouted for lead ${lead.id}: owner ${rep.name} was ${rep.availability} → ${replacement.name}`);
-      rep = replacement;
+      cover = replacement;
+      await grantCoverAccess({
+        leadId: lead.id,
+        coverRepId: replacement.id,
+        reason: `Covering for ${rep.name} (${rep.availability}) on a handover`,
+      }).catch((err) => {
+        logger.error(`Cover grant failed for lead ${lead.id}: ${String(err)}`);
+        return false;
+      });
+      logger.info(
+        `Handover cover for lead ${lead.id}: owner ${rep.name} is ${rep.availability} → ${replacement.name} covers (ownership unchanged)`,
+      );
     }
   }
 
   if (!isSlackConfigured()) return;
 
+  // Ping whoever can act right now; the message still names the owner.
+  const target = cover ?? rep;
   const assignee = rep?.slackUserId ? `<@${rep.slackUserId}>` : (rep?.name ?? "the team");
-  const { text, blocks } = buildEscalationMessage({ lead, fired, assignee, transcript, cqs, hot });
+  const coveringFor = cover && rep ? { coverName: cover.name, ownerName: rep.name, ownerState: rep.availability } : undefined;
+  const { text, blocks } = buildEscalationMessage({ lead, fired, assignee, transcript, cqs, hot, coveringFor });
 
-  // DM the assigned rep if we have their Slack id; otherwise the default channel.
-  await sendSlack({ text, blocks, channel: rep?.slackUserId ?? undefined });
+  // DM the rep we're asking to act if we have their Slack id; otherwise the default channel.
+  await sendSlack({ text, blocks, channel: target?.slackUserId ?? undefined });
   logger.info(
-    `${hot ? "Hot-lead escalation" : "Handover alert"} for lead ${lead.id} → ${rep?.name ?? "channel"}: ${fired.map((f) => f.key).join(",")}`,
+    `${hot ? "Hot-lead escalation" : "Handover alert"} for lead ${lead.id} → ${target?.name ?? "channel"}${cover ? ` (covering for ${rep?.name})` : ""}: ${fired.map((f) => f.key).join(",")}`,
   );
 
   // Urgent: hot lead landed while the owner was in consultation → also tell the manager.
@@ -223,8 +255,8 @@ export async function notifyHandover(
     await sendSlack({
       channel: managerTarget,
       text:
-        `🚨 Hot lead *${lead.name}* (${lead.phone}) arrived while the counsellor was in consultation — ` +
-        `reassigned to ${rep?.name ?? "the team"}. Please make sure it's picked up.`,
+        `🚨 Hot lead *${lead.name}* (${lead.phone}) arrived while ${rep?.name ?? "the counsellor"} was in consultation — ` +
+        `${cover ? `${cover.name} is covering (${rep?.name ?? "the owner"} still owns it)` : "nobody else is free"}. Please make sure it's picked up.`,
     }).catch(() => {});
   }
 }

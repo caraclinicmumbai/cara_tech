@@ -120,6 +120,59 @@ export async function grantLeadAccess(input: {
   logger.info(`Access to lead ${lead.id} granted to user ${grantee.id} by ${input.actor.email ?? "?"}`);
 }
 
+/// How long a presence-driven cover grant lasts. Long enough to work the lead over a
+/// couple of shifts, short enough that access lapses on its own once the owner is back.
+export const COVER_GRANT_DAYS = 2;
+
+/// Let a colleague ACT on a lead whose owner is unavailable (§presence + §handover),
+/// WITHOUT moving ownership: the lead still belongs to the counsellor it was assigned
+/// at intake, and this access expires by itself. Used by the automated handover, so
+/// there's no human actor — it's audited as a system grant.
+///
+/// Idempotent: an existing live grant for the same colleague is reused. Returns false
+/// when that rep has no CRM login to grant (Slack-only rep) — they can still be pinged,
+/// they just can't open the record.
+export async function grantCoverAccess(input: {
+  leadId: string;
+  coverRepId: string;
+  reason: string;
+}): Promise<boolean> {
+  const user = await prisma.user.findFirst({
+    where: { salesRepId: input.coverRepId },
+    select: { id: true, name: true, email: true, salesRep: { select: { slackUserId: true } } },
+  });
+  if (!user) {
+    logger.warn(`Cover access for lead ${input.leadId}: rep ${input.coverRepId} has no linked login`);
+    return false;
+  }
+
+  const live = await prisma.leadAccessGrant.findFirst({
+    where: {
+      leadId: input.leadId,
+      granteeId: user.id,
+      revokedAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+    },
+    select: { id: true },
+  });
+  if (live) return true;
+
+  const expiresAt = new Date(Date.now() + COVER_GRANT_DAYS * 24 * 60 * 60 * 1000);
+  await prisma.leadAccessGrant.create({
+    data: { leadId: input.leadId, granteeId: user.id, grantedById: null, reason: input.reason, expiresAt },
+  });
+  await writeAudit({
+    action: "lead.access.grant",
+    entityType: "lead",
+    entityId: input.leadId,
+    newValue: user.name ?? user.email,
+    reason: input.reason,
+    meta: { granteeId: user.id, expiresAt: expiresAt.toISOString(), system: true, cover: true },
+  });
+  logger.info(`Cover access to lead ${input.leadId} granted to ${user.email ?? user.id} (${input.reason})`);
+  return true;
+}
+
 /// Revoke an access grant early. Idempotent (already-revoked is a no-op).
 export async function revokeLeadAccess(input: {
   grantId: string;

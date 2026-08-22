@@ -24,11 +24,19 @@ thresholds.
 1. **Route to sales.** The AI drip stops (`cancelScheduledCalls`), `status` →
    `manual_followup` (or stays `confirmed`), and `needsHandover` / `handoverReason` /
    `handoverAt` / `handoverTriggers[]` are set.
-2. **Round-robin assignment.** `pickNextRep` (`lib/salesReps.ts`) picks the
-   least-recently-assigned active `SalesRep`; the lead is assigned to them.
-3. **Notify the rep.** `notifyHandover` DMs the assigned rep on Slack (their
-   `slackUserId`) with the reason(s), transcript, and a tap-to-call link — falling
-   back to the default channel if no rep / no Slack id.
+2. **No re-assignment — it goes to the owner.** The lead was assigned a counsellor
+   round-robin **at intake** (flow 1), so the handover simply routes to that person.
+   Only a legacy lead with no owner gets one picked here (`pickOwnerRep`).
+3. **Notify the rep.** `notifyHandover` DMs the owner on Slack (their `slackUserId`)
+   with the reason(s), transcript, and a tap-to-call link — falling back to the
+   default channel if no rep / no Slack id.
+   - **Owner away → a colleague covers, ownership doesn't move.** If the owner is
+     `in_consultation` / `break` / `offline` (§presence), `pickReplacementFor` finds an
+     available colleague — same speciality first — who gets the ping plus a **temporary
+     access grant** (`grantCoverAccess`, `COVER_GRANT_DAYS` = 2, audited as a system
+     grant, idempotent across repeat handovers). The alert names both: who's covering
+     and who still owns it. The grant lapses on its own; the lead never leaves the
+     counsellor it was assigned at intake.
 4. **Distinct hot-lead alert.** If `high_cqs` fired, the alert is rendered as a
    **🔥 hot lead — close now** message (leads with the score) instead of the generic
    🤝 handover, so a ready-to-buy lead is visually distinct from a problem-handover.
@@ -52,7 +60,8 @@ Skips if superseded by a newer handover or the lead is gone.
 ## Key files
 
 - `lib/handover.ts` — triggers, `evaluateHandover`, `notifyHandover`, `escalateHotCall`
-- `lib/salesReps.ts` — round-robin assignment
+- `lib/salesReps.ts` — round-robin rota (`pickOwnerRep`, `pickReplacementFor`)
+- `lib/leadOwnership.ts` — `grantCoverAccess` (cover an away owner without moving ownership)
 - `lib/providers/twilio.ts` — recorded click-to-call
 - `lib/handoverSla.ts` — 2h unattended-handover escalation (worker queue)
 - `app/api/twilio/*`, `app/api/webhooks/twilio/recording` — TwiML + recording webhook
