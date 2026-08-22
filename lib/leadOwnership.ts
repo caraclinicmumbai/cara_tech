@@ -12,6 +12,7 @@
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
+import { notifyRep, notifyUser } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
 
 export class OwnershipError extends Error {}
@@ -74,6 +75,23 @@ export async function handoverLead(input: {
     reason: reason || null,
     meta: { crossBranch, toRepId: toRep.id },
   });
+  // In-app bell first — a colleague handing you a lead is exactly the kind of thing
+  // you must see in the software, not only in Slack. Skipped when a manager hands the
+  // lead to their OWN rep identity (they just did it; they don't need telling).
+  if (input.actor.salesRepId !== toRep.id) {
+    await notifyRep(toRep.id, {
+      kind: "handover",
+      title: `🔁 Lead handed to you — ${lead.name}`,
+      body: [
+        `From ${lead.assignedRep?.name ?? "Unassigned"}`,
+        input.actor.email ? `by ${input.actor.email}` : null,
+        reason || null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      leadId: lead.id,
+    });
+  }
   await dm(toRep.slackUserId, `🔁 You've been handed lead *${lead.name}* (${lead.phone})${reason ? ` — ${reason}` : ""}.`);
   logger.info(`Lead ${lead.id} handed to rep ${toRep.id} by ${input.actor.email ?? "?"}${crossBranch ? " (cross-branch)" : ""}`);
   return { crossBranch, toRepName: toRep.name };
@@ -112,6 +130,20 @@ export async function grantLeadAccess(input: {
     newValue: grantee.name ?? grantee.email,
     reason,
     meta: { granteeId: grantee.id, expiresAt: expiresAt?.toISOString() ?? null },
+  });
+  // Same rule as a handover: the person who can now act on the lead is told in-app.
+  await notifyUser({
+    userId: grantee.id,
+    kind: "access_grant",
+    title: `🔓 Access granted — ${lead.name}`,
+    body: [
+      expiresAt ? `Until ${expiresAt.toDateString()}` : "Until revoked",
+      input.actor.email ? `by ${input.actor.email}` : null,
+      reason,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    leadId: lead.id,
   });
   await dm(
     grantee.salesRep?.slackUserId,
