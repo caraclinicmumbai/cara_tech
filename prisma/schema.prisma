@@ -200,8 +200,9 @@ model SalesRep {
 
   // ── Availability / presence (§presence "Knowing who's available") ──
   // Day-to-day presence, DISTINCT from `active` (the admin employment/enabled flag).
-  // Only "available" reps enter the round-robin (pickNextRep); the rest have their
-  // new leads routed to the next available counsellor.
+  // Presence PREFERS an "available" rep in the round-robin, but never blocks ownership:
+  // pickOwnerRep falls back to any active rep so a new lead is never left unowned, while
+  // "act on it now" routing (handover cover, inbound calls) sticks to who's actually free.
   //   available | in_consultation | break | offline
   availability   String   @default("available")
   availabilityAt DateTime @default(now()) // when availability last changed
