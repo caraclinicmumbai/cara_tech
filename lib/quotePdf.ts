@@ -65,7 +65,11 @@ export function buildQuotePdf(d: QuotePdfData): Promise<Buffer> {
 
   // Effective clinic/bank details: branch first, then the fallback constants.
   const b = d.branch ?? null;
-  const clinicName = b?.name?.trim() || CLINIC_NAME;
+  // The masthead is the BRAND ("Cara Clinic"), never the branch's display name —
+  // a patient's quotation should read as coming from the clinic they know, not from
+  // "Cara Santacruz". Which branch it is still shows, on the address line below.
+  const clinicName = CLINIC_NAME;
+  const branchLabel = b?.name?.trim() || "";
   const addressLine = [b?.addressLine1, b?.addressLine2, [b?.city, b?.pincode].filter(Boolean).join(" ")]
     .map((s) => s?.trim())
     .filter(Boolean)
@@ -96,7 +100,9 @@ export function buildQuotePdf(d: QuotePdfData): Promise<Buffer> {
     // ── Header (flows so the branch address/GSTIN lines don't collide) ──
     doc.fillColor("#111").font("Helvetica-Bold").fontSize(19).text(clinicName, left, 46, { width: headW });
     doc.font("Helvetica").fontSize(9).fillColor("#666").text(CLINIC_TAGLINE, { width: headW });
-    if (addressLine) doc.fontSize(8).text(addressLine, { width: headW });
+    // Branch identity lives with the address it belongs to: "Cara Santacruz — 123 …".
+    const locationLine = [branchLabel, addressLine].filter(Boolean).join(" — ");
+    if (locationLine) doc.fontSize(8).text(locationLine, { width: headW });
     const metaLine = [contactLine, gstin ? `GSTIN: ${gstin}` : ""].filter(Boolean).join("   ·   ");
     if (metaLine) doc.fontSize(8).text(metaLine, { width: headW });
     const leftBottom = doc.y;
