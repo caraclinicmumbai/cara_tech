@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { placeOutboundCall } from "@/lib/providers/elevenlabs";
 import { scheduleCallAttempt, cancelScheduledCalls, aiCallsPaused } from "@/lib/queue";
 import { pickOwnerRep, assignLeadToRep } from "@/lib/salesReps";
+import { dialablePhone } from "@/lib/phone";
 import { seedFollowUpStepsSafe } from "@/lib/followups";
 import { isWithinDnd } from "@/lib/callWindow";
 import { sendAutomatedTemplate, outreachTemplate, firstName } from "@/lib/outreach";
@@ -186,7 +187,12 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
   const lead = await prisma.lead.create({
     data: {
       name: input.name,
-      phone: input.phone,
+      // Normalise to E.164 on the way in (§3.1) — the sources hand us whatever the
+      // patient typed, and everything downstream (Twilio, ElevenLabs, WhatsApp,
+      // dedupe) wants one shape. A number we can't read is still STORED as given:
+      // capturing the lead matters more than the format, and the call button
+      // refuses it with a reason rather than dialling into nowhere.
+      phone: dialablePhone(input.phone) ?? input.phone,
       email: input.email,
       interest: input.interest,
       source: input.source,

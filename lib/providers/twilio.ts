@@ -7,6 +7,7 @@
 // calling flow.
 import axios from "axios";
 import { createHmac, timingSafeEqual } from "crypto";
+import { dialablePhone } from "@/lib/phone";
 import { logger } from "@/lib/logger";
 
 const API = "https://api.twilio.com/2010-04-01";
@@ -88,15 +89,43 @@ export function dialLeadTwiML(leadPhone: string, leadId: string, repId?: string)
     (repId ? `&repId=${encodeURIComponent(repId)}` : "");
   const from = process.env.TWILIO_CALLER_ID ?? "";
   const whisper = `${base}/api/twilio/whisper`;
+  // Where Twilio reports how the dial ended. Without it, a leg that never connects
+  // (wrong number, busy, no answer) just drops the rep into silence and the CRM
+  // never learns the call happened — the recording callback only fires on success.
+  const action =
+    `${base}/api/twilio/dial-result?leadId=${encodeURIComponent(leadId)}` +
+    (repId ? `&repId=${encodeURIComponent(repId)}` : "");
+  const dialable = dialablePhone(leadPhone) ?? leadPhone;
   return (
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<Response>` +
     `<Say>Connecting you to the patient now. This call is recorded.</Say>` +
     `<Dial callerId="${xmlEscape(from)}" record="record-from-answer-dual" ` +
+    `action="${xmlEscape(action)}" method="POST" ` +
     `recordingStatusCallback="${xmlEscape(cb)}" recordingStatusCallbackEvent="completed">` +
-    `<Number url="${xmlEscape(whisper)}">${xmlEscape(leadPhone)}</Number>` +
+    `<Number url="${xmlEscape(whisper)}">${xmlEscape(dialable)}</Number>` +
     `</Dial>` +
     `</Response>`
+  );
+}
+
+/// Spoken to the rep when the patient leg didn't connect, in place of the silence
+/// they used to get. `status` is Twilio's DialCallStatus; a call that DID connect
+/// just hangs up quietly (the two of them have already said their goodbyes).
+export function dialFailedTwiML(status: string): string {
+  const reason =
+    status === "busy"
+      ? "The patient's number is busy."
+      : status === "no-answer"
+        ? "The patient did not answer."
+        : status === "failed"
+          ? "That number could not be reached. Please check it on the lead."
+          : status === "completed" || status === "answered"
+            ? null
+            : "The call has ended.";
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<Response>${reason ? `<Say>${xmlEscape(reason)}</Say>` : ""}<Hangup/></Response>`
   );
 }
 

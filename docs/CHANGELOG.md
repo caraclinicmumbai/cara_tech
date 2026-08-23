@@ -7,6 +7,55 @@ Format: newest first.
 
 ---
 
+## 2026-08-23 — Quote PDF masthead is the clinic, not the branch
+
+Files: `lib/quotePdf.ts`. No schema change.
+
+A quotation raised at Santacruz was headed **"Cara Santacruz"** — the branch's display
+name, which reads to a patient like a different business from the clinic they enquired
+at. The masthead is now `CLINIC_NAME` ("Cara Clinic"), and the branch keeps its place on
+the line it belongs on, next to the address it identifies: *"Cara Santacruz — Linking
+Road, Santacruz West, Mumbai"*. Everything else the branch supplies — address, GSTIN,
+bank details, UPI QR — is unchanged, so the document still says where the money goes.
+
+Noted while checking: the Santacruz branch has **no GSTIN** on file, so quotes from it
+print none. Its registered entity ("Cara Healthcare Private Limited") appears only in
+the bank block, not next to the GSTIN.
+
+## 2026-08-23 — Click-to-call no longer dies silently on an undialable number
+
+Flow doc updated: **[flows/04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**.
+Files: `lib/phone.ts` (new), `lib/providers/twilio.ts`,
+`app/api/twilio/dial-result/route.ts` (new), `app/(dashboard)/leads/actions.ts`,
+`lib/leadIntake.ts`, `lib/inboundRouting.ts` (`dialablePhone` moved to `lib/phone`),
+`lib/notifications.ts` (`call_failed` kind), `scripts/normalizePhones.ts` (new).
+No schema change.
+
+**Reported from testing:** a call announced "this call is recorded", then hung up.
+Twilio's own log says why — the rep leg completed after 4s (just the announcement) and
+the patient leg failed instantly with **error 13225**, because the lead's number was
+stored as `+18850925804`: a 10-digit Indian mobile carrying a `+1`. E.164-shaped, so
+nothing rejected it, but `885` routes nowhere.
+
+- **Numbers are normalised now, not passed through as typed.** `lib/phone.ts` reads a
+  bare 10-digit as `+91` (India-only clinic), strips formatting, and refuses what can't
+  be dialled — including a NANP number whose area code or exchange is impossible.
+  Applied at intake, on lead edit (which refuses outright, since a human is looking at
+  the file), and before every click-to-call, which now names the offending number
+  on screen instead of starting a call that dies.
+- **A call that never connects is now recorded.** The recording callback only fires for
+  a call that happened, so a failed one left the rep in silence and the CRM with no
+  trace. A `<Dial action>` callback (`/api/twilio/dial-result`) fires on any outcome:
+  files a `Call` with the outcome, rings the rep's bell, reverts their In-Consultation
+  status, and speaks the reason ("That number could not be reached…").
+- `scripts/normalizePhones.ts` repairs stored rows — unambiguous rewrites only,
+  anything else reported for a human. Run on local data: 9 leads + 1 rep normalised,
+  0 needing a decision.
+
+**These callbacks only work where Twilio can reach the app.** With
+`NEXTAUTH_URL=http://localhost:3000` nothing Twilio sends arrives; local call testing
+needs a tunnel with `TWILIO_PUBLIC_BASE` set, or use the deployed environment.
+
 ## 2026-08-23 — Merging a duplicate keeps the original's counsellor
 
 Flow doc updated: **[flows/01-lead-intake.md](flows/01-lead-intake.md)**.
