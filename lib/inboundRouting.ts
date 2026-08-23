@@ -17,6 +17,7 @@
 import { prisma } from "@/lib/prisma";
 import { ingestLead } from "@/lib/leadIntake";
 import { pickNextRep, pickReplacementFor, assignLeadToRep } from "@/lib/salesReps";
+import { dialablePhone } from "@/lib/phone";
 import { logger } from "@/lib/logger";
 
 /// A rep who can actually take a call right now.
@@ -60,22 +61,10 @@ function last10(phone: string): string {
   return (phone.match(/\d/g)?.join("") ?? "").slice(-10);
 }
 
-/// A rep's number in a form a carrier can actually dial, or null if it isn't usable.
-///
-/// `SalesRep.phone` is documented as E.164, but the roster is hand-typed and bare
-/// 10-digit numbers do get saved. This is an India-only clinic, so a bare 10-digit
-/// mobile has exactly one sensible reading (+91) and is upgraded; anything else is
-/// refused rather than guessed at, because a mis-dialled patient call is worse than
-/// falling through to the next counsellor.
-export function dialablePhone(phone: string | null): string | null {
-  const raw = (phone ?? "").trim();
-  if (!raw) return null;
-  const digits = raw.match(/\d/g)?.join("") ?? "";
-  if (raw.startsWith("+") && digits.length >= 8) return `+${digits}`;
-  if (digits.length === 10) return `+91${digits}`; // bare Indian mobile
-  if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
-  return null;
-}
+// A rep's number in a form a carrier can actually dial lives in lib/phone.ts now —
+// the click-to-call path needs the same normalisation. Re-exported so existing
+// importers of this module keep working unchanged.
+export { dialablePhone };
 
 /// A rep is reachable when they're employed, on the floor, not already talking, and
 /// carry a number we can actually dial.

@@ -14,6 +14,7 @@ import { applyStageChangeToRoadmap } from "@/lib/followups";
 import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
 import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
 import { clickToCall, isTwilioConfigured, deleteTwilioRecording } from "@/lib/providers/twilio";
+import { toDialable } from "@/lib/phone";
 import { beginConsultation } from "@/lib/presence";
 import { cancelScheduledCalls } from "@/lib/queue";
 import { writeAudit, auditLeadFieldUpdate, auditLeadFieldChanges } from "@/lib/audit";
@@ -157,7 +158,16 @@ export async function callLeadAndRecord(
   }
   if (!rep?.phone) return { ok: false, error: "No rep with a phone to call from" };
 
-  const res = await clickToCall(rep.phone, leadId, rep.id);
+  // Check BOTH numbers before dialling. Twilio's answer to a number it can't reach
+  // is a leg that fails silently: the rep hears "connecting you…", then nothing, and
+  // no trace of it reaches the CRM. Better to refuse here and say which number is
+  // wrong — that's a two-second fix on the record instead of a mystery dropped call.
+  const repDial = toDialable(rep.phone);
+  if (!repDial.ok) return { ok: false, error: `${rep.name}'s number ${repDial.reason}` };
+  const leadDial = toDialable(lead.phone);
+  if (!leadDial.ok) return { ok: false, error: `This lead's number ${leadDial.reason}` };
+
+  const res = await clickToCall(repDial.e164, leadId, rep.id);
   if (!res.ok) return { ok: false, error: res.error };
   // §presence auto-detect: the rep is now on a call on their work number — mark them
   // In-Consultation without asking. The Twilio recording webhook reverts them when

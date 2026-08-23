@@ -55,6 +55,17 @@ thresholds.
    dual-channel. The recording webhook stores it as a `Call` (`human_handover`) and an
    in-app player streams it (session-gated proxy). The recording is then transcribed +
    scored (flow 3).
+   - **Both numbers are normalised and sanity-checked first** (`lib/phone.ts`). Numbers
+     are stored as typed — `9536108238`, `+91 7506452973` — and Twilio needs strict
+     E.164, so a bare 10-digit mobile is read as `+91`. A number that can't be dialled
+     (or an Indian mobile mis-prefixed `+1`, which is E.164-shaped but unroutable)
+     **refuses the call with the reason on screen** instead of starting one that dies.
+   - **A call that never connects is recorded too.** The `<Dial action>` callback
+     (`/api/twilio/dial-result`) fires whatever the outcome — busy, no answer, carrier
+     rejection — files a `Call` with the outcome, rings the rep's bell, reverts their
+     In-Consultation status, and *tells them out loud* why the call is ending. Before
+     this, the recording callback was the only one that fired, so a failed call left
+     the rep in silence and the CRM with no record of it.
 7. **Hot-call escalation (human path).** If a recorded human call itself scores ≥
    threshold, `escalateHotCall` raises the escalation flag and pings the owning rep.
 
@@ -92,7 +103,9 @@ Skips if superseded by a newer handover or the lead is gone.
 - `lib/leadOwnership.ts` — `grantCoverAccess` (cover an away owner without moving ownership)
 - `lib/notifications.ts` — in-app notifications (`notifyRep`, feed, mark-read)
 - `components/NotificationBell.tsx` + `app/api/notifications` — the header bell and its feed
-- `lib/providers/twilio.ts` — recorded click-to-call
+- `lib/providers/twilio.ts` — recorded click-to-call + end-of-dial TwiML
+- `lib/phone.ts` — `dialablePhone` / `toDialable` (E.164 normalisation + sanity check)
+- `app/api/twilio/dial-result` — how a click-to-call ended (logs the failures)
 - `lib/handoverSla.ts` — 2h unattended-handover escalation (worker queue)
 - `app/api/twilio/*`, `app/api/webhooks/twilio/recording` — TwiML + recording webhook
 
