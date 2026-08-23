@@ -255,11 +255,17 @@ export async function editLead(
   if (!before) return { ok: false, error: "Lead not found" };
 
   const name = input.name.trim();
-  const phone = input.phone.trim();
   const email = (input.email ?? "").trim() || null;
   const interest = (input.interest ?? "").trim() || null;
   if (!name) return { ok: false, error: "Name is required" };
-  if (!phone) return { ok: false, error: "Phone is required" };
+  if (!input.phone.trim()) return { ok: false, error: "Phone is required" };
+
+  // Store the number in the shape a carrier accepts, and refuse one nobody can
+  // reach — a staff edit is the one place we can catch a bad number while the
+  // person who knows the patient is still looking at the screen.
+  const dial = toDialable(input.phone);
+  if (!dial.ok) return { ok: false, error: `Phone ${dial.reason}` };
+  const phone = dial.e164;
 
   const reason = (input.reason ?? "").trim() || null;
   const phoneChanged = phone !== before.phone;
