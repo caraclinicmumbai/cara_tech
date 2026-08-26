@@ -136,7 +136,7 @@ async function whatsapp() {
   if (!token || !phoneId) return line(SKIP, "WhatsApp", "not configured");
   try {
     const num = await axios.get(`https://graph.facebook.com/${ver}/${phoneId}`, {
-      params: { fields: "display_phone_number,verified_name,quality_rating,throughput" },
+      params: { fields: "display_phone_number,verified_name,quality_rating,throughput,webhook_configuration" },
       headers: { Authorization: `Bearer ${token}` },
       timeout: 15_000,
       validateStatus: () => true,
@@ -147,6 +147,19 @@ async function whatsapp() {
     }
     const d = num.data ?? {};
     line(OK, "WhatsApp number", `${d.display_phone_number} (${d.verified_name}) · quality ${d.quality_rating ?? "?"}`);
+
+    // WHERE inbound replies are delivered. Meta holds one callback URL per number,
+    // so if it points at another deployment, this environment sends fine and never
+    // receives — the thread looks one-sided and the 24h window never opens.
+    const hook = num.data?.webhook_configuration?.application as string | undefined;
+    const mine = (process.env.WHATSAPP_PUBLIC_BASE ?? process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "");
+    if (!hook) {
+      line(WARN, "WhatsApp webhook", "no callback URL set on the number — inbound replies go nowhere");
+    } else if (mine && hook.startsWith(mine)) {
+      line(OK, "WhatsApp webhook", hook);
+    } else {
+      line(WARN, "WhatsApp webhook", `points at ${hook} — replies land THERE, not in this environment`);
+    }
 
     if (waba) {
       const tpl = await axios.get(`https://graph.facebook.com/${ver}/${waba}/message_templates`, {
