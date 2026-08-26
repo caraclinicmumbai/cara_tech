@@ -168,6 +168,7 @@ model Lead {
   postSalesJourneys   PostSalesJourney[]
   postSalesCheckIns   PostSalesCheckIn[]
   notifications       Notification[]
+  chatReads           ChatRead[]
 
   @@index([status])
   @@index([phone])
@@ -388,6 +389,9 @@ model User {
   // In-app bell notifications addressed to this login (§handover).
   notifications Notification[]
 
+  // Per-conversation read state for the WhatsApp inbox (§whatsapp inbox).
+  chatReads ChatRead[]
+
   // ── Post-sales assignments (§post-sales) — the clinical team on a journey. A
   //    doctor/OT lead/consultant is a staff LOGIN (role doctor | ot_team |
   //    post_sales_consultant), so the person accountable for a stage can act on it. ──
@@ -451,6 +455,26 @@ model Notification {
   // The bell's query: this user's newest first, unread first.
   @@index([userId, readAt, createdAt])
   @@index([leadId])
+}
+
+/// How far a staff login has read a lead's WhatsApp thread (§whatsapp inbox) — the
+/// "unread" state behind the WhatsApp tab's conversation list.
+///
+/// Per USER rather than per lead: the clinic shares one WhatsApp number, but two
+/// counsellors working side by side each need their own sense of what's new, and one
+/// of them opening a chat shouldn't clear the other's badge.
+model ChatRead {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  /// Everything inbound at or before this instant has been seen by this user.
+  lastReadAt DateTime
+
+  @@unique([userId, leadId])
+  @@index([userId])
 }
 
 /// Admin-editable role → capability overrides (§3.1 Hierarchy settings). One row per

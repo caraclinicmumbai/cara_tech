@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { auth, signOut } from "@/auth";
 import { can, isRole, ROLE_LABELS } from "@/lib/rbac";
+import type { SessionUser } from "@/lib/authz";
+import { unreadTotal } from "@/lib/whatsappInbox";
 import { ensurePermissions } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -23,6 +25,11 @@ export default async function DashboardLayout({
   const rep = salesRepId
     ? await prisma.salesRep.findUnique({ where: { id: salesRepId }, select: { availability: true } })
     : null;
+
+  // Unread WhatsApp replies for the nav badge (§whatsapp inbox). Server-rendered so
+  // the count is right on first paint; the inbox itself polls once open.
+  const viewer = session?.user as SessionUser | undefined;
+  const waUnread = viewer && can(role, "leads.whatsapp") ? await unreadTotal(viewer) : 0;
 
   const navLink =
     "mx-1 rounded-xl px-3 py-2 text-[13px] text-cara-muted transition-colors hover:bg-cara-surface hover:text-cara-ink";
@@ -55,6 +62,17 @@ export default async function DashboardLayout({
           )}
           {can(role, "leads.walkin") && (
             <Link href="/leads/walk-in" className={navLink}>Walk-in</Link>
+          )}
+          {/* §whatsapp inbox — patient replies land here; the badge is what's unread. */}
+          {can(role, "leads.whatsapp") && (
+            <Link href="/whatsapp" className={`${navLink} flex items-center justify-between`}>
+              <span>WhatsApp</span>
+              {waUnread > 0 && (
+                <span className="grid h-4 min-w-4 place-items-center rounded-full bg-green-600 px-1 text-[10px] font-semibold text-white">
+                  {waUnread > 9 ? "9+" : waUnread}
+                </span>
+              )}
+            </Link>
           )}
           {/* Every quote still in play — the money side of the pipeline (§multi-quote). */}
           {can(role, "quotes.view") && (
