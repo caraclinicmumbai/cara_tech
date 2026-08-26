@@ -7,6 +7,49 @@ Format: newest first.
 
 ---
 
+## 2026-08-27 — WhatsApp inbox: a tab for patient conversations
+
+Flow doc updated: **[flows/06-whatsapp-messaging.md](flows/06-whatsapp-messaging.md)**
+(new "The WhatsApp tab (inbox)" section).
+Files: `app/(dashboard)/whatsapp/page.tsx` + `actions.ts` (new),
+`components/WhatsAppInbox.tsx` (new), `lib/whatsappInbox.ts` (new),
+`app/api/whatsapp/conversations/route.ts` (new), `components/WhatsAppChat.tsx`
+(`variant="fill"`), `app/(dashboard)/layout.tsx` (tab + badge), `lib/rbac.ts` (route
+gate). Schema: new `ChatRead` model (migration `20260826212508_chat_read`).
+
+Inbound replies had nowhere to land: they were visible only on the lead they belonged
+to, so noticing one meant opening leads and looking.
+
+- **`/whatsapp` is an inbox**, laid out like WhatsApp Web — chats down the left (newest
+  first, with a preview, WhatsApp-style timestamp, unread count, 24h-window state and
+  the owning counsellor), the selected thread on the right. Search covers name, number
+  and message text.
+- **The thread pane is the same `WhatsAppChat`** the lead page uses, in a new fill
+  variant — so the live SSE stream, window rules, template picker and delivery ticks are
+  one implementation, not two.
+- **Unread is per USER** (`ChatRead`, one row per user × lead), because the clinic
+  shares one number and one counsellor opening a chat must not clear a colleague's
+  badge. Opening a conversation catches it up; a reply into an open chat re-marks it.
+- **The list polls every 15s** (paused while hidden, refreshed on focus) while the open
+  thread streams. The sidebar tab carries the unread total, server-rendered.
+- Gated on the existing `leads.whatsapp` capability, and scoped like every lead view —
+  a telecaller sees their own conversations, a manager sees all; the `?lead=` id is
+  re-checked server-side.
+
+## 2026-08-24 — Preflight check for demos and shift starts
+
+Files: `scripts/preflight.ts` (new). No schema change.
+
+One read-only command that answers "is everything up and in credit": database, Redis,
+both web URLs, ElevenLabs quota, the ConvAI agent, Twilio balance, the WhatsApp number
+and template statuses, Anthropic, Slack — plus the data-side things that make a demo
+look broken while every API is green (ownerless leads, reps with no login, numbers that
+aren't E.164). It queries account/status endpoints only: never sends, calls or spends.
+
+First run caught **ElevenLabs at 165,372 / 165,406 characters with overflow billing
+disabled** — AI voice calls were dead until the quota reset, which no screen in the app
+would have told anyone.
+
 ## 2026-08-23 — Quote PDF masthead is the clinic, not the branch
 
 Files: `lib/quotePdf.ts`. No schema change.
