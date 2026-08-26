@@ -68,12 +68,16 @@ export function WhatsAppChat({
   optedOut,
   messages,
   leadContext,
+  variant = "card",
 }: {
   leadId: string;
   windowOpen: boolean;
   optedOut: boolean;
   messages: ChatMessage[];
   leadContext: LeadTemplateContext;
+  /// "card" — a bounded panel on the lead page, sized to its content.
+  /// "fill" — takes the height it's given, for the WhatsApp inbox's chat pane.
+  variant?: "card" | "fill";
 }) {
   const router = useRouter();
   const [text, setText] = useState("");
@@ -173,11 +177,19 @@ export function WhatsAppChat({
   }
 
   return (
-    <div className="rounded border border-black/10 dark:border-white/15">
+    <div
+      className={
+        variant === "fill"
+          ? "flex h-full min-h-0 flex-col"
+          : "rounded border border-black/10 dark:border-white/15"
+      }
+    >
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="max-h-96 space-y-2 overflow-y-auto p-4"
+        className={`space-y-2 overflow-y-auto p-4 ${
+          variant === "fill" ? "min-h-0 flex-1" : "max-h-96"
+        }`}
       >
         {items.length === 0 ? (
           <p className="py-6 text-center text-sm text-black/50 dark:text-white/50">
@@ -251,7 +263,7 @@ export function WhatsAppChat({
         )}
       </div>
 
-      <div className="border-t border-black/10 p-3 dark:border-white/15">
+      <div className="shrink-0 border-t border-black/10 p-3 dark:border-white/15">
         {optedOut ? (
           <p className="text-sm text-red-600 dark:text-red-400">
             🚫 This lead opted out — messaging is disabled.

@@ -435,6 +435,7 @@ export function routeCapability(pathname: string): Capability | null {
   if (pathname.startsWith("/leads/deleted")) return "leads.restore";
   if (pathname.startsWith("/leads/walk-in")) return "leads.walkin";
   if (pathname.startsWith("/leads")) return "leads.view";
+  if (pathname.startsWith("/whatsapp")) return "leads.whatsapp";
   if (pathname.startsWith("/calls")) return "calls.view";
   if (pathname.startsWith("/quotes")) return "quotes.view";
   return null;

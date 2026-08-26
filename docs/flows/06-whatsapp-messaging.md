@@ -41,6 +41,32 @@ manual follow-up.
 - **In-CRM template builder** (`/templates`): staff create/submit templates to Meta
   (`createTemplate`) and watch them move PENDING → APPROVED without leaving Cara.
 
+## The WhatsApp tab (inbox)
+
+`/whatsapp` is the inbox: every patient conversation in one place, laid out like
+WhatsApp Web — chats down the left, the selected thread on the right. It exists so an
+inbound reply reaches a counsellor as a **notification**, rather than waiting to be
+found by opening leads one at a time.
+
+- **The list** (`lib/whatsappInbox.ts` → `listConversations`) is one row per lead that
+  has a thread, newest activity first: name, last-message preview ("You: …" when we
+  sent it), WhatsApp-style timestamp (time today / "Yesterday" / date), unread count,
+  whether the 24h window is open, and the owning counsellor.
+- **Unread is per USER** (`ChatRead`, one row per user × lead). The clinic shares one
+  number, but two counsellors working side by side each need their own sense of what's
+  new — one opening a chat must not clear the other's badge. Opening a conversation
+  marks it read up to that instant; a reply arriving in an already-open chat re-marks it.
+- **Scope is the usual one**: a telecaller sees conversations for leads they own or
+  cover, a manager sees all (`leadWhereForUser`). The lead id in `?lead=` is re-checked
+  server-side, never trusted from the list.
+- **The thread pane is the same `WhatsAppChat`** the lead page uses (`variant="fill"`),
+  so the live SSE stream, 24h-window rules, template picker and delivery ticks are one
+  implementation, not two.
+- **The list polls** every 15s (paused while the tab is hidden, refreshed on focus)
+  while the open thread streams; a new reply bumps its chat to the top and raises the
+  badge without a reload. The sidebar tab carries the same unread total, server-rendered
+  so it's right on first paint.
+
 ## Live thread (realtime)
 
 The chat updates itself — an agent never reloads to see a reply.
@@ -78,6 +104,9 @@ Fired from `recordCall` (flow 3), each off unless its template env is set:
 - `lib/whatsappTemplates.ts` — list/create templates; render an approved body with its params
 - `lib/templateFill.ts` — pre-fill a template's `{{n}}` variables from the lead
 - `lib/realtime.ts` — Redis pub/sub nudge for the live thread
+- `lib/whatsappInbox.ts` — conversation list, unread counts, read markers
+- `app/(dashboard)/whatsapp/page.tsx` + `components/WhatsAppInbox.tsx` — the WhatsApp tab
+- `app/api/whatsapp/conversations` — the list the tab polls
 - `lib/outreach.ts` — automated trigger templates
 - `app/api/webhooks/whatsapp/route.ts` — inbound webhook
 - `app/api/leads/[id]/messages/stream/route.ts` — SSE live thread
