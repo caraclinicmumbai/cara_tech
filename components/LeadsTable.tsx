@@ -20,6 +20,9 @@ export type LeadRow = {
   status: string;
   created: string;
   updated: string;
+  /// The same two moments as IST calendar days ("YYYY-MM-DD"), for their date filters.
+  createdDate: string;
+  updatedDate: string;
   /// Name of the sales rep who owns the lead (null = unassigned).
   assignedRep: string | null;
   /// Earliest pending follow-up step: pre-formatted time + its title (tooltip).
@@ -45,6 +48,11 @@ export type LeadRow = {
 
 type FilterKind = "none" | "enum" | "text" | "date";
 
+/// The one-tap options offered above a date picker. Which ones a column shows
+/// depends on which way it points in time: a follow-up is a future commitment you
+/// can fall behind on, while Created and Updated are history.
+type DateShortcut = "today" | "tomorrow" | "yesterday" | "overdue";
+
 type Col = {
   key: string;
   label: string;
@@ -52,6 +60,9 @@ type Col = {
   value: (l: LeadRow) => string;
   /// For a "date" column: the row's date as YYYY-MM-DD, or "" when it has none.
   dateValue?: (l: LeadRow) => string;
+  /// For a "date" column offering the Overdue shortcut: is this row past due?
+  dateOverdue?: (l: LeadRow) => boolean;
+  dateShortcuts?: DateShortcut[];
   /// Friendly label for a raw value in an enum filter dropdown.
   display?: (v: string) => string;
   filter: FilterKind;
@@ -60,9 +71,9 @@ type Col = {
 
 type OpenFilter = { key: string; x: number; y: number };
 
-/// Today / tomorrow as the IST calendar day, in the "YYYY-MM-DD" a date input speaks.
-/// Matches how the server stamps `nextFollowUpDate`, so the shortcuts and the picker
-/// compare like for like wherever the browser's own clock is set.
+/// A day relative to today as the IST calendar day, in the "YYYY-MM-DD" a date input
+/// speaks. Matches how the server stamps the row dates, so the shortcuts and the
+/// picker compare like for like wherever the browser's own clock is set.
 function istDayKey(offsetDays = 0): string {
   const d = new Date(Date.now() + offsetDays * 86_400_000);
   return new Intl.DateTimeFormat("en-CA", {
@@ -72,8 +83,18 @@ function istDayKey(offsetDays = 0): string {
     day: "2-digit",
   }).format(d);
 }
-const todayKey = () => istDayKey(0);
-const tomorrowKey = () => istDayKey(1);
+
+const SHORTCUT_DAY: Record<Exclude<DateShortcut, "overdue">, () => string> = {
+  today: () => istDayKey(0),
+  tomorrow: () => istDayKey(1),
+  yesterday: () => istDayKey(-1),
+};
+const SHORTCUT_LABEL: Record<DateShortcut, string> = {
+  today: "Today",
+  tomorrow: "Tomorrow",
+  yesterday: "Yesterday",
+  overdue: "Overdue",
+};
 
 export function LeadsTable({
   leads,
@@ -130,6 +151,8 @@ export function LeadsTable({
         label: "Next follow-up",
         value: (l) => l.nextFollowUp ?? "",
         dateValue: (l) => l.nextFollowUpDate ?? "",
+        dateOverdue: (l) => l.nextFollowUpOverdue,
+        dateShortcuts: ["today", "tomorrow", "overdue"],
         filter: "date",
       },
       {
@@ -149,8 +172,24 @@ export function LeadsTable({
         number: true,
       },
       { key: "remark", label: "Remark", value: (l) => l.remark ?? "", filter: "text" },
-      { key: "created", label: "Created", value: (l) => l.created, filter: "none" },
-      { key: "updated", label: "Updated", value: (l) => l.updated, filter: "none" },
+      // History rather than a commitment, so these offer Today/Yesterday and no
+      // Overdue — there's nothing to fall behind on.
+      {
+        key: "created",
+        label: "Created",
+        value: (l) => l.created,
+        dateValue: (l) => l.createdDate,
+        dateShortcuts: ["today", "yesterday"],
+        filter: "date",
+      },
+      {
+        key: "updated",
+        label: "Updated",
+        value: (l) => l.updated,
+        dateValue: (l) => l.updatedDate,
+        dateShortcuts: ["today", "yesterday"],
+        filter: "date",
+      },
     ],
     [sourceLabels, stageLabels],
   );
@@ -185,7 +224,7 @@ export function LeadsTable({
           if (f?.day && c.dateValue?.(l) !== f.day) return false;
           // "Overdue" is a property of the row, not of the date string: a step is
           // missed once its due moment has passed, which the server already decided.
-          if (f?.overdue && !l.nextFollowUpOverdue) return false;
+          if (f?.overdue && !c.dateOverdue?.(l)) return false;
         }
       }
       return true;
@@ -496,9 +535,9 @@ export function LeadsTable({
               </button>
             </div>
             {openCol.filter === "date" ? (
-              // A calendar: pick the day and the table shows the follow-ups due then.
-              // The two shortcuts are the questions asked most often — "what's due
-              // today" and "what have we already let slip".
+              // A calendar: pick the day and the table shows the rows dated then.
+              // The shortcuts are per column — a follow-up can be overdue, a
+              // created/updated date can only be in the past.
               <div className="space-y-2">
                 <input
                   autoFocus
@@ -508,36 +547,30 @@ export function LeadsTable({
                   className="w-full rounded border border-black/15 bg-background px-2 py-1 text-xs outline-none focus:border-black/40 dark:border-white/20"
                 />
                 <div className="flex flex-wrap gap-1">
-                  <button
-                    onClick={() => setDate(openCol.key, { day: todayKey() })}
-                    className={`rounded border px-2 py-0.5 text-xs ${
-                      dateFilters[openCol.key]?.day === todayKey()
-                        ? "border-blue-500 text-blue-600 dark:text-blue-400"
-                        : "border-black/15 dark:border-white/20"
-                    }`}
-                  >
-                    Today
-                  </button>
-                  <button
-                    onClick={() => setDate(openCol.key, { day: tomorrowKey() })}
-                    className={`rounded border px-2 py-0.5 text-xs ${
-                      dateFilters[openCol.key]?.day === tomorrowKey()
-                        ? "border-blue-500 text-blue-600 dark:text-blue-400"
-                        : "border-black/15 dark:border-white/20"
-                    }`}
-                  >
-                    Tomorrow
-                  </button>
-                  <button
-                    onClick={() => setDate(openCol.key, { overdue: true })}
-                    className={`rounded border px-2 py-0.5 text-xs ${
-                      dateFilters[openCol.key]?.overdue
-                        ? "border-red-500 text-red-600 dark:text-red-400"
-                        : "border-black/15 dark:border-white/20"
-                    }`}
-                  >
-                    Overdue
-                  </button>
+                  {(openCol.dateShortcuts ?? ["today"]).map((s) => {
+                    const day = s === "overdue" ? null : SHORTCUT_DAY[s]();
+                    const active =
+                      s === "overdue"
+                        ? !!dateFilters[openCol.key]?.overdue
+                        : dateFilters[openCol.key]?.day === day;
+                    return (
+                      <button
+                        key={s}
+                        onClick={() =>
+                          setDate(openCol.key, day ? { day } : { overdue: true })
+                        }
+                        className={`rounded border px-2 py-0.5 text-xs ${
+                          active
+                            ? s === "overdue"
+                              ? "border-red-500 text-red-600 dark:text-red-400"
+                              : "border-blue-500 text-blue-600 dark:text-blue-400"
+                            : "border-black/15 dark:border-white/20"
+                        }`}
+                      >
+                        {SHORTCUT_LABEL[s]}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             ) : openCol.filter === "text" ? (

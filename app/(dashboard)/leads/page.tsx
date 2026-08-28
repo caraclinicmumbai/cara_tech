@@ -81,6 +81,9 @@ export default async function LeadsPage() {
     status: l.status,
     created: formatIstDate(l.createdAt),
     updated: formatIst(l.updatedAt),
+    // IST calendar days for the Created / Updated date filters.
+    createdDate: istDateKey(l.createdAt),
+    updatedDate: istDateKey(l.updatedAt),
     assignedRep: l.assignedRep?.name ?? null,
     // A due DATE, not a timestamp — the hour a step happens to fall on is an
     // artefact of when the lead came in, and reads as noise in a column.
