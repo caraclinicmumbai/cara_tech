@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import {
   OPEN_QUOTE_STATUSES,
+  WON_QUOTE_STATUSES,
   QUOTE_STATUS_LABELS,
   computeQuoteTotals,
   type QuoteStatus,
@@ -317,5 +318,135 @@ export async function getOpenQuotes(
     scopedValue: summary.value,
     summary,
     owners: Array.from(byOwner.values()).sort((a, b) => b.count - a.count),
+  };
+}
+
+// ── Converted quotes ─────────────────────────────────────────────────
+// The won side of the same desk. Deliberately a separate, leaner read: a converted
+// quote is settled work, so none of the chase machinery above (staleness, expiry,
+// the activity trail) means anything for it. What a manager wants here is who
+// closed what, for how much, and when.
+
+export type ConvertedQuoteRow = {
+  id: string;
+  leadId: string;
+  patientName: string;
+  treatment: string;
+  cycle: number;
+  status: string;
+  statusLabel: string;
+  ownerName: string | null;
+  branchName: string | null;
+  /// The branch that INVOICED it, when that differs from where it was raised
+  /// (§branches — the invoicing branch earns the credit).
+  invoicedBranchName: string | null;
+  currency: string;
+  total: number;
+  convertedAt: string | null; // ISO — null on older rows converted before it was stamped
+  createdAt: string; // ISO
+  /// Days from raising the quote to converting it — how long the close took.
+  daysToClose: number | null;
+};
+
+export type ConvertedQuotesBoard = {
+  rows: ConvertedQuoteRow[];
+  /// Everything converted in scope, even when `rows` is capped.
+  count: number;
+  value: number;
+  /// Converted in the last 30 days, and what that was worth.
+  recentCount: number;
+  recentValue: number;
+  /// True when `rows` is a capped slice of `count`.
+  truncated: boolean;
+};
+
+/// The most recently converted quotes in scope, newest first.
+export async function getConvertedQuotes(
+  filter: Pick<OpenQuotesFilter, "leadWhere" | "branchId"> = {},
+  limit = 50,
+  now: number = Date.now(),
+): Promise<ConvertedQuotesBoard> {
+  const where: Prisma.QuoteWhereInput = {
+    status: { in: WON_QUOTE_STATUSES },
+    lead: { deletedAt: null, ...(filter.leadWhere ?? {}) },
+    ...(filter.branchId ? { branchId: filter.branchId } : {}),
+  };
+
+  const [quotes, count] = await Promise.all([
+    prisma.quote.findMany({
+      where,
+      // convertedAt first (that's the event this list is about), falling back to
+      // createdAt for rows converted before the timestamp existed.
+      orderBy: [{ convertedAt: "desc" }, { createdAt: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        leadId: true,
+        treatment: true,
+        cycle: true,
+        status: true,
+        price: true,
+        currency: true,
+        gstRate: true,
+        discountType: true,
+        discountValue: true,
+        totalPayable: true,
+        convertedAt: true,
+        createdAt: true,
+        lead: { select: { name: true } },
+        ownerRep: { select: { name: true } },
+        branch: { select: { name: true } },
+        invoicedBranch: { select: { name: true } },
+      },
+    }),
+    prisma.quote.count({ where }),
+  ]);
+
+  const rows: ConvertedQuoteRow[] = quotes.map((q) => {
+    const totals = computeQuoteTotals({
+      base: q.price ?? 0,
+      gstRate: q.gstRate,
+      discountType: q.discountType,
+      discountValue: q.discountValue,
+    });
+    const converted = q.convertedAt?.getTime() ?? null;
+    return {
+      id: q.id,
+      leadId: q.leadId,
+      patientName: q.lead.name,
+      treatment: q.treatment,
+      cycle: q.cycle,
+      status: q.status,
+      statusLabel: QUOTE_STATUS_LABELS[q.status as QuoteStatus] ?? q.status,
+      ownerName: q.ownerRep?.name ?? null,
+      branchName: q.branch?.name ?? null,
+      invoicedBranchName:
+        q.invoicedBranch?.name && q.invoicedBranch.name !== q.branch?.name ? q.invoicedBranch.name : null,
+      currency: q.currency,
+      total: q.totalPayable ?? totals.total,
+      convertedAt: q.convertedAt?.toISOString() ?? null,
+      createdAt: q.createdAt.toISOString(),
+      daysToClose:
+        converted !== null ? Math.max(0, Math.round((converted - q.createdAt.getTime()) / DAY_MS)) : null,
+    };
+  });
+
+  // Value totals span everything in scope, not just the capped slice — a truncated
+  // list must not understate what the clinic actually won.
+  const totals = await prisma.quote.aggregate({ where, _sum: { totalPayable: true } });
+  const since = new Date(now - 30 * DAY_MS);
+  const recent = await prisma.quote.aggregate({
+    where: { ...where, convertedAt: { gte: since } },
+    _sum: { totalPayable: true },
+    _count: true,
+  });
+
+  return {
+    rows,
+    count,
+    value: totals._sum.totalPayable ?? 0,
+    recentCount: recent._count,
+    recentValue: recent._sum.totalPayable ?? 0,
+    truncated: count > rows.length,
   };
 }

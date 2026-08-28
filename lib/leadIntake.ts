@@ -244,12 +244,16 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
     logger.error(`Failed to assign owner for lead ${lead.id}: ${String(err)}`);
   }
 
-  // Seed the follow-up roadmap (§follow-up roadmap) for leads we'll actively
-  // pursue — skip duplicates and held-for-review leads (no AI call, manual vetting
-  // first), so their roadmap starts empty and staff add steps by hand. Best-effort.
-  if (!dup && !held) {
-    await seedFollowUpStepsSafe({ leadId: lead.id, ownerRepId, startAt: now });
-  }
+  // Follow-up dates (§follow-up) — EVERY lead gets a ladder, so the Follow up column
+  // is never blank. Duplicates, held-for-review leads and walk-ins used to be skipped
+  // and left with no dates at all; they still need chasing, they just aren't chased by
+  // the AI, so they get the human-only ladder starting tomorrow. Best-effort.
+  await seedFollowUpStepsSafe({
+    leadId: lead.id,
+    ownerRepId,
+    startAt: now,
+    aiCalling: !dup && !held && !neverCall,
+  });
 
   // Duplicate → manual queue, no AI call, merge prompt surfaced via the result.
   if (dup) {

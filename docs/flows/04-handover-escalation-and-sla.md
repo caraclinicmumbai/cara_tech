@@ -50,11 +50,18 @@ thresholds.
    **🔥 hot lead — close now** message (leads with the score) instead of the generic
    🤝 handover, so a ready-to-buy lead is visually distinct from a problem-handover.
 5. **Counsellor oversight copy** is sent in parallel (flow 5).
-6. **Recorded click-to-call (Twilio).** From the lead page, the rep hits "📞 Call &
-   record": Twilio rings the rep's phone, then dials the lead, bridges, and records
+6. **Recorded click-to-call (Twilio).** From the lead page, a counsellor hits "📞 Call &
+   record": Twilio rings **their own** phone, then dials the lead, bridges, and records
    dual-channel. The recording webhook stores it as a `Call` (`human_handover`) and an
    in-app player streams it (session-gated proxy). The recording is then transcribed +
    scored (flow 3).
+   - **Whose phone rings is decided by who clicked**, not by who owns the lead
+     (`User.salesRepId` → that rep's number). Click-to-call means "put me on the phone
+     with this patient", so a colleague covering an absent owner, or a manager stepping
+     in, reaches the patient from their own handset — and the recording, the `Call` row
+     (`handledById`) and the In-Consultation status all belong to the person who
+     actually spoke. A login with no linked counsellor profile is refused with a message
+     rather than quietly ringing somebody else.
    - **Both numbers are normalised and sanity-checked first** (`lib/phone.ts`). Numbers
      are stored as typed — `9536108238`, `+91 7506452973` — and Twilio needs strict
      E.164, so a bare 10-digit mobile is read as `+91`. A number that can't be dialled

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { LeadForm } from "@/components/LeadForm";
 import { LeadsTable, type LeadRow } from "@/components/LeadsTable";
 import { STAGE_LABELS } from "@/lib/leadStages";
-import { formatIst, formatIstDate } from "@/lib/datetime";
+import { formatIst, formatIstDate, istDateKey } from "@/lib/datetime";
 import { currentUser, leadWhereForUser } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { visualStatus } from "@/lib/followups";
@@ -81,8 +81,15 @@ export default async function LeadsPage() {
     status: l.status,
     created: formatIstDate(l.createdAt),
     updated: formatIst(l.updatedAt),
+    // IST calendar days for the Created / Updated date filters.
+    createdDate: istDateKey(l.createdAt),
+    updatedDate: istDateKey(l.updatedAt),
     assignedRep: l.assignedRep?.name ?? null,
-    nextFollowUp: l.followUpSteps[0]?.dueAt ? formatIst(l.followUpSteps[0].dueAt) : null,
+    // A due DATE, not a timestamp — the hour a step happens to fall on is an
+    // artefact of when the lead came in, and reads as noise in a column.
+    nextFollowUp: l.followUpSteps[0]?.dueAt ? formatIstDate(l.followUpSteps[0].dueAt) : null,
+    // The IST calendar day, for the date filter on this column.
+    nextFollowUpDate: l.followUpSteps[0]?.dueAt ? istDateKey(l.followUpSteps[0].dueAt) : null,
     nextFollowUpTitle: l.followUpSteps[0]?.title ?? null,
     nextFollowUpOverdue: l.followUpSteps[0]
       ? visualStatus(l.followUpSteps[0]) === "missed"

@@ -33,3 +33,18 @@ export function formatIstDate(d: Date | string | number): string {
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-IN", IST_DATE).format(date);
 }
+
+/// The IST calendar day as "YYYY-MM-DD" — the value an `<input type="date">` speaks.
+/// Comparing formatted labels would break the moment the format changes, and comparing
+/// UTC days puts anything after 6:30pm IST on the wrong date.
+export function istDateKey(d: Date | string | number): string {
+  const date = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return "";
+  // en-CA renders ISO-ordered dates, so this is a formatter away from what we want.
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}

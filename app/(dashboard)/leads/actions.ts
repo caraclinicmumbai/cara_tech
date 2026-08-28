@@ -145,25 +145,31 @@ export async function callLeadAndRecord(
   });
   if (!lead) return { ok: false, error: "Lead not found" };
 
-  // Prefer the assigned rep. Otherwise fall back to the least-recently-assigned
-  // active telecaller — so a manual rep call still works for unassigned leads,
-  // including opted-out ones (opt-out only blocks AUTOMATED calls, not a human
-  // rep dialling back). Sales heads are excluded from the fallback (not the rota).
-  let rep = lead.assignedRep;
-  if (!rep?.phone) {
-    rep = await prisma.salesRep.findFirst({
-      where: { active: true, salesHead: false, NOT: { phone: "" } },
-      orderBy: [{ lastAssignedAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }],
-    });
+  // Ring the person who PRESSED the button — never a colleague's handset. Click-to-call
+  // is "put me on the phone with this patient": whoever clicked is the one holding a
+  // phone and expecting it to ring, whether they own the lead, are covering it, or are
+  // a manager stepping in. It also makes attribution honest — the recording, the Call
+  // row and the In-Consultation status all belong to the person who actually spoke.
+  const rep = user.salesRepId
+    ? await prisma.salesRep.findUnique({ where: { id: user.salesRepId } })
+    : null;
+  if (!rep) {
+    return {
+      ok: false,
+      error:
+        "Your login isn't linked to a counsellor profile, so there's no phone to ring. Ask an admin to link it under Users.",
+    };
   }
-  if (!rep?.phone) return { ok: false, error: "No rep with a phone to call from" };
+  if (!rep.phone?.trim()) {
+    return { ok: false, error: `No phone number on your counsellor profile (${rep.name}) — add one under Users.` };
+  }
 
   // Check BOTH numbers before dialling. Twilio's answer to a number it can't reach
   // is a leg that fails silently: the rep hears "connecting you…", then nothing, and
   // no trace of it reaches the CRM. Better to refuse here and say which number is
   // wrong — that's a two-second fix on the record instead of a mystery dropped call.
   const repDial = toDialable(rep.phone);
-  if (!repDial.ok) return { ok: false, error: `${rep.name}'s number ${repDial.reason}` };
+  if (!repDial.ok) return { ok: false, error: `Your number ${repDial.reason}` };
   const leadDial = toDialable(lead.phone);
   if (!leadDial.ok) return { ok: false, error: `This lead's number ${leadDial.reason}` };
 
@@ -173,7 +179,12 @@ export async function callLeadAndRecord(
   // In-Consultation without asking. The Twilio recording webhook reverts them when
   // the call ends. Best-effort; never blocks the call.
   void beginConsultation(rep.id);
-  logger.info(`Click-to-call started for lead ${leadId} (rep ${rep.name}) by ${user.email}`);
+  logger.info(
+    `Click-to-call started for lead ${leadId} by ${user.email} (ringing ${rep.name} on ${repDial.e164})` +
+      (lead.assignedRepId && lead.assignedRepId !== rep.id
+        ? ` — lead is owned by ${lead.assignedRep?.name ?? "someone else"}`
+        : ""),
+  );
   return { ok: true, repName: rep.name };
 }
 

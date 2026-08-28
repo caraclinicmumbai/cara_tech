@@ -71,6 +71,46 @@ counsellor (sales heads excluded, `SalesRep.lastAssignedAt` is the rota cursor) 
 - Only an empty roster (no active non-head rep) leaves a lead unowned; that logs a
   warning. `scripts/backfillLeadOwners.ts` assigns any leads already in that state.
 
+## Follow-up dates
+
+**Every** lead is seeded a dated follow-up ladder at intake (`seedFollowUpSteps` — AI
+first call, reconfirmation, counsellor call, WhatsApp, callback, sales-head review), and
+call outcomes and stage moves keep it current.
+
+- A lead the AI will never call — **walk-in, inbound caller, duplicate, held-for-review**
+  — gets the same ladder minus the AI steps, re-based so the first human touch is the day
+  after intake (`aiCalling: false`). These used to be skipped entirely and left with a
+  blank Follow up column, which reads as "no plan" — and that's the lead that gets
+  forgotten. There's no longer a panel for staff to add steps by hand, so seeding them
+  automatically is the only thing that keeps the date there.
+- `scripts/backfillFollowUpDates.ts` does the same for leads that predate this, anchored
+  at 10:00 IST rather than back-dated (inventing months of "missed" steps helps nobody).
+  It leaves **converted and lost** leads alone: a next-follow-up date on a closed lead is
+  noise, so those cells stay empty on purpose.
+
+**The steps are scheduling machinery, not a screen.** The interactive roadmap panel
+that used to sit on the lead page was removed on request: the desk wanted the dates,
+not a checklist to maintain. What's left visible is the **next due step**:
+
+- **Lead page** — a `Follow Up` field: the date and step title, red with "(overdue)"
+  once it's past due, plus the patient's own requested callback time underneath when
+  they named one.
+- **Leads table** — the `Follow up` column, same source (earliest pending step),
+  highlighted when overdue, and **filterable by date**: the column's ▾ opens a calendar
+  (a native date picker, so it's keyboard- and mobile-friendly) plus *Today*, *Tomorrow*
+  and *Overdue* shortcuts. Picking a day shows the leads due that day. **Created** and
+  **Updated** carry the same calendar filter (with *Today* / *Yesterday* — history can't
+  be overdue). The comparison is on the IST calendar day (`istDateKey`), not a formatted
+  label or a UTC date — anything dated after 6:30pm IST would otherwise land on the wrong
+  day. That trap is easy to hit from SQL too: these columns are naive `timestamp`s holding
+  UTC, so the correct conversion is `("col" AT TIME ZONE 'UTC') AT TIME ZONE
+  'Asia/Kolkata'` — the single-cast form silently shifts everything by 5:30.
+
+Nothing else changed: seeding, `applyCallOutcomeToRoadmap`, `applyStageChangeToRoadmap`
+and the voicemail "return missed call" step all still run, so the dates stay accurate.
+Bringing the panel back is a revert of one commit (`components/FollowUpRoadmap.tsx` +
+`app/(dashboard)/leads/followUpActions.ts`).
+
 ## Key files
 
 - `lib/leadIntake.ts` — `ingestLead`, `NEVER_AUTO_CALL`, `PAUSE_AUTO_CALL_SOURCES`

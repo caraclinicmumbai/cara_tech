@@ -37,12 +37,25 @@ export const FOLLOWUP_TEMPLATE: TemplateStep[] = [
   { title: "Sales-head review", channel: "custom", dayOffset: 14, ownerKind: "sales_head" },
 ];
 
+/// The same ladder for a lead the AI will never call — walk-ins, duplicates,
+/// held-for-review, inbound callers. The AI steps are dropped and the human ones
+/// re-based so the first touch lands the day after intake instead of on day 3.
+function humanOnlyTemplate(): TemplateStep[] {
+  const steps = FOLLOWUP_TEMPLATE.filter((t) => t.channel !== "ai_call");
+  const shift = (steps[0]?.dayOffset ?? 1) - 1;
+  return steps.map((t) => ({ ...t, dayOffset: t.dayOffset - shift }));
+}
+
 /// Seed the standard roadmap onto a lead. Idempotent — a no-op if the lead already
 /// has any steps. Best-effort by design (never throws into the intake flow).
 export async function seedFollowUpSteps(input: {
   leadId: string;
   ownerRepId: string | null;
   startAt: Date;
+  /// false when this lead will never be auto-called, so the AI steps are pointless.
+  /// Every lead gets a ladder either way — an empty Follow up column reads as "no
+  /// plan", and that's exactly the lead that gets forgotten.
+  aiCalling?: boolean;
 }): Promise<number> {
   const existing = await prisma.leadFollowUpStep.count({ where: { leadId: input.leadId } });
   if (existing > 0) return 0;
@@ -50,7 +63,8 @@ export async function seedFollowUpSteps(input: {
   // Resolve the sales head once (may be null if none configured).
   const salesHead = await getSalesHead();
 
-  const rows = FOLLOWUP_TEMPLATE.map((t, i) => {
+  const template = input.aiCalling === false ? humanOnlyTemplate() : FOLLOWUP_TEMPLATE;
+  const rows = template.map((t, i) => {
     const ownerRepId =
       t.ownerKind === "rep" ? input.ownerRepId : t.ownerKind === "sales_head" ? (salesHead?.id ?? null) : null;
     return {
@@ -271,6 +285,7 @@ export async function seedFollowUpStepsSafe(input: {
   leadId: string;
   ownerRepId: string | null;
   startAt: Date;
+  aiCalling?: boolean;
 }): Promise<void> {
   try {
     const n = await seedFollowUpSteps(input);
