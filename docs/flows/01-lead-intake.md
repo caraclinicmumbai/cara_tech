@@ -96,7 +96,11 @@ not a checklist to maintain. What's left visible is the **next due step**:
   once it's past due, plus the patient's own requested callback time underneath when
   they named one.
 - **Leads table** — the `Follow up` column, same source (earliest pending step),
-  highlighted when overdue.
+  highlighted when overdue, and **filterable by date**: the column's ▾ opens a calendar
+  (a native date picker, so it's keyboard- and mobile-friendly) plus *Today*, *Tomorrow*
+  and *Overdue* shortcuts. Picking a day shows the leads due that day. The comparison is
+  on the IST calendar day (`istDateKey`), not a formatted label or a UTC date — anything
+  due after 6:30pm IST would otherwise land on the wrong day.
 
 Nothing else changed: seeding, `applyCallOutcomeToRoadmap`, `applyStageChangeToRoadmap`
 and the voicemail "return missed call" step all still run, so the dates stay accurate.

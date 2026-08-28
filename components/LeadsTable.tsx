@@ -25,6 +25,8 @@ export type LeadRow = {
   /// Earliest pending follow-up step: pre-formatted time + its title (tooltip).
   /// `nextFollowUpOverdue` is derived server-side (dueAt in the past).
   nextFollowUp: string | null;
+  /// The same due date as "YYYY-MM-DD" (IST) — what the date filter compares against.
+  nextFollowUpDate: string | null;
   nextFollowUpTitle: string | null;
   nextFollowUpOverdue: boolean;
   /// Rupee value of the lead's won quotes, or the latest open quote if none won.
@@ -41,13 +43,15 @@ export type LeadRow = {
   handoverReason: string | null;
 };
 
-type FilterKind = "none" | "enum" | "text";
+type FilterKind = "none" | "enum" | "text" | "date";
 
 type Col = {
   key: string;
   label: string;
   /// Underlying value used for filtering/sorting ("" = empty, shown as "—").
   value: (l: LeadRow) => string;
+  /// For a "date" column: the row's date as YYYY-MM-DD, or "" when it has none.
+  dateValue?: (l: LeadRow) => string;
   /// Friendly label for a raw value in an enum filter dropdown.
   display?: (v: string) => string;
   filter: FilterKind;
@@ -55,6 +59,21 @@ type Col = {
 };
 
 type OpenFilter = { key: string; x: number; y: number };
+
+/// Today / tomorrow as the IST calendar day, in the "YYYY-MM-DD" a date input speaks.
+/// Matches how the server stamps `nextFollowUpDate`, so the shortcuts and the picker
+/// compare like for like wherever the browser's own clock is set.
+function istDayKey(offsetDays = 0): string {
+  const d = new Date(Date.now() + offsetDays * 86_400_000);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+const todayKey = () => istDayKey(0);
+const tomorrowKey = () => istDayKey(1);
 
 export function LeadsTable({
   leads,
@@ -72,6 +91,9 @@ export function LeadsTable({
   const [search, setSearch] = useState("");
   const [enumFilters, setEnumFilters] = useState<Record<string, Set<string>>>({});
   const [textFilters, setTextFilters] = useState<Record<string, string>>({});
+  /// Date columns filter either to one calendar day ("2026-08-29") or to everything
+  /// already past due — the two questions a desk actually asks of a follow-up date.
+  const [dateFilters, setDateFilters] = useState<Record<string, { day?: string; overdue?: boolean }>>({});
   const [openFilter, setOpenFilter] = useState<OpenFilter | null>(null);
 
   const columns: Col[] = useMemo(
@@ -107,7 +129,8 @@ export function LeadsTable({
         key: "nextFollowUp",
         label: "Next follow-up",
         value: (l) => l.nextFollowUp ?? "",
-        filter: "none",
+        dateValue: (l) => l.nextFollowUpDate ?? "",
+        filter: "date",
       },
       {
         key: "dealAmount",
@@ -157,11 +180,17 @@ export function LeadsTable({
         } else if (c.filter === "text") {
           const t = textFilters[c.key]?.trim().toLowerCase();
           if (t && !c.value(l).toLowerCase().includes(t)) return false;
+        } else if (c.filter === "date") {
+          const f = dateFilters[c.key];
+          if (f?.day && c.dateValue?.(l) !== f.day) return false;
+          // "Overdue" is a property of the row, not of the date string: a step is
+          // missed once its due moment has passed, which the server already decided.
+          if (f?.overdue && !l.nextFollowUpOverdue) return false;
         }
       }
       return true;
     });
-  }, [leads, columns, search, enumFilters, textFilters]);
+  }, [leads, columns, search, enumFilters, textFilters, dateFilters]);
 
   function toggleEnum(key: string, v: string) {
     setEnumFilters((prev) => {
@@ -182,6 +211,14 @@ export function LeadsTable({
       return next;
     });
   }
+  function setDate(key: string, patch: { day?: string; overdue?: boolean } | null) {
+    setDateFilters((prev) => {
+      const next = { ...prev };
+      if (!patch || (!patch.day && !patch.overdue)) delete next[key];
+      else next[key] = patch;
+      return next;
+    });
+  }
   function clearColumn(key: string) {
     setEnumFilters((prev) => {
       const n = { ...prev };
@@ -189,6 +226,7 @@ export function LeadsTable({
       return n;
     });
     setText(key, "");
+    setDate(key, null);
   }
 
   // Open the filter panel anchored just under the clicked caret. Rendered as a
@@ -204,9 +242,13 @@ export function LeadsTable({
     setOpenFilter({ key, x: Math.max(8, x), y: r.bottom + 4 });
   }
 
-  const isFiltered = (key: string) => !!enumFilters[key]?.size || !!textFilters[key];
+  const isFiltered = (key: string) =>
+    !!enumFilters[key]?.size || !!textFilters[key] || !!dateFilters[key];
   const anyActive =
-    !!search || Object.keys(enumFilters).length > 0 || Object.keys(textFilters).length > 0;
+    !!search ||
+    Object.keys(enumFilters).length > 0 ||
+    Object.keys(textFilters).length > 0 ||
+    Object.keys(dateFilters).length > 0;
 
   const openCol = openFilter ? columns.find((c) => c.key === openFilter.key) : null;
 
@@ -228,6 +270,7 @@ export function LeadsTable({
               setSearch("");
               setEnumFilters({});
               setTextFilters({});
+              setDateFilters({});
             }}
             className="text-sm text-blue-600 hover:underline dark:text-blue-400"
           >
@@ -452,7 +495,52 @@ export function LeadsTable({
                 Clear
               </button>
             </div>
-            {openCol.filter === "text" ? (
+            {openCol.filter === "date" ? (
+              // A calendar: pick the day and the table shows the follow-ups due then.
+              // The two shortcuts are the questions asked most often — "what's due
+              // today" and "what have we already let slip".
+              <div className="space-y-2">
+                <input
+                  autoFocus
+                  type="date"
+                  value={dateFilters[openCol.key]?.day ?? ""}
+                  onChange={(e) => setDate(openCol.key, { day: e.target.value || undefined })}
+                  className="w-full rounded border border-black/15 bg-background px-2 py-1 text-xs outline-none focus:border-black/40 dark:border-white/20"
+                />
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    onClick={() => setDate(openCol.key, { day: todayKey() })}
+                    className={`rounded border px-2 py-0.5 text-xs ${
+                      dateFilters[openCol.key]?.day === todayKey()
+                        ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                        : "border-black/15 dark:border-white/20"
+                    }`}
+                  >
+                    Today
+                  </button>
+                  <button
+                    onClick={() => setDate(openCol.key, { day: tomorrowKey() })}
+                    className={`rounded border px-2 py-0.5 text-xs ${
+                      dateFilters[openCol.key]?.day === tomorrowKey()
+                        ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                        : "border-black/15 dark:border-white/20"
+                    }`}
+                  >
+                    Tomorrow
+                  </button>
+                  <button
+                    onClick={() => setDate(openCol.key, { overdue: true })}
+                    className={`rounded border px-2 py-0.5 text-xs ${
+                      dateFilters[openCol.key]?.overdue
+                        ? "border-red-500 text-red-600 dark:text-red-400"
+                        : "border-black/15 dark:border-white/20"
+                    }`}
+                  >
+                    Overdue
+                  </button>
+                </div>
+              </div>
+            ) : openCol.filter === "text" ? (
               <input
                 autoFocus
                 value={textFilters[openCol.key] ?? ""}
