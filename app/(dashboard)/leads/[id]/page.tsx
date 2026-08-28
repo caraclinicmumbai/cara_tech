@@ -243,7 +243,7 @@ export default async function LeadDetailPage({
             suppresses AUTOMATED calls, a human rep may still dial back. */}
         {canCall && (
           <div className="space-y-1">
-            <CallButton leadId={lead.id} repName={lead.assignedRep?.name} />
+            <CallButton leadId={lead.id} />
             {lead.optedOut && !lead.assignedRep && (
               <p className="text-xs text-black/40 dark:text-white/40">
                 Manual call — automated outreach stays suppressed for this opted-out lead.
