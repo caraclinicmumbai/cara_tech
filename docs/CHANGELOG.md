@@ -7,6 +7,93 @@ Format: newest first.
 
 ---
 
+## 2026-08-29 — Date filters on the leads table (follow-up, created, updated)
+
+Flow doc updated: **[flows/01-lead-intake.md](flows/01-lead-intake.md)**.
+Files: `components/LeadsTable.tsx`, `app/(dashboard)/leads/page.tsx`, `lib/datetime.ts`
+(`istDateKey`). No schema change.
+
+Three columns gained a calendar filter — a native date picker, so it's keyboard- and
+mobile-friendly — with per-column shortcuts:
+
+| Column | Shortcuts |
+|---|---|
+| Next follow-up | Today · Tomorrow · **Overdue** |
+| Created / Updated | Today · Yesterday |
+
+History can't be overdue, hence the split. The shortcut set and the overdue predicate
+come from the column definition, so a fourth date column is a two-line change. It joins
+the existing per-column filters, composes with owner/stage/source, and clears with
+"Clear all filters".
+
+**Comparison is on the IST calendar day** (`istDateKey`), never a formatted label or a
+UTC date — anything dated after 6:30pm IST would otherwise land on the wrong day. The
+same trap bites from SQL: these are naive `timestamp` columns holding UTC, so the correct
+conversion is `("col" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata'`; the single-cast
+form shifts everything by 5:30 (it made a verification query disagree with the app, and
+the app was right).
+
+## 2026-08-29 — Converted quotes on the Open Quotes desk
+
+Flow doc updated: **[flows/10-quote-lifecycle.md](flows/10-quote-lifecycle.md)**.
+Files: `lib/openQuotes.ts` (`getConvertedQuotes`), `app/(dashboard)/quotes/page.tsx`.
+No schema change.
+
+The desk showed only what was still in play, so won work — the number the clinic is
+measured on — was visible nowhere except one lead at a time. A second table now sits
+below the pipeline: patient, treatment, status, value, converted date, days to close,
+counsellor, and the billing branch when it differs from where the quote was raised.
+Three roll-ups beside the heading: how many converted, what that's worth, and the last
+30 days.
+
+Deliberately leaner than the pipeline table — staleness, expiry and the activity trail
+are chase machinery and a settled quote isn't being chased. It follows the page's
+ownership scope and branch filter but not the pipeline pills. Capped at 50 rows while
+the value totals still count everything in scope, so a truncated list can't understate
+what was won.
+
+## 2026-08-29 — Click-to-call rings whoever pressed the button
+
+Flow doc updated: **[flows/04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**.
+Files: `app/(dashboard)/leads/actions.ts`, `components/CallButton.tsx`. No schema change.
+
+The button dialled the lead's assigned rep, falling back to the least-recently-assigned
+counsellor on the rota. A telecaller covering someone else's lead, or a manager stepping
+in, pressed Call and rang a **colleague's** handset — and the recording, the `Call` row
+and the In-Consultation status were filed against that colleague, who was never on the
+call.
+
+It now rings the caller's own number (`User.salesRepId` → that rep's phone), and
+attribution follows. A login with no linked counsellor profile is refused with a message
+naming the fix rather than falling back to someone else's phone — note that this means
+**an unlinked login (including `admin@`) can no longer place calls at all**.
+
+## 2026-08-29 — Follow-up: the roadmap panel goes, the dates stay
+
+Flow doc updated: **[flows/01-lead-intake.md](flows/01-lead-intake.md)** (new "Follow-up
+dates" section). Files: `components/FollowUpRoadmap.tsx` + `app/(dashboard)/leads/followUpActions.ts`
+(deleted), `app/(dashboard)/leads/[id]/page.tsx`, `lib/followups.ts`, `lib/leadIntake.ts`,
+`scripts/backfillFollowUpDates.ts` (new). No schema change.
+
+- **The panel is gone.** It was a checklist to maintain — add, complete, skip, reassign —
+  when what the desk uses is "when is this lead next due". The lead page now shows the
+  next pending step as a `Follow Up` field (date · title, red "(overdue)" past due, with
+  the patient's own requested callback time beneath it). Reverting one commit brings the
+  panel back.
+- **The scheduling underneath is untouched** — steps are still seeded and still moved by
+  call outcomes and stage changes, because they're what generate the dates.
+- **Every lead now gets a ladder.** 19 of 20 active leads had no steps at all: leads
+  predating the feature, plus duplicates / held-for-review / walk-ins, which intake
+  skipped on the assumption staff would add steps by hand in the panel that no longer
+  exists. Those now get the same ladder minus the AI steps, re-based so the first human
+  touch is the day after intake. `scripts/backfillFollowUpDates.ts` fixes existing leads
+  (anchored at 10:00 IST, not back-dated; converted and lost leads left alone).
+- The column renders a **date** rather than a timestamp — the hour is an artefact of when
+  the lead arrived.
+
+**Production still needs the backfill run** — the code change only helps leads created
+from now on.
+
 ## 2026-08-27 — WhatsApp inbox: a tab for patient conversations
 
 Flow doc updated: **[flows/06-whatsapp-messaging.md](flows/06-whatsapp-messaging.md)**
