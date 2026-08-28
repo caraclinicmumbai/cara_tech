@@ -73,9 +73,20 @@ counsellor (sales heads excluded, `SalesRep.lastAssignedAt` is the rota cursor) 
 
 ## Follow-up dates
 
-Every actively-pursued lead is seeded a dated follow-up ladder at intake
-(`seedFollowUpSteps` — AI first call, reconfirmation, counsellor call, WhatsApp,
-callback, sales-head review), and call outcomes and stage moves keep it current.
+**Every** lead is seeded a dated follow-up ladder at intake (`seedFollowUpSteps` — AI
+first call, reconfirmation, counsellor call, WhatsApp, callback, sales-head review), and
+call outcomes and stage moves keep it current.
+
+- A lead the AI will never call — **walk-in, inbound caller, duplicate, held-for-review**
+  — gets the same ladder minus the AI steps, re-based so the first human touch is the day
+  after intake (`aiCalling: false`). These used to be skipped entirely and left with a
+  blank Follow up column, which reads as "no plan" — and that's the lead that gets
+  forgotten. There's no longer a panel for staff to add steps by hand, so seeding them
+  automatically is the only thing that keeps the date there.
+- `scripts/backfillFollowUpDates.ts` does the same for leads that predate this, anchored
+  at 10:00 IST rather than back-dated (inventing months of "missed" steps helps nobody).
+  It leaves **converted and lost** leads alone: a next-follow-up date on a closed lead is
+  noise, so those cells stay empty on purpose.
 
 **The steps are scheduling machinery, not a screen.** The interactive roadmap panel
 that used to sit on the lead page was removed on request: the desk wanted the dates,

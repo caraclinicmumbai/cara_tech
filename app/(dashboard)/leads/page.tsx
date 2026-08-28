@@ -82,7 +82,9 @@ export default async function LeadsPage() {
     created: formatIstDate(l.createdAt),
     updated: formatIst(l.updatedAt),
     assignedRep: l.assignedRep?.name ?? null,
-    nextFollowUp: l.followUpSteps[0]?.dueAt ? formatIst(l.followUpSteps[0].dueAt) : null,
+    // A due DATE, not a timestamp — the hour a step happens to fall on is an
+    // artefact of when the lead came in, and reads as noise in a column.
+    nextFollowUp: l.followUpSteps[0]?.dueAt ? formatIstDate(l.followUpSteps[0].dueAt) : null,
     nextFollowUpTitle: l.followUpSteps[0]?.title ?? null,
     nextFollowUpOverdue: l.followUpSteps[0]
       ? visualStatus(l.followUpSteps[0]) === "missed"
