@@ -1,3 +1,4 @@
+
 // NextAuth.js / Auth.js v5 config. (Guide §2.5)
 // Credentials login backed by the Prisma User model. `role` (sales | admin)
 // is carried on the session for role-based access. Uses JWT sessions

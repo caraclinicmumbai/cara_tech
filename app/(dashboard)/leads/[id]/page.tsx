@@ -8,7 +8,7 @@ import { CallButton } from "@/components/CallButton";
 import { MergeLeadButton } from "@/components/MergeLeadButton";
 import { QuotesPanel } from "@/components/QuotesPanel";
 import { isServiceWindowOpen } from "@/lib/messages";
-import { formatIst } from "@/lib/datetime";
+import { formatIst, formatIstDate } from "@/lib/datetime";
 import { currentUser, canSeeLead } from "@/lib/authz";
 import { can, leadScope } from "@/lib/rbac";
 import { summariseQuotes } from "@/lib/quotes";
@@ -26,8 +26,7 @@ import { RecordViewLogger } from "@/components/RecordViewLogger";
 import { getLeadCampaign } from "@/lib/campaigns/enrollments";
 import { LeadCampaignCard } from "@/components/LeadCampaignCard";
 import { LeadComments } from "@/components/LeadComments";
-import { FollowUpRoadmap } from "@/components/FollowUpRoadmap";
-import { listFollowUpSteps, summariseRoadmap } from "@/lib/followups";
+import { listFollowUpSteps } from "@/lib/followups";
 
 export const dynamic = "force-dynamic";
 
@@ -189,17 +188,12 @@ export default async function LeadDetailPage({
     createdAt: formatIst(c.createdAt),
     canDelete: canComment && (c.authorId === viewer.id || isManagerScope),
   }));
-  // Follow-up roadmap (§follow-up roadmap): the lead's ordered steps + the reps
-  // assignable as the accountable owner (active reps incl. sales heads).
+  // Follow-up (§follow-up roadmap): the roadmap still schedules the steps, but the
+  // lead page shows only WHEN the next one is due — the interactive panel was more
+  // machinery than the desk wanted. The steps remain the source of that date (and of
+  // the leads table's Follow up column).
   const followUpSteps = await listFollowUpSteps(lead.id);
-  const roadmapSummary = summariseRoadmap(followUpSteps);
-  const followUpReps = canEditLead
-    ? await prisma.salesRep.findMany({
-        where: { active: true },
-        select: { id: true, name: true, salesHead: true },
-        orderBy: { name: "asc" },
-      })
-    : [];
+  const nextFollowUp = followUpSteps.find((s) => s.visual === "todo" || s.visual === "missed");
   const ownershipReps = handoverReps.map((r) => ({ id: r.id, name: r.name, branchId: r.branchId, branchName: r.branch?.name ?? null }));
   const granteeOptions = granteeUsers
     .filter((u) => u.id !== viewer.id)
@@ -340,7 +334,29 @@ export default async function LeadDetailPage({
           <Field label="Ad ID" value={lead.adId} />
           <Field
             label="Follow Up"
-            value={lead.callbackAt ? formatIst(lead.callbackAt) : null}
+            value={
+              nextFollowUp?.dueAt || lead.callbackAt ? (
+                <span className="space-y-0.5">
+                  {nextFollowUp?.dueAt ? (
+                    <span
+                      className={`block ${
+                        nextFollowUp.visual === "missed" ? "text-red-600 dark:text-red-400" : ""
+                      }`}
+                      title={nextFollowUp.title}
+                    >
+                      {formatIstDate(nextFollowUp.dueAt)} · {nextFollowUp.title}
+                      {nextFollowUp.visual === "missed" ? " (overdue)" : ""}
+                    </span>
+                  ) : null}
+                  {/* What the patient themselves asked for, when they named a time. */}
+                  {lead.callbackAt ? (
+                    <span className="block text-xs text-black/45 dark:text-white/45">
+                      Callback requested {formatIst(lead.callbackAt)}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null
+            }
           />
           <Field label="Created" value={formatIst(lead.createdAt)} />
           <Field label="Updated" value={formatIst(lead.updatedAt)} />
@@ -369,17 +385,6 @@ export default async function LeadDetailPage({
           history={ownershipHistory}
           canHandover={canHandover}
           canGrant={canGrant}
-        />
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Follow-up roadmap</h2>
-        <FollowUpRoadmap
-          leadId={lead.id}
-          steps={followUpSteps}
-          reps={followUpReps}
-          summary={roadmapSummary}
-          canEdit={canEditLead}
         />
       </section>
 

@@ -71,6 +71,27 @@ counsellor (sales heads excluded, `SalesRep.lastAssignedAt` is the rota cursor) 
 - Only an empty roster (no active non-head rep) leaves a lead unowned; that logs a
   warning. `scripts/backfillLeadOwners.ts` assigns any leads already in that state.
 
+## Follow-up dates
+
+Every actively-pursued lead is seeded a dated follow-up ladder at intake
+(`seedFollowUpSteps` — AI first call, reconfirmation, counsellor call, WhatsApp,
+callback, sales-head review), and call outcomes and stage moves keep it current.
+
+**The steps are scheduling machinery, not a screen.** The interactive roadmap panel
+that used to sit on the lead page was removed on request: the desk wanted the dates,
+not a checklist to maintain. What's left visible is the **next due step**:
+
+- **Lead page** — a `Follow Up` field: the date and step title, red with "(overdue)"
+  once it's past due, plus the patient's own requested callback time underneath when
+  they named one.
+- **Leads table** — the `Follow up` column, same source (earliest pending step),
+  highlighted when overdue.
+
+Nothing else changed: seeding, `applyCallOutcomeToRoadmap`, `applyStageChangeToRoadmap`
+and the voicemail "return missed call" step all still run, so the dates stay accurate.
+Bringing the panel back is a revert of one commit (`components/FollowUpRoadmap.tsx` +
+`app/(dashboard)/leads/followUpActions.ts`).
+
 ## Key files
 
 - `lib/leadIntake.ts` — `ingestLead`, `NEVER_AUTO_CALL`, `PAUSE_AUTO_CALL_SOURCES`
