@@ -203,6 +203,7 @@ authoritative and replaces a role's built-in list wholesale — see the warning 
 | Surface | What it uses quotes for |
 |---|---|
 | **Open Quotes desk** `/quotes` | Every quote still in play: value, owner, money breakdown, expiry, and the audited activity trail. [lib/openQuotes.ts](../../lib/openQuotes.ts) |
+| **Converted quotes** (same page, below) | The won side of the desk — what closed, for how much, when, how many days it took, and which branch billed it. Deliberately leaner than the pipeline table: staleness, expiry and the chase trail mean nothing for settled work. Value totals cover everything in scope even when the list is capped at 50 rows, so a truncated table never understates what was won. Follows the page's ownership scope and branch filter; the pipeline pills don't apply. `getConvertedQuotes()` |
 | **Leads table** — Deal amount | Total of the lead's won quotes; falls back to the latest open one. [app/(dashboard)/leads/page.tsx](<../../app/(dashboard)/leads/page.tsx>) |
 | **Follow-up campaigns** | When two quotes are open, the higher-value one (tie-broken by soonest expiry) *selects* the campaign — but enrollment still follows the person. [lib/campaigns/engine.ts](../../lib/campaigns/engine.ts) |
 | **Stuck-in-stage SLA** | A lead with any won quote is skipped — it has already realised value. [lib/stageSla.ts](../../lib/stageSla.ts) |

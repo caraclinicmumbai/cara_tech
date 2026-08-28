@@ -3,6 +3,7 @@ import { requireCapability, leadWhereForUser } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import {
   getOpenQuotes,
+  getConvertedQuotes,
   STALE_AFTER_DAYS,
   EXPIRING_WITHIN_DAYS,
   type OpenQuoteRow,
@@ -112,7 +113,7 @@ export default async function OpenQuotesPage({
   const expiring = sp.expiring === "1";
   const unassigned = sp.unassigned === "1";
 
-  const [board, branches] = await Promise.all([
+  const [board, converted, branches] = await Promise.all([
     getOpenQuotes({
       leadWhere: leadWhereForUser(user),
       status,
@@ -122,6 +123,10 @@ export default async function OpenQuotesPage({
       onlyExpiring: expiring,
       onlyUnassigned: unassigned,
     }),
+    // The won side of the desk. Scope and branch follow the page; the pipeline
+    // pills (stale / expiring / status) are meaningless for a settled quote, so
+    // they don't narrow this list.
+    getConvertedQuotes({ leadWhere: leadWhereForUser(user), branchId }),
     prisma.branch.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
@@ -156,8 +161,12 @@ export default async function OpenQuotesPage({
         <div className="cara-eyebrow">Pipeline</div>
         <h1 className="cara-title">Open quotes</h1>
         <p className="cara-note">
-          Every quote still in play — drafted through awaiting payment. Converted and
-          closed quotes leave this desk; the won ones continue on{" "}
+          Every quote still in play — drafted through awaiting payment. Rejected and
+          expired quotes drop off; the ones that closed are listed under{" "}
+          <a href="#converted" className="underline">
+            Converted quotes
+          </a>{" "}
+          below, and continue on{" "}
           <Link href="/post-sales" className="underline">
             Post-Sales
           </Link>
@@ -369,6 +378,101 @@ export default async function OpenQuotesPage({
           </div>
         </div>
       )}
+
+      {/* ── Converted ─────────────────────────────────────────────────
+          The won side of the same desk: what actually closed, for how much, and
+          how long it took. Settled work, so no chase columns — the pipeline
+          filters above don't apply to it (branch scope does). */}
+      <div id="converted" className="space-y-3 scroll-mt-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-semibold">Converted quotes</h2>
+            <p className="cara-note">
+              Accepted and paid for — these have left the pipeline above and continue on{" "}
+              <Link href="/post-sales" className="underline">
+                Post-Sales
+              </Link>
+              .
+            </p>
+          </div>
+          <div className="flex gap-3 text-right">
+            <div>
+              <div className="text-lg font-semibold">{converted.count}</div>
+              <div className="cara-note">converted{branchId ? " (this branch)" : ""}</div>
+            </div>
+            <div>
+              <div className="text-lg font-semibold">{inr(converted.value)}</div>
+              <div className="cara-note">won, incl. GST</div>
+            </div>
+            <div>
+              <div className="text-lg font-semibold">{inr(converted.recentValue)}</div>
+              <div className="cara-note">{converted.recentCount} in the last 30 days</div>
+            </div>
+          </div>
+        </div>
+
+        {converted.rows.length === 0 ? (
+          <p className="cara-card px-4 py-6 text-center text-sm text-cara-muted">
+            No converted quotes in your scope yet.
+          </p>
+        ) : (
+          <div className="cara-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b-[0.5px] border-cara-rule text-xs uppercase tracking-wide text-cara-muted">
+                  <tr>
+                    <th className="px-4 py-2">Patient</th>
+                    <th className="px-4 py-2">Treatment</th>
+                    <th className="px-4 py-2">Status</th>
+                    <th className="px-4 py-2 text-right">Value</th>
+                    <th className="px-4 py-2">Converted</th>
+                    <th className="px-4 py-2 text-right">Days to close</th>
+                    <th className="px-4 py-2">Counsellor</th>
+                    <th className="px-4 py-2">Branch</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {converted.rows.map((r) => (
+                    <tr key={r.id} className="border-b-[0.5px] border-cara-rule last:border-0">
+                      <td className="px-4 py-2">
+                        <Link href={`/leads/${r.leadId}`} className="font-medium hover:underline">
+                          {r.patientName}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-2">
+                        {r.treatment}
+                        {r.cycle > 1 && <span className="text-cara-muted"> · cycle {r.cycle}</span>}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className="cara-badge">{r.statusLabel}</span>
+                      </td>
+                      <td className="px-4 py-2 text-right font-medium">{inr(r.total)}</td>
+                      <td suppressHydrationWarning className="whitespace-nowrap px-4 py-2">
+                        {r.convertedAt ? formatIstDate(r.convertedAt) : "—"}
+                      </td>
+                      <td className="px-4 py-2 text-right text-cara-muted">
+                        {r.daysToClose === null ? "—" : `${r.daysToClose}d`}
+                      </td>
+                      <td className="px-4 py-2">{r.ownerName ?? "—"}</td>
+                      <td className="px-4 py-2 text-cara-muted">
+                        {r.branchName ?? "—"}
+                        {r.invoicedBranchName && (
+                          <span title="Invoiced by a different branch"> · billed {r.invoicedBranchName}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {converted.truncated && (
+              <p className="border-t-[0.5px] border-cara-rule px-4 py-2 text-xs text-cara-muted">
+                Showing the {converted.rows.length} most recent of {converted.count}.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
