@@ -38,6 +38,16 @@ manual follow-up.
   approved text with the variables filled in), not the template's internal name, so the
   chat reads as the patient read it. `Message.templateName` is kept alongside it and
   shown as a small chip on the bubble.
+- **Templates with a FILE header aren't offered in the chat picker.** A template whose
+  header is an image / video / document needs that file supplied with the send, and the
+  composer has none — Meta refuses it with *"(#132012) Format mismatch, expected DOCUMENT,
+  received UNKNOWN"*. `listApprovedTemplates` reports `requiresMedia`, the picker filters
+  those out and names them ("Not listed: quote_document — it attaches a file, so it goes
+  out from the lead's Quotes panel instead"). The quote path uploads the PDF first and
+  sends it through the same template's header (§quote lifecycle).
+- **Send errors are translated, not dumped.** Meta's raw JSON used to land in front of a
+  counsellor; `humanGraphError` turns the common codes into a sentence they can act on
+  (window closed, variable count, unreachable number) and keeps the payload in the log.
 - **In-CRM template builder** (`/templates`): staff create/submit templates to Meta
   (`createTemplate`) and watch them move PENDING → APPROVED without leaving Cara.
 

@@ -21,9 +21,17 @@ export type WhatsAppTemplate = {
   bodyText: string;
   /// How many {{n}} body parameters the agent must fill before sending.
   paramCount: number;
+  /// The header's format, when it has one: TEXT | IMAGE | VIDEO | DOCUMENT.
+  headerFormat: string | null;
+  /// True when the header is a FILE the sender must supply (image/video/document).
+  /// Such a template can't be sent from a chat composer — Meta rejects it with
+  /// "Format mismatch, expected DOCUMENT, received UNKNOWN" unless the media is
+  /// attached. Those sends have their own paths (a quote PDF goes out from the
+  /// lead's Quotes panel, which uploads the file first).
+  requiresMedia: boolean;
 };
 
-type GraphComponent = { type?: string; text?: string };
+type GraphComponent = { type?: string; text?: string; format?: string };
 type GraphTemplate = {
   name: string;
   language: string;
@@ -59,12 +67,16 @@ export async function listApprovedTemplates(): Promise<WhatsAppTemplate[]> {
       .filter((t) => t.status === "APPROVED")
       .map((t) => {
         const body = t.components?.find((c) => c.type === "BODY")?.text ?? "";
+        const header = t.components?.find((c) => c.type === "HEADER");
+        const headerFormat = header?.format?.toUpperCase() ?? null;
         return {
           name: t.name,
           language: t.language,
           category: t.category ?? "",
           bodyText: body,
           paramCount: countParams(body),
+          headerFormat,
+          requiresMedia: !!headerFormat && headerFormat !== "TEXT",
         };
       });
   } catch (err) {
