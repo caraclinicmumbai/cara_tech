@@ -235,6 +235,30 @@ optimism and not a status someone picked — a document billing raised.
 - **No card or bank details, ever.** An invoice here is a number, an amount, a branch and
   a date. Anything else in the payload is ignored.
 
+### The credit, and the 7-day dispute (§branch credit)
+
+**The branch that raised the invoice gets the credit for that quote.** There is no field
+to type it into — it's read off the invoice, so the argument can't start. A patient's
+transplant at Andheri and PRP course at Bandra credit their own branches independently,
+because credit lives on the quote.
+
+The one release valve (`lib/branchCredit.ts`):
+
+- A branch that believes the credit is theirs has **7 days from the credit landing** to
+  dispute, in writing, with a mandatory reason. Branch managers raise it for **their own**
+  branch — the claimant is their home branch, never a dropdown, so nobody files on
+  someone else's behalf. `quotes.disputeRaise`.
+- **One dispute per quote**, enforced by a unique key. The window deadline is stored on
+  the dispute, not recomputed, so changing the policy later can't retroactively invalidate
+  a dispute that was in time.
+- **The Sales Head decides, once** (`quotes.disputeDecide`), with a mandatory note.
+  Upholding moves the credit to the claimant — **the only path by which a credit ever
+  moves**. Rejecting leaves it. Either way the dispute closes for good: a decided dispute
+  can't be reopened or re-decided.
+- Both the raising and the decision are written to the lead's audit trail
+  (`lead.quote.credit.dispute` / `lead.quote.credit.decision`) with the branches on either
+  side, and the Sales Head gets a bell when one is waiting.
+
 
 ## Key files
 

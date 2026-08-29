@@ -135,10 +135,12 @@ rest of "Connecting to Calendar and Billing", not new ideas.
   The journey trigger is already decoupled — it fires on the quote reaching `converted`
   however that happened — so this slots in without touching the ERP. **The CRM stores no
   card or bank details, ever.**
-- **Branch credit + 7-day dispute (M).** The invoicing branch gets the credit for that
-  quote, system-enforced; a losing branch has 7 days to dispute with the Sales Head;
-  decision final and logged; **disputes are per quote**. `Quote.invoicedBranchId` and the
-  handover summary already surface the credit — the dispute workflow is what's missing.
+- ~~**Branch credit + 7-day dispute (M).**~~ **Done 2026-08-30** — credit follows the
+  invoice (nothing to type), one dispute per quote inside 7 days, Sales Head decides once
+  and finally, upholding is the only way a credit moves. See
+  [flows/10-quote-lifecycle.md](flows/10-quote-lifecycle.md) §branch credit. Not built: a
+  standing review queue for the Sales Head — disputes surface on the quote and as a bell,
+  which is enough at current volume.
 - **Ad-spend import (M).** Daily import for next month's cost reports, and a missing day
   must show **"unavailable", never zero**.
 - **Post-sales branch scoping (S).** The board filters by branch but doesn't restrict:

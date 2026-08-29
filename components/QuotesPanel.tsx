@@ -14,6 +14,8 @@ import {
   setLeadQuoteOwner,
   sendLeadQuoteWhatsApp,
   recordQuoteInvoiceAction,
+  raiseCreditDisputeAction,
+  decideCreditDisputeAction,
 } from "@/app/(dashboard)/leads/quoteActions";
 import {
   QUOTE_STATUS_LABELS,
@@ -64,6 +66,24 @@ export type QuoteView = {
 
 type Rep = { id: string; name: string };
 
+/// Who holds the credit for a quote, and the state of its one dispute (§branch credit).
+export type CreditInfo = {
+  creditedBranchName: string | null;
+  disputable: boolean;
+  windowEndsAt: string | null;
+  dispute: {
+    id: string;
+    status: string;
+    reason: string;
+    claimantBranchName: string;
+    creditedBranchName: string;
+    raisedAt: string;
+    windowEndsAt: string;
+    decidedAt: string | null;
+    decisionNote: string | null;
+  } | null;
+};
+
 const inputCls =
   "rounded border border-black/15 bg-background px-2 py-1.5 text-sm dark:border-white/20";
 
@@ -110,6 +130,9 @@ export function QuotesPanel({
   templateConfigured,
   canRecordInvoice = false,
   branches = [],
+  canDisputeCredit = false,
+  canDecideDispute = false,
+  credit = {},
 }: {
   leadId: string;
   quotes: QuoteView[];
@@ -124,6 +147,10 @@ export function QuotesPanel({
   /// Admin-only: record an invoice by hand when billing hasn't sent one.
   canRecordInvoice?: boolean;
   branches?: { id: string; name: string }[];
+  /// §branch credit — a branch manager may dispute a credit, the Sales Head decides.
+  canDisputeCredit?: boolean;
+  canDecideDispute?: boolean;
+  credit?: Record<string, CreditInfo>;
 }) {
   // WhatsApp can send the PDF if the 24h window is open (plain document) OR an
   // approved document template is configured (proactive send outside the window).
@@ -138,6 +165,10 @@ export function QuotesPanel({
   // Admin-only manual invoice entry: which quote's form is open, and its fields.
   const [invoiceFor, setInvoiceFor] = useState<string | null>(null);
   const [invForm, setInvForm] = useState({ number: "", branchId: "", amount: "", issuedAt: "", reason: "" });
+  // §branch credit — which quote's dispute form is open, and the text in it.
+  const [disputeFor, setDisputeFor] = useState<string | null>(null);
+  const [disputeText, setDisputeText] = useState("");
+  const [decideText, setDecideText] = useState("");
   const [reasonVal, setReasonVal] = useState("");
 
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>, after?: () => void) =>
@@ -296,6 +327,107 @@ export function QuotesPanel({
                         )}
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* §branch credit — the credit follows the invoice. It's shown as a
+                    fact with one release valve: a 7-day dispute, decided once by the
+                    Sales Head. Nobody edits the branch directly. */}
+                {credit[q.id]?.creditedBranchName && (
+                  <div className="mt-2 text-xs">
+                    <span className="text-black/45 dark:text-white/45">Credit:</span>{" "}
+                    <span className="font-medium">{credit[q.id].creditedBranchName}</span>
+                    {credit[q.id].dispute ? (
+                      <span
+                        className={`ml-2 rounded px-1.5 py-px text-[10px] ${
+                          credit[q.id].dispute!.status === "open"
+                            ? "bg-amber-500/20 text-amber-800 dark:text-amber-300"
+                            : credit[q.id].dispute!.status === "upheld"
+                              ? "bg-green-600/20 text-green-800 dark:text-green-300"
+                              : "bg-black/10 text-black/60 dark:bg-white/15 dark:text-white/60"
+                        }`}
+                        title={credit[q.id].dispute!.decisionNote ?? credit[q.id].dispute!.reason}
+                      >
+                        {credit[q.id].dispute!.status === "open"
+                          ? `disputed by ${credit[q.id].dispute!.claimantBranchName}`
+                          : credit[q.id].dispute!.status === "upheld"
+                            ? "dispute upheld — credit moved"
+                            : "dispute rejected — credit stands"}
+                      </span>
+                    ) : credit[q.id].disputable && canDisputeCredit ? (
+                      <button
+                        onClick={() => { setDisputeFor(disputeFor === q.id ? null : q.id); setDisputeText(""); }}
+                        className="ml-2 text-blue-600 hover:underline dark:text-blue-400"
+                        title={`Disputes close ${credit[q.id].windowEndsAt ? formatIstDate(credit[q.id].windowEndsAt!) : ""}`}
+                      >
+                        {disputeFor === q.id ? "Cancel" : "Dispute this credit"}
+                      </button>
+                    ) : null}
+                  </div>
+                )}
+
+                {canDisputeCredit && disputeFor === q.id && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-blue-500/40 bg-blue-500/5 p-2">
+                    <input
+                      className={`${inputCls} min-w-64 flex-1`}
+                      placeholder="Why is this credit your branch's? (final decision is the Sales Head's)"
+                      value={disputeText}
+                      onChange={(e) => setDisputeText(e.target.value)}
+                    />
+                    <button
+                      disabled={pending || !disputeText.trim()}
+                      className="rounded bg-foreground px-3 py-1.5 text-xs font-medium text-background disabled:opacity-50"
+                      onClick={() =>
+                        run(
+                          () => raiseCreditDisputeAction({ quoteId: q.id, leadId, reason: disputeText }),
+                          () => { setDisputeFor(null); setDisputeText(""); },
+                        )
+                      }
+                    >
+                      Raise dispute
+                    </button>
+                  </div>
+                )}
+
+                {canDecideDispute && credit[q.id]?.dispute?.status === "open" && (
+                  <div className="mt-2 space-y-2 rounded border border-amber-500/40 bg-amber-500/5 p-2 text-xs">
+                    <div>
+                      <span className="font-medium">{credit[q.id].dispute!.claimantBranchName}</span> claims this
+                      credit from <span className="font-medium">{credit[q.id].dispute!.creditedBranchName}</span>:
+                      “{credit[q.id].dispute!.reason}”
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        className={`${inputCls} min-w-64 flex-1`}
+                        placeholder="Your decision and why (final, and logged)"
+                        value={decideText}
+                        onChange={(e) => setDecideText(e.target.value)}
+                      />
+                      <button
+                        disabled={pending || !decideText.trim()}
+                        className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                        onClick={() =>
+                          run(
+                            () => decideCreditDisputeAction({ disputeId: credit[q.id].dispute!.id, leadId, uphold: true, note: decideText }),
+                            () => setDecideText(""),
+                          )
+                        }
+                      >
+                        Uphold — move the credit
+                      </button>
+                      <button
+                        disabled={pending || !decideText.trim()}
+                        className="rounded border border-black/15 px-3 py-1.5 text-xs disabled:opacity-50 dark:border-white/20"
+                        onClick={() =>
+                          run(
+                            () => decideCreditDisputeAction({ disputeId: credit[q.id].dispute!.id, leadId, uphold: false, note: decideText }),
+                            () => setDecideText(""),
+                          )
+                        }
+                      >
+                        Reject — credit stands
+                      </button>
+                    </div>
                   </div>
                 )}
 

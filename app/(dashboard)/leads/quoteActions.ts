@@ -20,6 +20,7 @@ import { branchIdForUser, getBranchQuoteInfo } from "@/lib/branches";
 import { sendLeadDocument } from "@/lib/messages";
 import { writeAudit } from "@/lib/audit";
 import { recordInvoice, InvoiceError } from "@/lib/invoices";
+import { raiseCreditDispute, decideCreditDispute, DisputeError } from "@/lib/branchCredit";
 import { logger } from "@/lib/logger";
 
 type Result = { ok: boolean; error?: string };
@@ -448,5 +449,70 @@ export async function recordQuoteInvoiceAction(input: {
     if (err instanceof InvoiceError) return { ok: false, error: err.message };
     logger.error(`recordQuoteInvoiceAction failed for ${input.quoteId}: ${String(err)}`);
     return { ok: false, error: "Could not record the invoice" };
+  }
+}
+
+/// Raise the 7-day branch-credit dispute on a quote (§branch credit). Branch managers
+/// dispute for their OWN branch — the claimant is read from their home branch, never
+/// chosen from a dropdown, so nobody can file on someone else's behalf.
+export async function raiseCreditDisputeAction(input: {
+  quoteId: string;
+  leadId: string;
+  reason: string;
+}): Promise<Result> {
+  const user = await requireCapability("quotes.disputeRaise");
+  const seen = await assertCanSeeLead(user, input.leadId);
+  if (!seen.ok) return seen;
+
+  const me = user.id
+    ? await prisma.user.findUnique({ where: { id: user.id }, select: { branchId: true } })
+    : null;
+  if (!me?.branchId) {
+    return { ok: false, error: "Your login has no home branch, so there's no branch to claim the credit for." };
+  }
+
+  try {
+    await raiseCreditDispute({
+      quoteId: input.quoteId,
+      claimantBranchId: me.branchId,
+      reason: input.reason,
+      actorId: user.id,
+      actorEmail: user.email,
+    });
+    revalidatePath(`/leads/${input.leadId}`);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof DisputeError) return { ok: false, error: err.message };
+    logger.error(`raiseCreditDisputeAction failed for ${input.quoteId}: ${String(err)}`);
+    return { ok: false, error: "Could not raise the dispute" };
+  }
+}
+
+/// The Sales Head's decision — final, logged, and the only way a branch credit moves.
+export async function decideCreditDisputeAction(input: {
+  disputeId: string;
+  leadId: string;
+  uphold: boolean;
+  note: string;
+}): Promise<Result> {
+  const user = await requireCapability("quotes.disputeDecide");
+  const seen = await assertCanSeeLead(user, input.leadId);
+  if (!seen.ok) return seen;
+
+  try {
+    await decideCreditDispute({
+      disputeId: input.disputeId,
+      uphold: input.uphold,
+      note: input.note,
+      actorId: user.id,
+      actorEmail: user.email,
+    });
+    revalidatePath(`/leads/${input.leadId}`);
+    revalidatePath("/quotes");
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof DisputeError) return { ok: false, error: err.message };
+    logger.error(`decideCreditDisputeAction failed for ${input.disputeId}: ${String(err)}`);
+    return { ok: false, error: "Could not record the decision" };
   }
 }

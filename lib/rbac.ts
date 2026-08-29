@@ -69,6 +69,12 @@ export const CAPABILITIES = [
   "quotes.manage",
   "quotes.convert",
   "quotes.unlock",
+  // §branch credit — the invoicing branch owns the credit for a quote. A branch that
+  // believes the credit is theirs raises a dispute within 7 days (`quotes.disputeRaise`,
+  // branch managers + admin); the Sales Head decides, once, finally
+  // (`quotes.disputeDecide`). Nobody edits the credit directly.
+  "quotes.disputeRaise",
+  "quotes.disputeDecide",
   // Post-sales ERP (§post-sales). `view` = see the board, a journey and its handover
   // summary — granted to sales too, so a counsellor can see where their patient got
   // to. `manage` = move journey stages, assign the clinical team, record the surgery
@@ -146,6 +152,8 @@ export const CAPABILITY_GROUPS: {
       { key: "quotes.manage", label: "Create / revise / send" },
       { key: "quotes.convert", label: "Convert (mark won)" },
       { key: "quotes.unlock", label: "Reopen locked quote" },
+      { key: "quotes.disputeRaise", label: "Dispute branch credit" },
+      { key: "quotes.disputeDecide", label: "Decide a credit dispute" },
     ],
   },
   {
@@ -281,6 +289,8 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "quotes.view",
     "quotes.manage",
     "quotes.convert",
+    // A branch manager raises the credit dispute for their branch (§branch credit).
+    "quotes.disputeRaise",
     "calls.view",
     "analytics.view",
     "audit.view",
@@ -314,6 +324,10 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "quotes.view",
     "quotes.manage",
     "quotes.convert",
+    // §branch credit — the Sales Head decides a dispute, once and finally, and may
+    // raise one on a branch's behalf.
+    "quotes.disputeRaise",
+    "quotes.disputeDecide",
     "calls.view",
     "analytics.view",
     "audit.view",
