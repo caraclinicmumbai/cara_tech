@@ -125,7 +125,11 @@ rest of "Connecting to Calendar and Billing", not new ideas.
   confirmation + a 24h and a 2h reminder; a no-show flags the lead, creates a task, and
   drops them into a gentle follow-up. Relates to the older **F3** gap in
   `gaps-and-roadmap.md` ("no structured appointment / no-show handling").
-- **Invoice webhook — "converted" means an invoice exists (M).** Design settled: an
+- ~~**Invoice webhook — "converted" means an invoice exists (M).**~~ **Done 2026-08-30** —
+  `POST /api/webhooks/invoice` + the `Invoice` model attached to the quote; conversion by
+  hand is refused without one (admin override records a real invoice with a reason). See
+  [flows/10-quote-lifecycle.md](flows/10-quote-lifecycle.md) §billing. **Production needs
+  the billing system pointed at the endpoint with `WEBHOOK_SECRET`.** Original design: an
   authenticated `/api/webhooks/invoice` plus an `Invoice` model attached to the **quote**
   (never the lead), so billing tells the CRM which branch invoiced and nobody types it.
   The journey trigger is already decoupled — it fires on the quote reaching `converted`

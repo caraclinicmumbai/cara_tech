@@ -457,6 +457,59 @@ model Notification {
   @@index([leadId])
 }
 
+/// An invoice raised by the billing system, attached to the QUOTE it paid for
+/// (§billing). Never to the lead: a patient can have a transplant invoiced at Andheri
+/// and a PRP course at Bandra, and both branches earned their credit — a lead-level
+/// field would force us to pick one and misreport the other.
+///
+/// This is the CRM's definition of "converted": the quote reaches `converted` because
+/// an invoice exists for it, and the invoicing branch is read from here rather than
+/// typed by anyone.
+///
+/// **No card or bank details, ever.** The fields below are what a CRM needs to
+/// attribute revenue — a number, an amount, a branch, a date. Payment instruments stay
+/// in the billing system.
+model Invoice {
+  id String @id @default(cuid())
+
+  /// The billing system's own invoice number, as printed for the patient. Unique so a
+  /// retried webhook can't create a second invoice for the same document.
+  number String @unique
+
+  /// The billing system's internal id for this invoice, when it sends one — a second
+  /// idempotency key for providers whose number is assigned late.
+  externalId String? @unique
+
+  quoteId String
+  quote   Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  /// The branch that RAISED the invoice — the one that earns the credit for this
+  /// quote (§branch credit). Comes from billing; never entered in the CRM.
+  branchId String
+  branch   Branch @relation("InvoiceBranch", fields: [branchId], references: [id])
+
+  /// Invoiced amount in whole rupees, and the currency it was raised in.
+  amount   Int
+  currency String @default("INR")
+
+  /// When the invoice was raised in the billing system (not when we heard about it).
+  issuedAt DateTime
+
+  /// Which system sent this — "zenoti", "manual_admin", etc. Recorded so a
+  /// hand-entered override is distinguishable from a billed fact.
+  source String @default("billing")
+
+  /// Set when an Admin recorded the invoice by hand instead of billing sending it,
+  /// with the reason they gave. Null for a genuine billing webhook.
+  overrideReason String?
+
+  receivedAt DateTime @default(now())
+
+  @@index([quoteId])
+  @@index([branchId])
+  @@index([issuedAt])
+}
+
 /// How far a staff login has read a lead's WhatsApp thread (§whatsapp inbox) — the
 /// "unread" state behind the WhatsApp tab's conversation list.
 ///
@@ -665,6 +718,7 @@ model Branch {
   users            User[]            @relation("UserHomeBranch")
   quotes           Quote[]           @relation("QuoteBranch")
   invoicedQuotes   Quote[]           @relation("QuoteInvoicedBranch")
+  invoicesRaised   Invoice[]         @relation("InvoiceBranch")
   chatbotFlows     ChatbotFlow[]
   campaignSettings CampaignSetting[]
   postSalesJourneys PostSalesJourney[] @relation("JourneyBranch")
@@ -796,6 +850,9 @@ model Quote {
   updatedAt   DateTime @updatedAt
 
   versions QuoteVersion[]
+  /// Invoices raised against THIS quote (§billing). Its existence is what makes the
+  /// quote "converted"; the invoicing branch earns the credit.
+  invoices Invoice[]
   // The post-sales journey this quote opened on conversion (§post-sales) — at most
   // one per quote. Two converted treatments = two journeys, running independently.
   journey  PostSalesJourney?

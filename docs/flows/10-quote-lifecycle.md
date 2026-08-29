@@ -208,6 +208,33 @@ authoritative and replaces a role's built-in list wholesale — see the warning 
 | **Follow-up campaigns** | When two quotes are open, the higher-value one (tie-broken by soonest expiry) *selects* the campaign — but enrollment still follows the person. [lib/campaigns/engine.ts](../../lib/campaigns/engine.ts) |
 | **Stuck-in-stage SLA** | A lead with any won quote is skipped — it has already realised value. [lib/stageSla.ts](../../lib/stageSla.ts) |
 | **Post-sales** | One journey per converted quote. [flow 9](09-post-sales-journey.md) |
+| **Billing** | An invoice is what converts a quote, and it names the branch that earns the credit. See below. |
+
+## Invoiced = converted (§billing)
+
+**"Converted" means an invoice exists for that specific quote.** Not a counsellor's
+optimism and not a status someone picked — a document billing raised.
+
+- `POST /api/webhooks/invoice` (shared secret, `x-webhook-secret`) takes
+  `{ invoiceNumber, quoteId, branchId | branchName, amount, issuedAt?, externalId?, source? }`.
+  `lib/invoices.recordInvoice` writes an `Invoice` row, sets the quote's
+  `invoicedBranchId` from it, and transitions the quote to `converted` — which stamps
+  `convertedAt`, locks the quote, and opens the post-sales journey exactly as before.
+- **Attached to the QUOTE, never the lead.** A patient can have a transplant invoiced at
+  one branch and a PRP course at another; a lead-level field would force us to pick one
+  and misreport the other. Two quotes, two invoices, two independent conversions.
+- **The invoicing branch earns the credit**, read from the invoice — nobody types it.
+  The quote may be *raised* at one branch and *billed* by another; the desk and the PDF
+  show both.
+- **Marking a quote converted by hand is refused** ("A quote converts when it's
+  invoiced…"). The escape hatch is admin-only: `recordQuoteInvoiceAction` records a real
+  invoice with `source: "manual_admin"` and a mandatory reason, shown on the quote as
+  *recorded by hand*. So even the override leaves an invoice and an audit entry.
+- **Idempotent** on the invoice number — billing systems retry. The same number against a
+  different quote is refused (422), not silently re-pointed.
+- **No card or bank details, ever.** An invoice here is a number, an amount, a branch and
+  a date. Anything else in the payload is ignored.
+
 
 ## Key files
 

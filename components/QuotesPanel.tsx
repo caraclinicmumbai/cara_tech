@@ -6,12 +6,14 @@
 // its own.
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { formatIstDate } from "@/lib/datetime";
 import {
   createLeadQuote,
   reviseLeadQuotePrice,
   setLeadQuoteStatus,
   setLeadQuoteOwner,
   sendLeadQuoteWhatsApp,
+  recordQuoteInvoiceAction,
 } from "@/app/(dashboard)/leads/quoteActions";
 import {
   QUOTE_STATUS_LABELS,
@@ -46,6 +48,18 @@ export type QuoteView = {
   convertedAt: string | null;
   lockedAt: string | null;
   createdAt: string;
+  /// Invoices raised against THIS quote (§billing). Their existence is what makes it
+  /// converted; the branch on them is the branch that earns the credit.
+  invoices: {
+    id: string;
+    number: string;
+    amount: number;
+    currency: string;
+    branchName: string;
+    issuedAt: string;
+    source: string;
+    overrideReason: string | null;
+  }[];
 };
 
 type Rep = { id: string; name: string };
@@ -94,6 +108,8 @@ export function QuotesPanel({
   canViewHistory = false,
   windowOpen,
   templateConfigured,
+  canRecordInvoice = false,
+  branches = [],
 }: {
   leadId: string;
   quotes: QuoteView[];
@@ -105,6 +121,9 @@ export function QuotesPanel({
   canViewHistory?: boolean;
   windowOpen: boolean;
   templateConfigured: boolean;
+  /// Admin-only: record an invoice by hand when billing hasn't sent one.
+  canRecordInvoice?: boolean;
+  branches?: { id: string; name: string }[];
 }) {
   // WhatsApp can send the PDF if the 24h window is open (plain document) OR an
   // approved document template is configured (proactive send outside the window).
@@ -116,13 +135,18 @@ export function QuotesPanel({
   const [catalogQuery, setCatalogQuery] = useState("");
   // The quote+status awaiting a reason (reject → from list, withdraw → free text).
   const [reasonFor, setReasonFor] = useState<{ quoteId: string; status: "rejected" | "withdrawn" } | null>(null);
+  // Admin-only manual invoice entry: which quote's form is open, and its fields.
+  const [invoiceFor, setInvoiceFor] = useState<string | null>(null);
+  const [invForm, setInvForm] = useState({ number: "", branchId: "", amount: "", issuedAt: "", reason: "" });
   const [reasonVal, setReasonVal] = useState("");
 
-  const run = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
+  const run = (fn: () => Promise<{ ok: boolean; error?: string }>, after?: () => void) =>
     startTransition(async () => {
       const res = await fn();
-      if (res.ok) router.refresh();
-      else window.alert(res.error ?? "Action failed");
+      if (res.ok) {
+        after?.();
+        router.refresh();
+      } else window.alert(res.error ?? "Action failed");
     });
 
   function chooseStatus(quoteId: string, status: string) {
@@ -249,6 +273,111 @@ export function QuotesPanel({
                     </span>
                   )}
                 </div>
+
+                {/* §billing — the invoice is why this quote is converted, and the
+                    branch on it is the branch that earns the credit. Shown as fact,
+                    never as an editable field. */}
+                {q.invoices.length > 0 && (
+                  <div className="mt-2 space-y-0.5 rounded bg-green-600/10 px-2 py-1.5 text-xs">
+                    {q.invoices.map((iv) => (
+                      <div key={iv.id}>
+                        🧾 Invoice <span className="font-medium">{iv.number}</span> ·{" "}
+                        {iv.currency === "INR" ? "₹" : `${iv.currency} `}
+                        {iv.amount.toLocaleString("en-IN")} · billed by{" "}
+                        <span className="font-medium">{iv.branchName}</span> ·{" "}
+                        <span suppressHydrationWarning>{formatIstDate(iv.issuedAt)}</span>
+                        {iv.source === "manual_admin" && (
+                          <span
+                            title={iv.overrideReason ?? undefined}
+                            className="ml-1 rounded bg-amber-500/20 px-1 py-px text-[10px] text-amber-800 dark:text-amber-300"
+                          >
+                            recorded by hand
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* No invoice yet: say what conversion is waiting on, and let an
+                    Admin record one when billing hasn't sent it. */}
+                {canManage && q.invoices.length === 0 && !locked && (
+                  <div className="mt-2 text-xs text-black/45 dark:text-white/45">
+                    Not invoiced yet — this quote converts when billing raises its invoice.
+                    {canRecordInvoice && (
+                      <button
+                        onClick={() => setInvoiceFor(invoiceFor === q.id ? null : q.id)}
+                        className="ml-2 text-blue-600 hover:underline dark:text-blue-400"
+                      >
+                        {invoiceFor === q.id ? "Cancel" : "Record it by hand"}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {canRecordInvoice && invoiceFor === q.id && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-amber-500/40 bg-amber-500/5 p-2">
+                    <input
+                      className={inputCls}
+                      placeholder="Invoice number"
+                      value={invForm.number}
+                      onChange={(e) => setInvForm({ ...invForm, number: e.target.value })}
+                    />
+                    <select
+                      className={inputCls}
+                      value={invForm.branchId}
+                      onChange={(e) => setInvForm({ ...invForm, branchId: e.target.value })}
+                    >
+                      <option value="">Invoiced by…</option>
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                    <input
+                      className={inputCls}
+                      placeholder="Amount (₹)"
+                      inputMode="numeric"
+                      value={invForm.amount}
+                      onChange={(e) => setInvForm({ ...invForm, amount: e.target.value })}
+                    />
+                    <input
+                      className={inputCls}
+                      type="date"
+                      value={invForm.issuedAt}
+                      onChange={(e) => setInvForm({ ...invForm, issuedAt: e.target.value })}
+                    />
+                    <input
+                      className={`${inputCls} min-w-56 flex-1`}
+                      placeholder="Why by hand? (logged)"
+                      value={invForm.reason}
+                      onChange={(e) => setInvForm({ ...invForm, reason: e.target.value })}
+                    />
+                    <button
+                      disabled={pending || !invForm.number.trim() || !invForm.branchId || !invForm.amount.trim() || !invForm.reason.trim()}
+                      className="rounded bg-foreground px-3 py-1.5 text-xs font-medium text-background disabled:opacity-50"
+                      onClick={() =>
+                        run(
+                          () =>
+                            recordQuoteInvoiceAction({
+                              quoteId: q.id,
+                              leadId,
+                              invoiceNumber: invForm.number,
+                              branchId: invForm.branchId,
+                              amount: Number(invForm.amount.replace(/[^\d]/g, "")) || 0,
+                              issuedAt: invForm.issuedAt || null,
+                              reason: invForm.reason,
+                            }),
+                          () => {
+                            setInvoiceFor(null);
+                            setInvForm({ number: "", branchId: "", amount: "", issuedAt: "", reason: "" });
+                          },
+                        )
+                      }
+                    >
+                      Record invoice
+                    </button>
+                  </div>
+                )}
 
                 {canManage && !locked && (
                   <div className="mt-3 flex flex-wrap items-center gap-2">
