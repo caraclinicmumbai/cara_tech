@@ -7,6 +7,61 @@ Format: newest first.
 
 ---
 
+## 2026-08-30 — The full report set: ten management read-outs at `/reports`
+
+Flow doc added: **[flows/12-reports.md](flows/12-reports.md)**.
+Files: `lib/reports/{range,shared,funnel,people,attribution,lost,money}.ts`,
+`lib/adSpend.ts`, `app/(dashboard)/reports/**`, `components/ReportUI.tsx`,
+`components/ReportRangePicker.tsx`, `app/api/webhooks/ad-spend/route.ts`,
+`scripts/importAdSpend.ts` (all new), `lib/rbac.ts`, `app/(dashboard)/layout.tsx`.
+Schema: new `AdSpend` model (migration `..._ad_spend`).
+
+Ten reports over one shared date range, building on the Month-4 dashboard:
+
+1. **Lead Inflow** — volume, source, campaign, branch, day by day, vs the previous period.
+2. **AI Contact Rate** — attempts vs contacts, at call level and person level, attempts
+   needed before contact, first attempt vs reconfirmation.
+3. **Handoff Speed** — time from handover to the first *logged* human action, median /
+   mean / SLA share, per counsellor, plus the ones still waiting.
+4. **Counsellor Performance** — leads, consultations, quotes, conversions, pickup speed.
+5. **Source Attribution** — cost per lead, per consultation, per surgery, and ROAS.
+6. **Lost Lead Analysis** — by tag, by source, survival time, and the written reasons.
+7. 💰 **Treatment Mix** — quoted vs converted, average value, best and worst converting.
+8. 💰 **Lost Quote Analysis** — rejected / withdrawn / **lapsed**, by reason and treatment,
+   with the pricing signal called out explicitly.
+9. 💰 **Multi-Quote** — how often a patient buys two treatments, which pairs go together,
+   and what the second one is worth.
+10. 💰 **Repeat Treatment** — who comes back, after how long, for what.
+
+**The rules the numbers obey** (`lib/reports/shared.ts`, shared so tabs can't disagree):
+
+- **Null is never zero.** A rate with no denominator renders as "—", not "0%".
+- **Reached** = a person answered and a decision was recorded, so "not interested" counts.
+- **Picked up** = a logged call or a counsellor-typed message; dialling from a personal
+  handset leaves no trace and reads as not picked up.
+- **Consulted** = the stage says so *or the patient bought* — otherwise a patient who
+  converted without their stage being moved produced rates above 100%.
+- **A quote is worth its invoice** where one exists, its quoted total where it doesn't.
+- **Lapsed quotes are counted.** Nothing marks quotes expired, so the quiet losses —
+  usually the biggest group — appeared in no loss count at all before this.
+- **Unowned quotes are stated, not dropped**, under the counsellor table.
+
+**Ad spend, and why a missing day is not zero.** New `AdSpend` table (one row per IST day
+/ source / campaign), filled by `scripts/importAdSpend.ts` (CSV, forgiving headers, ₹ and
+thousands separators, `--zero-fill`) or `POST /api/webhooks/ad-spend` (shared secret,
+batched). **A day nobody imported is "unavailable" and every cost figure covering it is
+withheld** — counting it as ₹0 would understate cost and make the forgotten channel look
+like the cheapest one. A day with genuinely no spend must be imported as an explicit 0.
+
+**Access.** Two new capabilities: `reports.view` (the page and reports 1–6) for Telecalling
+Head, Branch Manager, Sales Head; `reports.revenue` (the four 💰 reports plus money columns
+in 4 and 5) for Branch Manager and Sales Head. Both editable on `/hierarchy`.
+
+Ranges are IST calendar days throughout (`lib/reports/range.ts`), held in the URL so they
+survive tab switches and can be shared.
+
+---
+
 ## 2026-08-30 — Billing: an invoice is what converts a quote, and it sets the branch credit
 
 Flow doc updated: **[flows/10-quote-lifecycle.md](flows/10-quote-lifecycle.md)** (new

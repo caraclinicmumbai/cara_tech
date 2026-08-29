@@ -769,8 +769,58 @@ model Branch {
   chatbotFlows     ChatbotFlow[]
   campaignSettings CampaignSetting[]
   postSalesJourneys PostSalesJourney[] @relation("JourneyBranch")
+  adSpend          AdSpend[]          @relation("AdSpendBranch")
 
   @@index([active])
+}
+
+/// What we spent on ads, one row per (day, source, campaign) — the cost side of the
+/// Source Attribution report (§reports). Imported daily from the ad platforms; nothing
+/// in the CRM derives it, so a day nobody imported has NO ROW.
+///
+/// **That absence is the point.** A missing day must read as *"unavailable"*, never as
+/// zero: a zero silently deflates cost-per-lead and makes a channel look cheaper than it
+/// is. Every cost figure in the report is therefore reported alongside the days it
+/// actually covers, and is withheld when the range is incomplete.
+model AdSpend {
+  id String @id @default(cuid())
+
+  /// The IST calendar day this spend belongs to, stored as the UTC instant of IST
+  /// midnight (see istDayStart in lib/reports/range.ts). A naive UTC day would push
+  /// everything after 6:30pm IST onto the wrong date.
+  day DateTime
+
+  /// The lead source this spend bought, matching Lead.source: facebook | instagram |
+  /// google. Only paid sources belong here — a referral has no ad cost.
+  source String
+
+  /// The ad platform's campaign id/name, matching Lead.campaign where the intake
+  /// adapters set it. Empty string = "all campaigns for this source that day", which
+  /// is what a platform-level daily total imports as. NOT nullable: Postgres treats
+  /// NULLs as distinct, so a nullable column here would let the same day import twice.
+  campaign String @default("")
+
+  /// Spend in whole rupees, and the currency it was billed in.
+  amount   Int
+  currency String @default("INR")
+
+  /// Which branch's budget this came out of, when the platform splits that way.
+  branchId String?
+  branch   Branch? @relation("AdSpendBranch", fields: [branchId], references: [id], onDelete: SetNull)
+
+  /// Where the row came from — "meta_ads", "google_ads", "csv", "manual". Recorded so a
+  /// hand-typed figure is distinguishable from a platform-reported one.
+  importedFrom String  @default("csv")
+  note         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  /// Re-importing a day REPLACES it rather than adding to it (platforms restate spend
+  /// for a couple of days after the fact).
+  @@unique([day, source, campaign])
+  @@index([day])
+  @@index([source, day])
 }
 
 /// A lead's membership in a follow-up campaign (Phase 2 §follow-up). THE core guardrail:

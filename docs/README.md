@@ -29,8 +29,8 @@ data model, integrations), then dip into the flow you care about.
 | 8 | [Follow-up campaigns](flows/08-follow-up-campaigns.md) | Automated nurture campaigns for leads that go quiet, and the guardrails that keep them from becoming harassment |
 | 9 | [Post-sales journey / ERP](flows/09-post-sales-journey.md) | The clinical side: one journey per converted quote, per-treatment stage limits, coordinated day 1/7/30/90 care check-ins, handover summary |
 | 10 | [Quote lifecycle](flows/10-quote-lifecycle.md) | The commercial track: raise → price → revise → send → accept → convert, the money maths, the Open Quotes desk, and what locks on conversion |
-
 | 11 | [Inbound call routing](flows/11-inbound-call-routing.md) | Patients calling the published clinic number: sticky routing to their own counsellor, cover ladder, hold, voicemail |
+| 12 | [Reports](flows/12-reports.md) | The ten management read-outs: inflow, AI contact, handoff speed, counsellors, cost per lead/consultation/surgery, lost leads, treatment mix, lost quotes, multi-quote, repeat treatment — and the ad-spend import behind the cost figures |
 
 **Also:** [ElevenLabs agent ↔ CRM integration contract](elevenlabs-agent-integration.md) —
 what the AI first-call agent must emit (outcome, handover keys, callback time, tag,
