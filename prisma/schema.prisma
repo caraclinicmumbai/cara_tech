@@ -457,6 +457,104 @@ model Notification {
   @@index([leadId])
 }
 
+/// An invoice raised by the billing system, attached to the QUOTE it paid for
+/// (§billing). Never to the lead: a patient can have a transplant invoiced at Andheri
+/// and a PRP course at Bandra, and both branches earned their credit — a lead-level
+/// field would force us to pick one and misreport the other.
+///
+/// This is the CRM's definition of "converted": the quote reaches `converted` because
+/// an invoice exists for it, and the invoicing branch is read from here rather than
+/// typed by anyone.
+///
+/// **No card or bank details, ever.** The fields below are what a CRM needs to
+/// attribute revenue — a number, an amount, a branch, a date. Payment instruments stay
+/// in the billing system.
+model Invoice {
+  id String @id @default(cuid())
+
+  /// The billing system's own invoice number, as printed for the patient. Unique so a
+  /// retried webhook can't create a second invoice for the same document.
+  number String @unique
+
+  /// The billing system's internal id for this invoice, when it sends one — a second
+  /// idempotency key for providers whose number is assigned late.
+  externalId String? @unique
+
+  quoteId String
+  quote   Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  /// The branch that RAISED the invoice — the one that earns the credit for this
+  /// quote (§branch credit). Comes from billing; never entered in the CRM.
+  branchId String
+  branch   Branch @relation("InvoiceBranch", fields: [branchId], references: [id])
+
+  /// Invoiced amount in whole rupees, and the currency it was raised in.
+  amount   Int
+  currency String @default("INR")
+
+  /// When the invoice was raised in the billing system (not when we heard about it).
+  issuedAt DateTime
+
+  /// Which system sent this — "zenoti", "manual_admin", etc. Recorded so a
+  /// hand-entered override is distinguishable from a billed fact.
+  source String @default("billing")
+
+  /// Set when an Admin recorded the invoice by hand instead of billing sending it,
+  /// with the reason they gave. Null for a genuine billing webhook.
+  overrideReason String?
+
+  receivedAt DateTime @default(now())
+
+  @@index([quoteId])
+  @@index([branchId])
+  @@index([issuedAt])
+}
+
+/// A branch disputing who earned the credit for one quote (§branch credit).
+///
+/// The rule: the branch that RAISED THE INVOICE gets the credit, no exceptions — the
+/// system reads it from the invoice so nobody types it and nobody argues about it. The
+/// one release valve is this: a branch that believes the credit is theirs has **7 days**
+/// to say so, the Sales Head decides once, and the decision is final and logged.
+///
+/// One dispute per quote, enforced by the unique key. "Final" means final: a decided
+/// dispute is never reopened, and a second attempt is refused rather than quietly
+/// starting a fresh argument.
+model QuoteCreditDispute {
+  id      String @id @default(cuid())
+  quoteId String @unique
+  quote   Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  /// The branch claiming the credit, and the branch that held it when the dispute was
+  /// raised — recorded so the trail reads correctly even if the credit later moves.
+  claimantBranchId String
+  claimantBranch   Branch @relation("DisputeClaimant", fields: [claimantBranchId], references: [id])
+  creditedBranchId String
+  creditedBranch   Branch @relation("DisputeCredited", fields: [creditedBranchId], references: [id])
+
+  /// Who raised it, when, and why (a reason is mandatory).
+  raisedById String?
+  raisedAt   DateTime @default(now())
+  reason     String
+
+  /// The deadline this dispute was raised against — 7 days from the credit landing.
+  /// Stored rather than recomputed so a later change to the window can't retroactively
+  /// invalidate a dispute that was in time when it was made.
+  windowEndsAt DateTime
+
+  /// open | upheld | rejected. `upheld` moves the credit to the claimant.
+  status String @default("open")
+
+  decidedById String?
+  decidedAt   DateTime?
+  /// The Sales Head's reasoning. Mandatory on a decision — this is the record that
+  /// settles the argument.
+  decisionNote String?
+
+  @@index([status])
+  @@index([claimantBranchId])
+}
+
 /// How far a staff login has read a lead's WhatsApp thread (§whatsapp inbox) — the
 /// "unread" state behind the WhatsApp tab's conversation list.
 ///
@@ -665,6 +763,9 @@ model Branch {
   users            User[]            @relation("UserHomeBranch")
   quotes           Quote[]           @relation("QuoteBranch")
   invoicedQuotes   Quote[]           @relation("QuoteInvoicedBranch")
+  invoicesRaised   Invoice[]         @relation("InvoiceBranch")
+  creditDisputesRaised   QuoteCreditDispute[] @relation("DisputeClaimant")
+  creditDisputesAgainst  QuoteCreditDispute[] @relation("DisputeCredited")
   chatbotFlows     ChatbotFlow[]
   campaignSettings CampaignSetting[]
   postSalesJourneys PostSalesJourney[] @relation("JourneyBranch")
@@ -796,6 +897,11 @@ model Quote {
   updatedAt   DateTime @updatedAt
 
   versions QuoteVersion[]
+  /// Invoices raised against THIS quote (§billing). Its existence is what makes the
+  /// quote "converted"; the invoicing branch earns the credit.
+  invoices Invoice[]
+  /// The one credit dispute this quote may carry (§branch credit).
+  creditDispute QuoteCreditDispute?
   // The post-sales journey this quote opened on conversion (§post-sales) — at most
   // one per quote. Two converted treatments = two journeys, running independently.
   journey  PostSalesJourney?

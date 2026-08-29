@@ -57,7 +57,41 @@ async function postMessage(payload: Record<string, unknown>): Promise<WhatsAppSe
       ? JSON.stringify(err.response?.data ?? err.message)
       : String(err);
     logger.error(`WhatsApp send failed: ${detail}`);
-    return { ok: false, error: detail };
+    // The log keeps Meta's raw payload; the caller gets something a counsellor can act on.
+    return { ok: false, error: humanGraphError(err) };
+  }
+}
+
+/// Meta's send errors as a sentence, because the raw payload ends up in front of a
+/// counsellor. `error_user_msg` is Meta's own patient-facing wording when present;
+/// otherwise the codes worth naming are translated and anything else falls back to
+/// the API's message.
+export function humanGraphError(err: unknown): string {
+  if (!axios.isAxiosError(err)) return String(err);
+  const e = err.response?.data?.error as
+    | { message?: string; code?: number; error_user_msg?: string; error_data?: { details?: string } }
+    | undefined;
+  if (!e) return err.message;
+  if (e.error_user_msg) return e.error_user_msg;
+
+  const details = e.error_data?.details ?? "";
+  switch (e.code) {
+    case 132012: // parameter format mismatch — nearly always a media header with no file
+      return details.includes("expected")
+        ? `This template needs a file attached to its header (${details}). Send it from the place that attaches the file — a quote goes out from the lead's Quotes panel.`
+        : "The values don't match the shape this template was approved with.";
+    case 132000:
+      return "The number of variables doesn't match the approved template.";
+    case 131047:
+      return "The 24-hour window is closed for this patient — only an approved template can reopen it.";
+    case 131026:
+      return "That number can't receive WhatsApp messages.";
+    case 131051:
+      return "This message type isn't supported for that number.";
+    case 130472:
+      return "The patient is outside the experiment/audience Meta allows for this template.";
+    default:
+      return details ? `${e.message ?? "WhatsApp rejected the message"} — ${details}` : (e.message ?? "WhatsApp rejected the message");
   }
 }
 

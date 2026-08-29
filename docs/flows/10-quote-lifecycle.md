@@ -208,6 +208,57 @@ authoritative and replaces a role's built-in list wholesale — see the warning 
 | **Follow-up campaigns** | When two quotes are open, the higher-value one (tie-broken by soonest expiry) *selects* the campaign — but enrollment still follows the person. [lib/campaigns/engine.ts](../../lib/campaigns/engine.ts) |
 | **Stuck-in-stage SLA** | A lead with any won quote is skipped — it has already realised value. [lib/stageSla.ts](../../lib/stageSla.ts) |
 | **Post-sales** | One journey per converted quote. [flow 9](09-post-sales-journey.md) |
+| **Billing** | An invoice is what converts a quote, and it names the branch that earns the credit. See below. |
+
+## Invoiced = converted (§billing)
+
+**"Converted" means an invoice exists for that specific quote.** Not a counsellor's
+optimism and not a status someone picked — a document billing raised.
+
+- `POST /api/webhooks/invoice` (shared secret, `x-webhook-secret`) takes
+  `{ invoiceNumber, quoteId, branchId | branchName, amount, issuedAt?, externalId?, source? }`.
+  `lib/invoices.recordInvoice` writes an `Invoice` row, sets the quote's
+  `invoicedBranchId` from it, and transitions the quote to `converted` — which stamps
+  `convertedAt`, locks the quote, and opens the post-sales journey exactly as before.
+- **Attached to the QUOTE, never the lead.** A patient can have a transplant invoiced at
+  one branch and a PRP course at another; a lead-level field would force us to pick one
+  and misreport the other. Two quotes, two invoices, two independent conversions.
+- **The invoicing branch earns the credit**, read from the invoice — nobody types it.
+  The quote may be *raised* at one branch and *billed* by another; the desk and the PDF
+  show both.
+- **Marking a quote converted by hand is refused** ("A quote converts when it's
+  invoiced…"). The escape hatch is admin-only: `recordQuoteInvoiceAction` records a real
+  invoice with `source: "manual_admin"` and a mandatory reason, shown on the quote as
+  *recorded by hand*. So even the override leaves an invoice and an audit entry.
+- **Idempotent** on the invoice number — billing systems retry. The same number against a
+  different quote is refused (422), not silently re-pointed.
+- **No card or bank details, ever.** An invoice here is a number, an amount, a branch and
+  a date. Anything else in the payload is ignored.
+
+### The credit, and the 7-day dispute (§branch credit)
+
+**The branch that raised the invoice gets the credit for that quote.** There is no field
+to type it into — it's read off the invoice, so the argument can't start. A patient's
+transplant at Andheri and PRP course at Bandra credit their own branches independently,
+because credit lives on the quote.
+
+The one release valve (`lib/branchCredit.ts`):
+
+- A branch that believes the credit is theirs has **7 days from the credit landing** to
+  dispute, in writing, with a mandatory reason. Branch managers raise it for **their own**
+  branch — the claimant is their home branch, never a dropdown, so nobody files on
+  someone else's behalf. `quotes.disputeRaise`.
+- **One dispute per quote**, enforced by a unique key. The window deadline is stored on
+  the dispute, not recomputed, so changing the policy later can't retroactively invalidate
+  a dispute that was in time.
+- **The Sales Head decides, once** (`quotes.disputeDecide`), with a mandatory note.
+  Upholding moves the credit to the claimant — **the only path by which a credit ever
+  moves**. Rejecting leaves it. Either way the dispute closes for good: a decided dispute
+  can't be reopened or re-decided.
+- Both the raising and the decision are written to the lead's audit trail
+  (`lead.quote.credit.dispute` / `lead.quote.credit.decision`) with the branches on either
+  side, and the Sales Head gets a bell when one is waiting.
+
 
 ## Key files
 
@@ -234,7 +285,7 @@ authoritative and replaces a role's built-in list wholesale — see the warning 
 | `STALE_AFTER_DAYS` = 7 | `lib/openQuotes.ts` | "Gone quiet" threshold on the desk |
 | `EXPIRING_WITHIN_DAYS` = 7 | `lib/openQuotes.ts` | "Lapsing" threshold on the desk |
 | `TRANSCRIPT_MAX` = 6000 | `lib/historyPdf.ts` | Characters of each transcript printed in the history PDF before it is cut (truncation is stated in the output) |
-| `QUOTE_DOC_TEMPLATE_NAME` / `_LANG` | env | Approved WhatsApp document template for sending a quote outside the 24h window |
+| `QUOTE_DOC_TEMPLATE_NAME` / `_LANG` | env | **Optional override.** Pins which approved document template sends a quote outside the 24h window. Unset, the app asks the WABA for an approved template with a DOCUMENT header and uses it — the send shouldn't be silently disabled in one environment because an env var wasn't copied. Set it only when several document templates exist and the choice matters. |
 | Catalog items | `CatalogItem` table, admin-managed | The treatment picker's prices, GST rates, package discounts |
 
 ## Limitations

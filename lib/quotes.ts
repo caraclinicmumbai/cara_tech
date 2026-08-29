@@ -189,6 +189,10 @@ export async function transitionQuote(input: {
   withdrawnReason?: string | null;
   actorId?: string | null;
   invoicedBranchId?: string | null;
+  /// Set by lib/invoices when an invoice is what's converting the quote, or by an
+  /// Admin override. Without it, "converted" is refused: conversion means a real
+  /// invoice exists for THIS quote (§billing), not that someone felt optimistic.
+  invoiceBacked?: boolean;
 }): Promise<void> {
   if (!isQuoteStatus(input.status)) throw new QuoteError("Invalid quote status");
 
@@ -212,6 +216,20 @@ export async function transitionQuote(input: {
   // §multi-quote: a withdrawn quote is never deleted — it keeps a reason + a name.
   if (input.status === "withdrawn" && !input.withdrawnReason?.trim()) {
     throw new QuoteError("A withdrawal reason is required.");
+  }
+
+  // §billing: a quote converts because it was INVOICED. The billing webhook records
+  // the invoice and converts through here with `invoiceBacked`; a human picking
+  // "Converted" from the dropdown is refused unless an invoice already exists for the
+  // quote (or an Admin recorded one by hand, which is itself an invoice row with a
+  // logged reason). This is what keeps the branch credit honest — nobody types it.
+  if (input.status === "converted" && !input.invoiceBacked) {
+    const invoiced = await prisma.invoice.count({ where: { quoteId: input.quoteId } });
+    if (invoiced === 0) {
+      throw new QuoteError(
+        "A quote converts when it's invoiced. Waiting on the invoice from billing — or an Admin can record it against this quote.",
+      );
+    }
   }
 
   // Acceptance sets "Accepted — Awaiting Payment": conversion is a separate step

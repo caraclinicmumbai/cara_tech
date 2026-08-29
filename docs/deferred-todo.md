@@ -125,16 +125,22 @@ rest of "Connecting to Calendar and Billing", not new ideas.
   confirmation + a 24h and a 2h reminder; a no-show flags the lead, creates a task, and
   drops them into a gentle follow-up. Relates to the older **F3** gap in
   `gaps-and-roadmap.md` ("no structured appointment / no-show handling").
-- **Invoice webhook — "converted" means an invoice exists (M).** Design settled: an
+- ~~**Invoice webhook — "converted" means an invoice exists (M).**~~ **Done 2026-08-30** —
+  `POST /api/webhooks/invoice` + the `Invoice` model attached to the quote; conversion by
+  hand is refused without one (admin override records a real invoice with a reason). See
+  [flows/10-quote-lifecycle.md](flows/10-quote-lifecycle.md) §billing. **Production needs
+  the billing system pointed at the endpoint with `WEBHOOK_SECRET`.** Original design: an
   authenticated `/api/webhooks/invoice` plus an `Invoice` model attached to the **quote**
   (never the lead), so billing tells the CRM which branch invoiced and nobody types it.
   The journey trigger is already decoupled — it fires on the quote reaching `converted`
   however that happened — so this slots in without touching the ERP. **The CRM stores no
   card or bank details, ever.**
-- **Branch credit + 7-day dispute (M).** The invoicing branch gets the credit for that
-  quote, system-enforced; a losing branch has 7 days to dispute with the Sales Head;
-  decision final and logged; **disputes are per quote**. `Quote.invoicedBranchId` and the
-  handover summary already surface the credit — the dispute workflow is what's missing.
+- ~~**Branch credit + 7-day dispute (M).**~~ **Done 2026-08-30** — credit follows the
+  invoice (nothing to type), one dispute per quote inside 7 days, Sales Head decides once
+  and finally, upholding is the only way a credit moves. See
+  [flows/10-quote-lifecycle.md](flows/10-quote-lifecycle.md) §branch credit. Not built: a
+  standing review queue for the Sales Head — disputes surface on the quote and as a bell,
+  which is enough at current volume.
 - **Ad-spend import (M).** Daily import for next month's cost reports, and a missing day
   must show **"unavailable", never zero**.
 - **Post-sales branch scoping (S).** The board filters by branch but doesn't restrict:

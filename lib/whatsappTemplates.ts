@@ -21,9 +21,17 @@ export type WhatsAppTemplate = {
   bodyText: string;
   /// How many {{n}} body parameters the agent must fill before sending.
   paramCount: number;
+  /// The header's format, when it has one: TEXT | IMAGE | VIDEO | DOCUMENT.
+  headerFormat: string | null;
+  /// True when the header is a FILE the sender must supply (image/video/document).
+  /// Such a template can't be sent from a chat composer — Meta rejects it with
+  /// "Format mismatch, expected DOCUMENT, received UNKNOWN" unless the media is
+  /// attached. Those sends have their own paths (a quote PDF goes out from the
+  /// lead's Quotes panel, which uploads the file first).
+  requiresMedia: boolean;
 };
 
-type GraphComponent = { type?: string; text?: string };
+type GraphComponent = { type?: string; text?: string; format?: string };
 type GraphTemplate = {
   name: string;
   language: string;
@@ -59,12 +67,16 @@ export async function listApprovedTemplates(): Promise<WhatsAppTemplate[]> {
       .filter((t) => t.status === "APPROVED")
       .map((t) => {
         const body = t.components?.find((c) => c.type === "BODY")?.text ?? "";
+        const header = t.components?.find((c) => c.type === "HEADER");
+        const headerFormat = header?.format?.toUpperCase() ?? null;
         return {
           name: t.name,
           language: t.language,
           category: t.category ?? "",
           bodyText: body,
           paramCount: countParams(body),
+          headerFormat,
+          requiresMedia: !!headerFormat && headerFormat !== "TEXT",
         };
       });
   } catch (err) {
@@ -313,4 +325,38 @@ export async function createTemplate(input: CreateTemplateInput): Promise<Create
     logger.error(`WhatsApp createTemplate failed: ${detail}`);
     return { ok: false, error: String(detail) };
   }
+}
+
+/// The approved template used to send a quote PDF proactively — i.e. when the 24h
+/// window is shut and the only way to reach the patient is a template with the
+/// document in its header (§quote lifecycle).
+///
+/// `QUOTE_DOC_TEMPLATE_NAME` pins it explicitly. With nothing set we ASK THE WABA:
+/// an approved template with a DOCUMENT header is, by construction, the thing this
+/// send needs. That's deliberate — the feature was silently disabled in production
+/// for want of an env var while the right template sat approved in the account, and
+/// an ops step nobody remembers is a worse design than a lookup.
+///
+/// Null when the WABA has no approved document template (or can't be reached), which
+/// is what the UI reads to explain that the send isn't available.
+export async function resolveQuoteDocTemplate(): Promise<{ name: string; lang: string } | null> {
+  const pinned = process.env.QUOTE_DOC_TEMPLATE_NAME?.trim();
+  if (pinned) {
+    return { name: pinned, lang: process.env.QUOTE_DOC_TEMPLATE_LANG?.trim() || "en" };
+  }
+
+  const docTemplates = (await listApprovedTemplatesCached()).filter(
+    (t) => t.headerFormat === "DOCUMENT",
+  );
+  if (docTemplates.length === 0) return null;
+  if (docTemplates.length > 1) {
+    // Ambiguous: pick deterministically (name order) and say so, rather than
+    // silently sending whichever the Graph API happened to list first.
+    const chosen = [...docTemplates].sort((a, b) => a.name.localeCompare(b.name))[0];
+    logger.warn(
+      `Several approved document templates (${docTemplates.map((t) => t.name).join(", ")}) — using "${chosen.name}". Set QUOTE_DOC_TEMPLATE_NAME to choose.`,
+    );
+    return { name: chosen.name, lang: chosen.language };
+  }
+  return { name: docTemplates[0].name, lang: docTemplates[0].language };
 }

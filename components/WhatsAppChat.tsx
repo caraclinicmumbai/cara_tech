@@ -317,6 +317,8 @@ function TemplatePicker({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [templates, setTemplates] = useState<WhatsAppTemplate[] | null>(null);
+  /// Approved templates that carry a file header, so they're not offered here.
+  const [hiddenMedia, setHiddenMedia] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState("");
   const [params, setParams] = useState<string[]>([]);
@@ -331,7 +333,14 @@ function TemplatePicker({
     if (templates) return;
     setLoading(true);
     try {
-      setTemplates(await listWhatsAppTemplates());
+      // A template whose header is an image/video/document can't go out from here:
+      // the composer has no file to attach, and Meta refuses it ("Format mismatch,
+      // expected DOCUMENT, received UNKNOWN"). Those have their own send paths —
+      // a quote PDF goes from the lead's Quotes panel, which uploads the file first.
+      const all = await listWhatsAppTemplates();
+      const sendable = all.filter((t) => !t.requiresMedia);
+      setTemplates(sendable);
+      setHiddenMedia(all.filter((t) => t.requiresMedia).map((t) => t.name));
     } catch {
       setTemplates([]);
       setError("Couldn't load templates");
@@ -447,6 +456,13 @@ function TemplatePicker({
                 </p>
               )}
             </>
+          )}
+          {hiddenMedia.length > 0 && (
+            <p className="text-[11px] text-black/45 dark:text-white/45">
+              {`Not listed: ${hiddenMedia.join(", ")} — ${
+                hiddenMedia.length === 1 ? "it attaches a file, so it goes" : "they attach a file, so they go"
+              } out from the lead's Quotes panel instead.`}
+            </p>
           )}
           <div className="flex gap-2">
             <button

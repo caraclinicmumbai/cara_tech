@@ -13,6 +13,9 @@ import { currentUser, canSeeLead } from "@/lib/authz";
 import { can, leadScope } from "@/lib/rbac";
 import { summariseQuotes } from "@/lib/quotes";
 import { listCatalogGroups } from "@/lib/catalog";
+import { listInvoicesForQuotes } from "@/lib/invoices";
+import { resolveQuoteDocTemplate } from "@/lib/whatsappTemplates";
+import { getCreditState } from "@/lib/branchCredit";
 import { readLeadTimeline, readLeadAudit } from "@/lib/audit";
 import {
   listActiveGrants,
@@ -146,6 +149,20 @@ export default async function LeadDetailPage({
     : [];
   // Treatment catalog for the quote picker (Services + Packages, grouped by category).
   const catalog = canManageQuotes ? await listCatalogGroups() : [];
+  // §billing — the invoices behind each quote (what makes it converted, and which
+  // branch earns the credit), plus the branch list for an Admin recording one by hand.
+  const quoteInvoices = canViewQuotes
+    ? await listInvoicesForQuotes(lead.quotes.map((q) => q.id))
+    : new Map();
+  // Can a quote go out while the 24h window is shut? That needs an approved
+  // document-header template, resolved from the WABA (§quote lifecycle) rather than
+  // from an env var that has to be remembered per environment.
+  const quoteDocTemplate = canManageQuotes ? !!(await resolveQuoteDocTemplate()) : false;
+  // §branch credit — who holds the credit for each quote and any dispute on it.
+  const creditState = canViewQuotes ? await getCreditState(lead.quotes.map((q) => q.id)) : new Map();
+  const invoiceBranches = can(viewer.role, "settings.manage")
+    ? await prisma.branch.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } })
+    : [];
 
   // ── Ownership & access (§handover) ──
   const isManagerScope = leadScope(viewer.role) === "all";
@@ -402,9 +419,14 @@ export default async function LeadDetailPage({
           <QuotesPanel
             leadId={lead.id}
             canManage={canManageQuotes}
+            canRecordInvoice={can(viewer.role, "settings.manage")}
+            branches={invoiceBranches}
+            canDisputeCredit={can(viewer.role, "quotes.disputeRaise")}
+            canDecideDispute={can(viewer.role, "quotes.disputeDecide")}
+            credit={Object.fromEntries(creditState)}
             canViewHistory={canViewQuoteHistory}
             windowOpen={windowOpen}
-            templateConfigured={!!process.env.QUOTE_DOC_TEMPLATE_NAME}
+            templateConfigured={quoteDocTemplate}
             reps={quoteReps}
             catalog={catalog}
             quotes={lead.quotes.map((q) => ({
@@ -425,6 +447,7 @@ export default async function LeadDetailPage({
               convertedAt: q.convertedAt?.toISOString() ?? null,
               lockedAt: q.lockedAt?.toISOString() ?? null,
               createdAt: q.createdAt.toISOString(),
+              invoices: quoteInvoices.get(q.id) ?? [],
             }))}
           />
         </section>

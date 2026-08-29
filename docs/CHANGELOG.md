@@ -7,6 +7,67 @@ Format: newest first.
 
 ---
 
+## 2026-08-30 — Billing: an invoice is what converts a quote, and it sets the branch credit
+
+Flow doc updated: **[flows/10-quote-lifecycle.md](flows/10-quote-lifecycle.md)** (new
+"Invoiced = converted" + "The credit, and the 7-day dispute" sections).
+Files: `lib/invoices.ts`, `lib/branchCredit.ts`, `app/api/webhooks/invoice/route.ts`
+(all new), `lib/quotes.ts`, `lib/rbac.ts`, `app/(dashboard)/leads/quoteActions.ts`,
+`components/QuotesPanel.tsx`, `app/(dashboard)/leads/[id]/page.tsx`. Schema: new
+`Invoice` and `QuoteCreditDispute` models (migrations `..._invoices`,
+`..._quote_credit_disputes`).
+
+Two of the four items in the spec's calendar/billing section that weren't built.
+
+**"Converted" now means an invoice exists for that specific quote.**
+
+- `POST /api/webhooks/invoice` (shared secret) records what billing raised, sets the
+  quote's invoiced branch from it, converts the quote — which locks it and opens the
+  post-sales journey exactly as before. Idempotent on the invoice number; the same
+  number pointed at a second quote is refused rather than silently moved.
+- **Invoices attach to the QUOTE, never the lead** — a transplant invoiced at one branch
+  and a PRP course at another each keep their own credit.
+- **Marking a quote converted by hand is refused.** The escape hatch is admin-only and
+  still writes a real invoice, with a mandatory reason, flagged "recorded by hand".
+- **No card or bank details** — a number, an amount, a branch, a date.
+
+**The credit follows the invoice, with one release valve.**
+
+- A branch manager disputes for **their own** home branch (never a dropdown), with a
+  reason, inside **7 days** of the credit landing. One dispute per quote, enforced by a
+  unique key; the deadline is stored, not recomputed.
+- The **Sales Head decides once**, with a mandatory note. Upholding moves the credit —
+  the only path by which a credit ever moves. A decided dispute can't be reopened.
+- New capabilities `quotes.disputeRaise` (branch manager, sales head) and
+  `quotes.disputeDecide` (sales head).
+
+**Production:** point the billing system at `/api/webhooks/invoice` with `WEBHOOK_SECRET`.
+Until then, conversions there need the admin override — intended, but tell the team.
+
+## 2026-08-30 — WhatsApp: file-header templates, and finding the quote's document template
+
+Flow docs updated: **[flows/06-whatsapp-messaging.md](flows/06-whatsapp-messaging.md)**,
+**[flows/10-quote-lifecycle.md](flows/10-quote-lifecycle.md)**.
+Files: `lib/whatsappTemplates.ts`, `lib/providers/whatsapp.ts`,
+`components/WhatsAppChat.tsx`, `components/QuotesPanel.tsx`,
+`app/(dashboard)/leads/quoteActions.ts`, `app/(dashboard)/leads/[id]/page.tsx`.
+No schema change.
+
+- **The chat picker no longer offers a template it can't send.** Choosing
+  `quote_document` from the composer failed with *"(#132012) … expected DOCUMENT,
+  received UNKNOWN"*: the template carries a document header and the composer has no
+  file to attach. Templates with a file header are filtered out and named, with where
+  they do go out from ("…it attaches a file, so it goes out from the lead's Quotes panel
+  instead").
+- **Send errors are translated, not dumped.** Meta's raw JSON was landing in front of
+  counsellors; `humanGraphError` turns the common codes into a sentence and keeps the
+  payload in the log.
+- **"Send on WhatsApp" worked locally and was dead in production** because
+  `QUOTE_DOC_TEMPLATE_NAME` was in `.env.local` and never in Railway. The template is now
+  resolved from the WABA — an approved DOCUMENT-header template *is* what this send needs
+  — with the env var demoted to an override for when several exist. The disabled label
+  also stops saying "(window closed)" when the real problem is a missing template.
+
 ## 2026-08-29 — Date filters on the leads table (follow-up, created, updated)
 
 Flow doc updated: **[flows/01-lead-intake.md](flows/01-lead-intake.md)**.

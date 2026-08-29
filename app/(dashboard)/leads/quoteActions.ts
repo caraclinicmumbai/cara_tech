@@ -19,6 +19,9 @@ import { buildQuotePdf, quoteRef } from "@/lib/quotePdf";
 import { branchIdForUser, getBranchQuoteInfo } from "@/lib/branches";
 import { sendLeadDocument } from "@/lib/messages";
 import { writeAudit } from "@/lib/audit";
+import { resolveQuoteDocTemplate } from "@/lib/whatsappTemplates";
+import { recordInvoice, InvoiceError } from "@/lib/invoices";
+import { raiseCreditDispute, decideCreditDispute, DisputeError } from "@/lib/branchCredit";
 import { logger } from "@/lib/logger";
 
 type Result = { ok: boolean; error?: string };
@@ -265,13 +268,14 @@ export async function sendLeadQuoteWhatsApp(input: {
   }
 
   const caption = `Your ${quote.treatment} quotation from our clinic. Total: Rs. ${(quote.totalPayable ?? 0).toLocaleString("en-IN")}.`;
-  // When the 24h window is closed, fall back to the approved document template
-  // (if one is configured in the environment) so the quote can go out proactively.
-  const tmplName = process.env.QUOTE_DOC_TEMPLATE_NAME;
-  const fallbackTemplate = tmplName
+  // When the 24h window is closed, fall back to the approved document template so the
+  // quote can go out proactively. Resolved from the WABA (or pinned by env) rather than
+  // requiring an env var to be set before the feature works at all.
+  const doc = await resolveQuoteDocTemplate();
+  const fallbackTemplate = doc
     ? {
-        name: tmplName,
-        lang: process.env.QUOTE_DOC_TEMPLATE_LANG ?? "en",
+        name: doc.name,
+        lang: doc.lang,
         bodyParams: [quote.lead.name], // fills the template's {{1}} (patient name)
       }
     : undefined;
@@ -401,4 +405,116 @@ function parsePrice(v: string | number | null | undefined): number | null | "inv
   const n = typeof v === "number" ? v : Number(v.replace(/[,\s₹]/g, ""));
   if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) return "invalid";
   return n;
+}
+
+/// Record an invoice against a quote BY HAND (§billing). The billing webhook is the
+/// normal path — this is the escape hatch for when billing hasn't sent it yet, and
+/// it's deliberately admin-only with a mandatory reason, because the whole point of
+/// invoice-backed conversion is that a counsellor can't talk a quote into "converted".
+/// The row it writes is a real Invoice, so the branch credit and the post-sales
+/// journey follow exactly as they would from billing.
+export async function recordQuoteInvoiceAction(input: {
+  quoteId: string;
+  leadId: string;
+  invoiceNumber: string;
+  branchId: string;
+  amount: number;
+  issuedAt?: string | null;
+  reason: string;
+}): Promise<Result> {
+  // settings.manage is admin-only in the capability matrix — the same bar as the
+  // other "override the system's own rules" actions.
+  const user = await requireCapability("settings.manage");
+  const seen = await assertCanSeeLead(user, input.leadId);
+  if (!seen.ok) return seen;
+
+  const reason = input.reason?.trim();
+  if (!reason) return { ok: false, error: "Say why you're recording this by hand — it's logged." };
+
+  try {
+    const res = await recordInvoice({
+      number: input.invoiceNumber,
+      quoteId: input.quoteId,
+      branchId: input.branchId,
+      amount: input.amount,
+      issuedAt: input.issuedAt ? new Date(input.issuedAt) : new Date(),
+      source: "manual_admin",
+      overrideReason: reason,
+      actorId: user.id,
+      actorEmail: user.email,
+    });
+    revalidatePath(`/leads/${input.leadId}`);
+    revalidatePath("/quotes");
+    logger.info(`Invoice ${input.invoiceNumber} recorded by hand for quote ${input.quoteId} by ${user.email ?? "?"} (${res.created ? "new" : "already present"})`);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof InvoiceError) return { ok: false, error: err.message };
+    logger.error(`recordQuoteInvoiceAction failed for ${input.quoteId}: ${String(err)}`);
+    return { ok: false, error: "Could not record the invoice" };
+  }
+}
+
+/// Raise the 7-day branch-credit dispute on a quote (§branch credit). Branch managers
+/// dispute for their OWN branch — the claimant is read from their home branch, never
+/// chosen from a dropdown, so nobody can file on someone else's behalf.
+export async function raiseCreditDisputeAction(input: {
+  quoteId: string;
+  leadId: string;
+  reason: string;
+}): Promise<Result> {
+  const user = await requireCapability("quotes.disputeRaise");
+  const seen = await assertCanSeeLead(user, input.leadId);
+  if (!seen.ok) return seen;
+
+  const me = user.id
+    ? await prisma.user.findUnique({ where: { id: user.id }, select: { branchId: true } })
+    : null;
+  if (!me?.branchId) {
+    return { ok: false, error: "Your login has no home branch, so there's no branch to claim the credit for." };
+  }
+
+  try {
+    await raiseCreditDispute({
+      quoteId: input.quoteId,
+      claimantBranchId: me.branchId,
+      reason: input.reason,
+      actorId: user.id,
+      actorEmail: user.email,
+    });
+    revalidatePath(`/leads/${input.leadId}`);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof DisputeError) return { ok: false, error: err.message };
+    logger.error(`raiseCreditDisputeAction failed for ${input.quoteId}: ${String(err)}`);
+    return { ok: false, error: "Could not raise the dispute" };
+  }
+}
+
+/// The Sales Head's decision — final, logged, and the only way a branch credit moves.
+export async function decideCreditDisputeAction(input: {
+  disputeId: string;
+  leadId: string;
+  uphold: boolean;
+  note: string;
+}): Promise<Result> {
+  const user = await requireCapability("quotes.disputeDecide");
+  const seen = await assertCanSeeLead(user, input.leadId);
+  if (!seen.ok) return seen;
+
+  try {
+    await decideCreditDispute({
+      disputeId: input.disputeId,
+      uphold: input.uphold,
+      note: input.note,
+      actorId: user.id,
+      actorEmail: user.email,
+    });
+    revalidatePath(`/leads/${input.leadId}`);
+    revalidatePath("/quotes");
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof DisputeError) return { ok: false, error: err.message };
+    logger.error(`decideCreditDisputeAction failed for ${input.disputeId}: ${String(err)}`);
+    return { ok: false, error: "Could not record the decision" };
+  }
 }
