@@ -300,7 +300,9 @@ export function QuotesPanel({
                   )}
                   {canManage && !windowOpen && (
                     <span className="text-black/40 dark:text-white/40">
-                      {templateConfigured ? "(via template)" : "(window closed)"}
+                      {templateConfigured
+                        ? "(via template)"
+                        : "(window closed · no approved document template)"}
                     </span>
                   )}
                 </div>

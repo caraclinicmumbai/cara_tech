@@ -285,7 +285,7 @@ The one release valve (`lib/branchCredit.ts`):
 | `STALE_AFTER_DAYS` = 7 | `lib/openQuotes.ts` | "Gone quiet" threshold on the desk |
 | `EXPIRING_WITHIN_DAYS` = 7 | `lib/openQuotes.ts` | "Lapsing" threshold on the desk |
 | `TRANSCRIPT_MAX` = 6000 | `lib/historyPdf.ts` | Characters of each transcript printed in the history PDF before it is cut (truncation is stated in the output) |
-| `QUOTE_DOC_TEMPLATE_NAME` / `_LANG` | env | Approved WhatsApp document template for sending a quote outside the 24h window |
+| `QUOTE_DOC_TEMPLATE_NAME` / `_LANG` | env | **Optional override.** Pins which approved document template sends a quote outside the 24h window. Unset, the app asks the WABA for an approved template with a DOCUMENT header and uses it — the send shouldn't be silently disabled in one environment because an env var wasn't copied. Set it only when several document templates exist and the choice matters. |
 | Catalog items | `CatalogItem` table, admin-managed | The treatment picker's prices, GST rates, package discounts |
 
 ## Limitations

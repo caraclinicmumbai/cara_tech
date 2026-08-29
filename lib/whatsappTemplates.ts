@@ -326,3 +326,37 @@ export async function createTemplate(input: CreateTemplateInput): Promise<Create
     return { ok: false, error: String(detail) };
   }
 }
+
+/// The approved template used to send a quote PDF proactively — i.e. when the 24h
+/// window is shut and the only way to reach the patient is a template with the
+/// document in its header (§quote lifecycle).
+///
+/// `QUOTE_DOC_TEMPLATE_NAME` pins it explicitly. With nothing set we ASK THE WABA:
+/// an approved template with a DOCUMENT header is, by construction, the thing this
+/// send needs. That's deliberate — the feature was silently disabled in production
+/// for want of an env var while the right template sat approved in the account, and
+/// an ops step nobody remembers is a worse design than a lookup.
+///
+/// Null when the WABA has no approved document template (or can't be reached), which
+/// is what the UI reads to explain that the send isn't available.
+export async function resolveQuoteDocTemplate(): Promise<{ name: string; lang: string } | null> {
+  const pinned = process.env.QUOTE_DOC_TEMPLATE_NAME?.trim();
+  if (pinned) {
+    return { name: pinned, lang: process.env.QUOTE_DOC_TEMPLATE_LANG?.trim() || "en" };
+  }
+
+  const docTemplates = (await listApprovedTemplatesCached()).filter(
+    (t) => t.headerFormat === "DOCUMENT",
+  );
+  if (docTemplates.length === 0) return null;
+  if (docTemplates.length > 1) {
+    // Ambiguous: pick deterministically (name order) and say so, rather than
+    // silently sending whichever the Graph API happened to list first.
+    const chosen = [...docTemplates].sort((a, b) => a.name.localeCompare(b.name))[0];
+    logger.warn(
+      `Several approved document templates (${docTemplates.map((t) => t.name).join(", ")}) — using "${chosen.name}". Set QUOTE_DOC_TEMPLATE_NAME to choose.`,
+    );
+    return { name: chosen.name, lang: chosen.language };
+  }
+  return { name: docTemplates[0].name, lang: docTemplates[0].language };
+}

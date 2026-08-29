@@ -19,6 +19,7 @@ import { buildQuotePdf, quoteRef } from "@/lib/quotePdf";
 import { branchIdForUser, getBranchQuoteInfo } from "@/lib/branches";
 import { sendLeadDocument } from "@/lib/messages";
 import { writeAudit } from "@/lib/audit";
+import { resolveQuoteDocTemplate } from "@/lib/whatsappTemplates";
 import { recordInvoice, InvoiceError } from "@/lib/invoices";
 import { raiseCreditDispute, decideCreditDispute, DisputeError } from "@/lib/branchCredit";
 import { logger } from "@/lib/logger";
@@ -267,13 +268,14 @@ export async function sendLeadQuoteWhatsApp(input: {
   }
 
   const caption = `Your ${quote.treatment} quotation from our clinic. Total: Rs. ${(quote.totalPayable ?? 0).toLocaleString("en-IN")}.`;
-  // When the 24h window is closed, fall back to the approved document template
-  // (if one is configured in the environment) so the quote can go out proactively.
-  const tmplName = process.env.QUOTE_DOC_TEMPLATE_NAME;
-  const fallbackTemplate = tmplName
+  // When the 24h window is closed, fall back to the approved document template so the
+  // quote can go out proactively. Resolved from the WABA (or pinned by env) rather than
+  // requiring an env var to be set before the feature works at all.
+  const doc = await resolveQuoteDocTemplate();
+  const fallbackTemplate = doc
     ? {
-        name: tmplName,
-        lang: process.env.QUOTE_DOC_TEMPLATE_LANG ?? "en",
+        name: doc.name,
+        lang: doc.lang,
         bodyParams: [quote.lead.name], // fills the template's {{1}} (patient name)
       }
     : undefined;

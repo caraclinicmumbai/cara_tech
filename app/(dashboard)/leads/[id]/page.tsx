@@ -14,6 +14,7 @@ import { can, leadScope } from "@/lib/rbac";
 import { summariseQuotes } from "@/lib/quotes";
 import { listCatalogGroups } from "@/lib/catalog";
 import { listInvoicesForQuotes } from "@/lib/invoices";
+import { resolveQuoteDocTemplate } from "@/lib/whatsappTemplates";
 import { getCreditState } from "@/lib/branchCredit";
 import { readLeadTimeline, readLeadAudit } from "@/lib/audit";
 import {
@@ -153,6 +154,10 @@ export default async function LeadDetailPage({
   const quoteInvoices = canViewQuotes
     ? await listInvoicesForQuotes(lead.quotes.map((q) => q.id))
     : new Map();
+  // Can a quote go out while the 24h window is shut? That needs an approved
+  // document-header template, resolved from the WABA (§quote lifecycle) rather than
+  // from an env var that has to be remembered per environment.
+  const quoteDocTemplate = canManageQuotes ? !!(await resolveQuoteDocTemplate()) : false;
   // §branch credit — who holds the credit for each quote and any dispute on it.
   const creditState = canViewQuotes ? await getCreditState(lead.quotes.map((q) => q.id)) : new Map();
   const invoiceBranches = can(viewer.role, "settings.manage")
@@ -421,7 +426,7 @@ export default async function LeadDetailPage({
             credit={Object.fromEntries(creditState)}
             canViewHistory={canViewQuoteHistory}
             windowOpen={windowOpen}
-            templateConfigured={!!process.env.QUOTE_DOC_TEMPLATE_NAME}
+            templateConfigured={quoteDocTemplate}
             reps={quoteReps}
             catalog={catalog}
             quotes={lead.quotes.map((q) => ({
