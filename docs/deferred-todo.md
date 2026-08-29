@@ -85,9 +85,11 @@ open:
   deterministic chatbot-flow engine (`lib/chatbotRuntime.ts`), gated only by per-flow `active`.
   Add a persisted global setting + a toggle in the (currently stub) `settings` page, read before
   `runChatbot` in the WhatsApp webhook.
-- **Reports module (L).** No `reports/` route exists — only Dashboard + CQS. Build on
-  `computeDigestMetrics` (`lib/digest.ts`); add date-range/branch/rep filtering, quote-revenue
-  and call-stats reporting, export.
+- ~~**Reports module (L).**~~ **Done 2026-08-30** — `/reports` with the ten-report set and a
+  shared IST date range. See [flows/12-reports.md](flows/12-reports.md). **Not built:** CSV/PDF
+  export, and branch filtering (the reports are clinic-wide; every role that holds
+  `reports.view` already sees all leads, so scoping wasn't forced — revisit if a branch manager
+  should only see their own branch's numbers).
 - **Quote treatment catalog — mostly done (correction).** Verified 2026-08-11: the catalog IS
   populated in prod AND local (371 items = 182 services + 189 packages from `data/catalog.csv`),
   so quote creation is **NOT blocked**. Still deferred (needs source data + decisions, not just a
@@ -125,6 +127,16 @@ rest of "Connecting to Calendar and Billing", not new ideas.
   confirmation + a 24h and a 2h reminder; a no-show flags the lead, creates a task, and
   drops them into a gentle follow-up. Relates to the older **F3** gap in
   `gaps-and-roadmap.md` ("no structured appointment / no-show handling").
+- **Billing → CRM sender not wired (M) — ON HOLD 2026-08-30.** The receiving end is
+  built and live (`POST /api/webhooks/invoice`), but nothing calls it: no billing
+  integration exists, so in practice invoices only arrive via the admin's by-hand entry.
+  Two things to settle before building it: (1) **which system raises the invoices** and
+  whether it can send webhooks or must be polled; (2) **how an invoice names its quote** —
+  billing doesn't know our cuid, and a patient can hold two quotes, so matching on
+  name/amount would eventually credit the wrong branch. Cheapest bridge: accept the quote
+  reference already printed on the PDF (`Q-6Y16MJ`) typed into the billing system's
+  reference field, and look the quote up from that. Adapter pattern to copy:
+  `app/api/intake/meta` / `google`.
 - ~~**Invoice webhook — "converted" means an invoice exists (M).**~~ **Done 2026-08-30** —
   `POST /api/webhooks/invoice` + the `Invoice` model attached to the quote; conversion by
   hand is refused without one (admin override records a real invoice with a reason). See
@@ -141,8 +153,12 @@ rest of "Connecting to Calendar and Billing", not new ideas.
   [flows/10-quote-lifecycle.md](flows/10-quote-lifecycle.md) §branch credit. Not built: a
   standing review queue for the Sales Head — disputes surface on the quote and as a bell,
   which is enough at current volume.
-- **Ad-spend import (M).** Daily import for next month's cost reports, and a missing day
-  must show **"unavailable", never zero**.
+- ~~**Ad-spend import (M).**~~ **Done 2026-08-30** — the `AdSpend` table, `scripts/importAdSpend.ts`
+  (CSV, with `--zero-fill`) and `POST /api/webhooks/ad-spend`. A missing day is **"unavailable"**
+  and withholds every cost figure covering it; a genuine no-spend day must be imported as an
+  explicit 0. See [flows/12-reports.md](flows/12-reports.md) §ad-spend. **Still to do in
+  production:** point a daily job at one of the two intake paths — nothing imports automatically,
+  so until someone schedules it the Source Attribution cost columns stay unavailable.
 - **Post-sales branch scoping (S).** The board filters by branch but doesn't restrict:
   any `postsales.manage` holder can act on any branch's journey. Decide whether clinical
   staff should be branch-scoped like leads are.

@@ -88,6 +88,11 @@ export default async function DashboardLayout({
           {can(role, "analytics.view") && (
             <Link href="/cqs" className={navLink}>CQS</Link>
           )}
+          {/* §reports — the management read-outs. The money tabs inside are gated
+              separately on `reports.revenue`. */}
+          {can(role, "reports.view") && (
+            <Link href="/reports" className={navLink}>Reports</Link>
+          )}
           {can(role, "templates.manage") && (
             <Link href="/templates" className={navLink}>Templates</Link>
           )}

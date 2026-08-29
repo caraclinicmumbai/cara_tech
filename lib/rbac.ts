@@ -87,6 +87,14 @@ export const CAPABILITIES = [
   "postsales.policy",
   "calls.view",
   "analytics.view",
+  // Reports (§reports) — the management read-outs, split in two because they answer to
+  // different people. `reports.view` covers the operational set (inflow, AI contact,
+  // handoff speed, counsellor performance, source attribution, lost leads) — the floor
+  // it's run from. `reports.revenue` covers the four money reports (treatment mix, lost
+  // quotes, multi-quote, repeat treatment), which put quote values and per-treatment
+  // pricing in front of whoever holds it; that stays with the people who set prices.
+  "reports.view",
+  "reports.revenue",
   "templates.manage",
   "chatbot.manage",
   // Win-back (§follow-up): review lost leads and approve them (singly/in a batch) for one
@@ -174,7 +182,11 @@ export const CAPABILITY_GROUPS: {
   {
     key: "analytics",
     label: "Analytics",
-    capabilities: [{ key: "analytics.view", label: "Dashboard & CQS" }],
+    capabilities: [
+      { key: "analytics.view", label: "Dashboard & CQS" },
+      { key: "reports.view", label: "Reports — leads, calls, counsellors" },
+      { key: "reports.revenue", label: "Reports — money (quote values & pricing)" },
+    ],
   },
   {
     key: "messaging",
@@ -264,6 +276,9 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "analytics.view",
     "audit.view",
     "reps.manage",
+    // Runs the telecalling floor, so the floor's read-outs — but not the money reports:
+    // per-treatment pricing is the Sales Head's and the Branch Manager's call.
+    "reports.view",
     // Runs the telecalling floor — approves lost leads for a win-back retry.
     "campaigns.winback",
     "campaigns.manage",
@@ -293,6 +308,8 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "quotes.disputeRaise",
     "calls.view",
     "analytics.view",
+    "reports.view",
+    "reports.revenue",
     "audit.view",
     "templates.manage",
     "chatbot.manage",
@@ -330,6 +347,9 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "quotes.disputeDecide",
     "calls.view",
     "analytics.view",
+    // Sets prices, so reads the pricing evidence — the full report set.
+    "reports.view",
+    "reports.revenue",
     "audit.view",
     "reps.manage",
     "campaigns.winback",
@@ -435,6 +455,9 @@ export function leadScope(role: string | undefined | null): "own" | "all" {
 /// the summary — not the full call recordings").
 export function routeCapability(pathname: string): Capability | null {
   if (pathname.startsWith("/dashboard") || pathname.startsWith("/cqs")) return "analytics.view";
+  // The money reports are gated a second time inside the page on `reports.revenue`;
+  // this guard only decides who reaches /reports at all.
+  if (pathname.startsWith("/reports")) return "reports.view";
   if (pathname.startsWith("/post-sales/policies")) return "postsales.policy";
   if (pathname.startsWith("/post-sales")) return "postsales.view";
   if (pathname.startsWith("/templates")) return "templates.manage";
