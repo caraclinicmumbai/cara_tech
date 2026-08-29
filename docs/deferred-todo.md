@@ -125,6 +125,16 @@ rest of "Connecting to Calendar and Billing", not new ideas.
   confirmation + a 24h and a 2h reminder; a no-show flags the lead, creates a task, and
   drops them into a gentle follow-up. Relates to the older **F3** gap in
   `gaps-and-roadmap.md` ("no structured appointment / no-show handling").
+- **Billing → CRM sender not wired (M) — ON HOLD 2026-08-30.** The receiving end is
+  built and live (`POST /api/webhooks/invoice`), but nothing calls it: no billing
+  integration exists, so in practice invoices only arrive via the admin's by-hand entry.
+  Two things to settle before building it: (1) **which system raises the invoices** and
+  whether it can send webhooks or must be polled; (2) **how an invoice names its quote** —
+  billing doesn't know our cuid, and a patient can hold two quotes, so matching on
+  name/amount would eventually credit the wrong branch. Cheapest bridge: accept the quote
+  reference already printed on the PDF (`Q-6Y16MJ`) typed into the billing system's
+  reference field, and look the quote up from that. Adapter pattern to copy:
+  `app/api/intake/meta` / `google`.
 - ~~**Invoice webhook — "converted" means an invoice exists (M).**~~ **Done 2026-08-30** —
   `POST /api/webhooks/invoice` + the `Invoice` model attached to the quote; conversion by
   hand is refused without one (admin override records a real invoice with a reason). See
