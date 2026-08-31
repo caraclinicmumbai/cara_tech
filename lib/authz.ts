@@ -52,6 +52,35 @@ export function leadWhereForUser(user: SessionUser): Prisma.LeadWhereInput {
   return { OR: or };
 }
 
+/// A Prisma `where` fragment restricting QUOTES to the ones a counsellor should find on
+/// her own Open Quotes desk — undefined for managers, who see the whole board.
+///
+/// Distinct from `leadWhereForUser` on purpose. Owning the patient is not the same as
+/// owning the quote: a quote can be raised by a colleague on a lead you own (§multi-quote
+/// says so explicitly — "a quote's owner may differ from the lead's owner"), and the desk
+/// is a personal work list, so it should hold your quotes and not theirs.
+///
+/// A quote with NO owner still shows on your leads' quotes: nobody else is going to pick
+/// it up, and hiding it from everyone would leave real money invisible on the board. The
+/// lead page is unaffected either way — open the patient and you see all their quotes,
+/// because that is the context you need to work them.
+/// The two clauses are ONE `OR`, not two filters AND'd together, and that distinction
+/// is the whole rule. A counsellor keeps a quote she owns even when the patient has
+/// since been handed to a colleague — she raised it, it's her number. AND'ing the lead
+/// scope on top would take her own work off her board the moment the lead moved.
+///
+/// (Her board will then name a patient whose record she can't open; opening it still
+/// needs the lead, or a temporary access grant. Losing the quote would be worse.)
+export function quoteWhereForUser(user: SessionUser): Prisma.QuoteWhereInput | undefined {
+  if (leadScope(user.role) === "all") return undefined;
+  const or: Prisma.QuoteWhereInput[] = [];
+  if (user.salesRepId) or.push({ ownerRepId: user.salesRepId });
+  // Nobody's quote, on a lead she can see — somebody has to work it, and if it were
+  // hidden from everyone with an "own" scope it would be worked by nobody.
+  or.push({ ownerRepId: null, lead: leadWhereForUser(user) });
+  return { OR: or };
+}
+
 /// A Prisma filter for a grant that is currently active for `userId`: not revoked and
 /// not past its expiry (null expiry = until revoked).
 export function activeGrantWhere(userId: string): Prisma.LeadAccessGrantWhereInput {

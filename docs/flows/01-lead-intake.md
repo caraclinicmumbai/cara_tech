@@ -92,9 +92,22 @@ call outcomes and stage moves keep it current.
 that used to sit on the lead page was removed on request: the desk wanted the dates,
 not a checklist to maintain. What's left visible is the **next due step**:
 
-- **Lead page** — a `Follow Up` field: the date and step title, red with "(overdue)"
-  once it's past due, plus the patient's own requested callback time underneath when
-  they named one.
+- **Lead page** — a `Follow Up` field: **editable** (date *and* time) by anyone with
+  `leads.edit` who can see the lead, plus the step title, an overdue marker, and the
+  patient's own requested callback time underneath when they named one. Removing the
+  roadmap panel had left this read-only — dates the desk could see and not set, which
+  is half a feature.
+  - It retargets the **step the column is already reading** (the earliest pending one),
+    so the field and the leads table can't disagree, and moving a follow-up doesn't
+    accumulate duplicates. With nothing pending, it creates one owned by the lead's
+    counsellor. Clearing the date leaves the step in place, just off the column.
+  - Times are **IST wall-clock**, parsed as IST on the server rather than trusting the
+    browser's timezone — "3:30 pm" means half past three at the clinic.
+    (`parseIstDateTimeLocal` / `istDateTimeLocal` in `lib/datetime.ts`.)
+  - When other steps are queued behind this one, the field **says so and names the next
+    date**. Push this step past them and one of those becomes the lead's next follow-up;
+    without the warning that reads as a failed save.
+  - Audited as `lead.followup.due` with the old and new timestamps.
 - **Leads table** — the `Follow up` column, same source (earliest pending step),
   highlighted when overdue, and **filterable by date**: the column's ▾ opens a calendar
   (a native date picker, so it's keyboard- and mobile-friendly) plus *Today*, *Tomorrow*

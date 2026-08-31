@@ -22,6 +22,7 @@ import {
   isQuoteStatus,
 } from "@/lib/quoteStages";
 import { openJourneyForQuoteSafe } from "@/lib/postSales/journeys";
+import { uninvoicedConversionAllowed } from "@/lib/settings";
 
 /// Normalise a treatment name for the "one open quote per treatment" comparison —
 /// case/space-insensitive so "Hair Transplant" and "hair transplant " collide.
@@ -193,7 +194,7 @@ export async function transitionQuote(input: {
   /// Admin override. Without it, "converted" is refused: conversion means a real
   /// invoice exists for THIS quote (§billing), not that someone felt optimistic.
   invoiceBacked?: boolean;
-}): Promise<void> {
+}): Promise<{ uninvoiced: boolean }> {
   if (!isQuoteStatus(input.status)) throw new QuoteError("Invalid quote status");
 
   const quote = await prisma.quote.findUnique({
@@ -223,12 +224,22 @@ export async function transitionQuote(input: {
   // "Converted" from the dropdown is refused unless an invoice already exists for the
   // quote (or an Admin recorded one by hand, which is itself an invoice row with a
   // logged reason). This is what keeps the branch credit honest — nobody types it.
+  //
+  // …EXCEPT while billing isn't connected. Nothing sends us invoices yet, so enforcing
+  // the rule would stop the clinic recording sales it genuinely made. The admin switch
+  // (§settings) lifts it until billing goes live; `uninvoiced` is returned so the caller
+  // can record WHICH kind of conversion this was, rather than the two becoming
+  // indistinguishable in hindsight.
+  let uninvoiced = false;
   if (input.status === "converted" && !input.invoiceBacked) {
     const invoiced = await prisma.invoice.count({ where: { quoteId: input.quoteId } });
     if (invoiced === 0) {
-      throw new QuoteError(
-        "A quote converts when it's invoiced. Waiting on the invoice from billing — or an Admin can record it against this quote.",
-      );
+      if (!(await uninvoicedConversionAllowed())) {
+        throw new QuoteError(
+          "A quote converts when it's invoiced. Waiting on the invoice from billing — or an Admin can record it against this quote.",
+        );
+      }
+      uninvoiced = true;
     }
   }
 
@@ -262,6 +273,8 @@ export async function transitionQuote(input: {
   if (nextStatus === "converted") {
     await openJourneyForQuoteSafe(input.quoteId);
   }
+
+  return { uninvoiced };
 }
 
 /// Reassign a quote to a different counsellor (§multi-quote: a quote's owner may

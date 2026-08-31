@@ -7,6 +7,55 @@ Format: newest first.
 
 ---
 
+## 2026-09-01 — Five fixes from the business's testing round
+
+Flow docs updated: **[flows/06-whatsapp-messaging.md](flows/06-whatsapp-messaging.md)**
+(new "One conversation per NUMBER" section), **[flows/10-quote-lifecycle.md](flows/10-quote-lifecycle.md)**
+("Until billing is connected", "Who sees which quotes on the desk"),
+**[flows/01-lead-intake.md](flows/01-lead-intake.md)** (the Follow Up field is editable).
+Files: `lib/messages.ts`, `lib/authz.ts`, `lib/followups.ts`, `lib/settings.ts` (new),
+`lib/quotes.ts`, `lib/openQuotes.ts`, `lib/datetime.ts`,
+`app/(dashboard)/leads/[id]/page.tsx`, `app/(dashboard)/leads/followUpActions.ts` (new),
+`app/(dashboard)/leads/quoteActions.ts`, `app/(dashboard)/quotes/page.tsx`,
+`app/(dashboard)/settings/{page.tsx,actions.ts}`, `app/api/leads/[id]/messages/stream/route.ts`,
+`components/{FollowUpField,SettingToggle}.tsx` (new), `components/QuotesPanel.tsx`.
+Schema: new `AppSetting` model (migration `..._app_settings`).
+
+**1 & 2 — "replies don't reach the system" was never an outage.** Seven lead records
+share one phone number. Inbound replies are routed to the *oldest* matching record, so a
+counsellor working any of the others saw an empty thread and a permanently closed 24h
+window — while Slack pinged, because the message had saved fine somewhere else.
+WhatsApp has one conversation per NUMBER, so the thread now is too: `leadIdsSharingPhone()`
+backs the lead page, the SSE stream and `isServiceWindowOpen()`. Every record shows the
+same complete conversation, and a banner names the siblings so a thread containing
+messages sent from elsewhere explains itself. **Merging remains the actual fix**; this
+stops replies hiding until someone does it.
+
+**3 — the Follow Up date is settable again.** Removing the roadmap panel on request had
+left the date visible and uneditable. A `datetime-local` field on the lead retargets the
+same step the leads table reads, parses the time as IST wall-clock rather than trusting
+the browser, and warns when other steps are queued behind it (otherwise pushing a date
+past them looks like a failed save). Audited as `lead.followup.due`.
+
+**4 — conversions are accepted while billing isn't connected.** New admin setting
+`quotes.allowUninvoicedConversion` (Settings → Quotes & billing), **on by default**,
+lifting the "a quote converts when it's invoiced" rule. Conversions made this way are
+flagged `uninvoiced` in the audit log and credit the branch that *raised* the quote —
+recorded as an assumption, with the 7-day dispute available to move it. Turn it off the
+day billing is wired up and the invoice rule returns with no code change. First use of
+the new `AppSetting` store: operating rules the clinic changes, as distinct from env
+config that needs a redeploy.
+
+**5 — the Open Quotes desk is a personal work list.** It scoped by *lead*, so owning a
+patient handed you every colleague's quote on them. Now a counsellor sees quotes she
+owns — wherever the patient ended up — plus unowned quotes on her leads, which otherwise
+nobody would work. Managers see the whole board; the lead page still shows all of a
+patient's quotes. The two clauses are one `OR`, not two filters ANDed: the other ordering
+took a counsellor's own quote off her board the moment the lead was handed over, which
+testing caught.
+
+---
+
 ## 2026-08-30 — The full report set: ten management read-outs at `/reports`
 
 Flow doc added: **[flows/12-reports.md](flows/12-reports.md)**.
