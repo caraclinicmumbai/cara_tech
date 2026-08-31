@@ -590,6 +590,24 @@ model RolePermission {
   updatedAt    DateTime @updatedAt
 }
 
+/// An admin-editable operating switch (§settings). One row per setting key.
+///
+/// For decisions the clinic changes as the business changes — not for secrets or
+/// deployment config, which stay in the environment. The distinction matters: an env
+/// var needs a redeploy and a developer, and "we've gone live with billing now" is a
+/// Tuesday-afternoon decision by the person running the clinic.
+///
+/// NO ROW for a key = the built-in default in lib/settings.ts. `updatedById` and the
+/// AuditLog together answer who changed an operating rule and when.
+model AppSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
 /// Treatment catalog (§quote generation) — the clinic's Master Data List of bookable
 /// Services and Packages. A quote's treatment is picked from here, auto-filling the
 /// price and GST. Seeded/refreshed from the master spreadsheet via scripts/importCatalog.ts

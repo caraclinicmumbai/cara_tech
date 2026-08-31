@@ -15,6 +15,7 @@
 import { prisma } from "@/lib/prisma";
 import { currentUser, userCanAccessLead } from "@/lib/authz";
 import { subscribeLeadMessages } from "@/lib/realtime";
+import { leadIdsSharingPhone } from "@/lib/messages";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -75,9 +76,18 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
       req.signal.addEventListener("abort", close);
 
-      // Nudges are broadcast on one channel for all leads — ignore other leads'.
+      // §whatsapp — the thread is keyed on the phone NUMBER, so this stream follows
+      // every lead record sharing it (see leadIdsSharingPhone). Inbound replies land
+      // on the oldest record; without this, a counsellor watching any other record
+      // would never be woken by the patient's answer. Resolved once per connection —
+      // the set only changes when a record is created or merged, and the connection
+      // recycles every 10 minutes anyway.
+      const threadLeadIds = await leadIdsSharingPhone(leadId);
+      const watching = new Set(threadLeadIds);
+
+      // Nudges are broadcast on one channel for all leads — ignore other threads'.
       unsubscribe = await subscribeLeadMessages((changedLeadId) => {
-        if (changedLeadId === leadId) wake?.();
+        if (watching.has(changedLeadId)) wake?.();
       });
 
       write(`retry: 3000\n\n`);
@@ -86,7 +96,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       while (!closed) {
         try {
           const rows = await prisma.message.findMany({
-            where: { leadId, updatedAt: { gt: cursor } },
+            where: { leadId: { in: threadLeadIds }, updatedAt: { gt: cursor } },
             orderBy: { updatedAt: "asc" },
             take: BATCH,
           });

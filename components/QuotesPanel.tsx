@@ -171,10 +171,17 @@ export function QuotesPanel({
   const [decideText, setDecideText] = useState("");
   const [reasonVal, setReasonVal] = useState("");
 
-  const run = (fn: () => Promise<{ ok: boolean; error?: string }>, after?: () => void) =>
+  const run = (
+    fn: () => Promise<{ ok: boolean; error?: string; info?: string }>,
+    after?: () => void,
+  ) =>
     startTransition(async () => {
       const res = await fn();
       if (res.ok) {
+        // Some successes need saying out loud — converting a quote with no invoice
+        // behind it credits a branch by assumption, and the counsellor should know
+        // that happened rather than discovering it in a report.
+        if (res.info) window.alert(res.info);
         after?.();
         router.refresh();
       } else window.alert(res.error ?? "Action failed");

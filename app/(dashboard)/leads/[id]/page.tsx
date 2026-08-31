@@ -7,11 +7,13 @@ import { WhatsAppChat } from "@/components/WhatsAppChat";
 import { CallButton } from "@/components/CallButton";
 import { MergeLeadButton } from "@/components/MergeLeadButton";
 import { QuotesPanel } from "@/components/QuotesPanel";
-import { isServiceWindowOpen } from "@/lib/messages";
-import { formatIst, formatIstDate } from "@/lib/datetime";
+import { isServiceWindowOpen, leadIdsSharingPhone } from "@/lib/messages";
+import { formatIst, formatIstDate, istDateTimeLocal } from "@/lib/datetime";
+import { FollowUpField } from "@/components/FollowUpField";
 import { currentUser, canSeeLead } from "@/lib/authz";
 import { can, leadScope } from "@/lib/rbac";
 import { summariseQuotes } from "@/lib/quotes";
+import { stageLabel } from "@/lib/leadStages";
 import { listCatalogGroups } from "@/lib/catalog";
 import { listInvoicesForQuotes } from "@/lib/invoices";
 import { resolveQuoteDocTemplate } from "@/lib/whatsappTemplates";
@@ -29,7 +31,7 @@ import { RecordViewLogger } from "@/components/RecordViewLogger";
 import { getLeadCampaign } from "@/lib/campaigns/enrollments";
 import { LeadCampaignCard } from "@/components/LeadCampaignCard";
 import { LeadComments } from "@/components/LeadComments";
-import { listFollowUpSteps } from "@/lib/followups";
+import { listFollowUpSteps, followUpQueue } from "@/lib/followups";
 
 export const dynamic = "force-dynamic";
 
@@ -132,6 +134,33 @@ export default async function LeadDetailPage({
     notFound();
   }
 
+  // §whatsapp — the conversation belongs to the NUMBER, not to this record. Where a
+  // patient has been filed more than once, every record shows the one complete thread
+  // (inbound replies are routed to the oldest record, so the others used to look
+  // silent). `sharedLeadIds` always contains this lead.
+  const sharedLeadIds = await leadIdsSharingPhone(lead.id);
+  const sharedThread = sharedLeadIds.length > 1;
+  const threadMessages = sharedThread
+    ? await prisma.message.findMany({
+        where: { leadId: { in: sharedLeadIds } },
+        orderBy: { createdAt: "asc" },
+      })
+    : lead.messages;
+  // The other records for this person, so the counsellor can see them and merge.
+  const samePhoneLeads = sharedThread
+    ? await prisma.lead.findMany({
+        where: { id: { in: sharedLeadIds.filter((x) => x !== lead.id) } },
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          name: true,
+          createdAt: true,
+          stage: true,
+          assignedRep: { select: { name: true } },
+        },
+      })
+    : [];
+
   const windowOpen = await isServiceWindowOpen(lead.id);
   const canViewQuotes = can(viewer.role, "quotes.view");
   const canManageQuotes = can(viewer.role, "quotes.manage");
@@ -211,6 +240,9 @@ export default async function LeadDetailPage({
   // the leads table's Follow up column).
   const followUpSteps = await listFollowUpSteps(lead.id);
   const nextFollowUp = followUpSteps.find((s) => s.visual === "todo" || s.visual === "missed");
+  // What's queued behind the next one, so the editor can explain itself when moving a
+  // date makes a different step become "next".
+  const followUpAhead = await followUpQueue(lead.id);
   const ownershipReps = handoverReps.map((r) => ({ id: r.id, name: r.name, branchId: r.branchId, branchName: r.branch?.name ?? null }));
   const granteeOptions = granteeUsers
     .filter((u) => u.id !== viewer.id)
@@ -352,27 +384,39 @@ export default async function LeadDetailPage({
           <Field
             label="Follow Up"
             value={
-              nextFollowUp?.dueAt || lead.callbackAt ? (
-                <span className="space-y-0.5">
-                  {nextFollowUp?.dueAt ? (
-                    <span
-                      className={`block ${
-                        nextFollowUp.visual === "missed" ? "text-red-600 dark:text-red-400" : ""
-                      }`}
-                      title={nextFollowUp.title}
-                    >
-                      {formatIstDate(nextFollowUp.dueAt)} · {nextFollowUp.title}
-                      {nextFollowUp.visual === "missed" ? " (overdue)" : ""}
-                    </span>
-                  ) : null}
-                  {/* What the patient themselves asked for, when they named a time. */}
-                  {lead.callbackAt ? (
-                    <span className="block text-xs text-black/45 dark:text-white/45">
-                      Callback requested {formatIst(lead.callbackAt)}
-                    </span>
-                  ) : null}
-                </span>
-              ) : null
+              <span className="block space-y-1">
+                {/* Editable for anyone who works this lead (§follow-up). The roadmap
+                    panel is gone, but the DATE still has to be settable — it's the
+                    prompt the whole desk works from. */}
+                {canEditLead ? (
+                  <FollowUpField
+                    leadId={lead.id}
+                    dueAtLocal={nextFollowUp?.dueAt ? istDateTimeLocal(nextFollowUp.dueAt) : ""}
+                    title={nextFollowUp?.title ?? null}
+                    overdue={nextFollowUp?.visual === "missed"}
+                    laterCount={followUpAhead.laterCount}
+                    laterFirst={
+                      followUpAhead.laterFirstAt ? formatIstDate(followUpAhead.laterFirstAt) : null
+                    }
+                  />
+                ) : nextFollowUp?.dueAt ? (
+                  <span
+                    className={`block ${
+                      nextFollowUp.visual === "missed" ? "text-red-600 dark:text-red-400" : ""
+                    }`}
+                    title={nextFollowUp.title}
+                  >
+                    {formatIstDate(nextFollowUp.dueAt)} · {nextFollowUp.title}
+                    {nextFollowUp.visual === "missed" ? " (overdue)" : ""}
+                  </span>
+                ) : null}
+                {/* What the patient themselves asked for, when they named a time. */}
+                {lead.callbackAt ? (
+                  <span className="block text-xs text-black/45 dark:text-white/45">
+                    Callback requested {formatIst(lead.callbackAt)}
+                  </span>
+                ) : null}
+              </span>
             }
           />
           <Field label="Created" value={formatIst(lead.createdAt)} />
@@ -466,6 +510,38 @@ export default async function LeadDetailPage({
             {windowOpen ? "24h window open" : "window closed"}
           </span>
         </div>
+
+        {/* §whatsapp — this patient is filed more than once. WhatsApp has one
+            conversation per number, so the thread below is the combined one; saying so
+            explains why messages appear here that were never sent from this record. */}
+        {samePhoneLeads.length > 0 && (
+          <div className="cara-callout cara-callout-info space-y-2">
+            <div>
+              <strong>This number has {samePhoneLeads.length + 1} lead records.</strong> WhatsApp
+              keeps one conversation per number, so the thread below is the whole
+              conversation — replies land on whichever record is oldest, and every record
+              shows them.
+            </div>
+            <ul className="space-y-1">
+              {samePhoneLeads.map((d) => (
+                <li key={d.id}>
+                  <Link href={`/leads/${d.id}`} className="font-medium underline">
+                    {d.name}
+                  </Link>
+                  <span className="ml-2 text-[12px] opacity-80">
+                    {stageLabel(d.stage)} · {d.assignedRep?.name ?? "unassigned"} · created{" "}
+                    {formatIstDate(d.createdAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[12px]">
+              Merging them onto one record keeps quotes, calls and ownership in one place —
+              open a duplicate and use its Merge control.
+            </p>
+          </div>
+        )}
+
         <WhatsAppChat
           leadId={lead.id}
           windowOpen={windowOpen}
@@ -481,7 +557,7 @@ export default async function LeadDetailPage({
             branchName: lead.branch?.name ?? null,
             clinicName: process.env.CLINIC_NAME ?? "Cara Clinic",
           }}
-          messages={lead.messages.map((m) => ({
+          messages={threadMessages.map((m) => ({
             id: m.id,
             direction: m.direction,
             type: m.type,

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireCapability, leadWhereForUser } from "@/lib/authz";
+import { requireCapability, leadWhereForUser, quoteWhereForUser } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import {
   getOpenQuotes,
@@ -113,9 +113,19 @@ export default async function OpenQuotesPage({
   const expiring = sp.expiring === "1";
   const unassigned = sp.unassigned === "1";
 
+  // §multi-quote — the desk is a personal work list for a counsellor: her quotes, not
+  // every quote on a patient she happens to own. Managers get the whole board.
+  //
+  // For an own-scope counsellor the ownership rule ALREADY carries the lead scope in
+  // one OR (see quoteWhereForUser), so the lead filter is not applied a second time —
+  // AND'ing it back on would drop the quotes she owns on colleagues' leads.
+  const quoteWhere = quoteWhereForUser(user);
+  const leadWhere = quoteWhere ? undefined : leadWhereForUser(user);
+
   const [board, converted, branches] = await Promise.all([
     getOpenQuotes({
-      leadWhere: leadWhereForUser(user),
+      leadWhere,
+      quoteWhere,
       status,
       ownerRepId: owner,
       branchId,
@@ -126,7 +136,7 @@ export default async function OpenQuotesPage({
     // The won side of the desk. Scope and branch follow the page; the pipeline
     // pills (stale / expiring / status) are meaningless for a settled quote, so
     // they don't narrow this list.
-    getConvertedQuotes({ leadWhere: leadWhereForUser(user), branchId }),
+    getConvertedQuotes({ leadWhere, quoteWhere, branchId }),
     prisma.branch.findMany({
       where: { active: true },
       orderBy: { name: "asc" },

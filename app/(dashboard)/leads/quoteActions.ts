@@ -24,7 +24,10 @@ import { recordInvoice, InvoiceError } from "@/lib/invoices";
 import { raiseCreditDispute, decideCreditDispute, DisputeError } from "@/lib/branchCredit";
 import { logger } from "@/lib/logger";
 
-type Result = { ok: boolean; error?: string };
+/// `info` carries a note the panel shows on success — used where the action did
+/// something the counsellor should know about, e.g. converting a quote with no invoice
+/// behind it while billing isn't connected.
+type Result = { ok: boolean; error?: string; info?: string };
 
 const TREATMENT_MAX = 120;
 const NOTE_MAX = 300;
@@ -193,17 +196,25 @@ export async function setLeadQuoteStatus(input: {
 
   const before = await prisma.quote.findUnique({
     where: { id: input.quoteId },
-    select: { status: true },
+    select: { status: true, branchId: true, branch: { select: { name: true } } },
   });
 
+  let uninvoiced = false;
   try {
-    await transitionQuote({
+    const result = await transitionQuote({
       quoteId: input.quoteId,
       status: input.status,
       rejectionReason: input.rejectionReason ?? null,
       withdrawnReason: input.withdrawnReason?.trim().slice(0, NOTE_MAX) ?? null,
       actorId: user.id,
+      // §branch credit — with no invoice to read the branch off, the credit falls to
+      // the branch that RAISED the quote. It's the only defensible guess, it's stated
+      // in the audit trail as a guess, and the 7-day dispute is there to move it if a
+      // branch disagrees. Passing it explicitly beats leaving the credit unset, which
+      // would silently drop the sale out of every branch's numbers.
+      invoicedBranchId: input.status === "converted" ? (before?.branchId ?? null) : null,
     });
+    uninvoiced = result.uninvoiced;
   } catch (err) {
     if (err instanceof QuoteError) return { ok: false, error: err.message };
     logger.error(`setLeadQuoteStatus failed for ${input.quoteId}: ${String(err)}`);
@@ -221,11 +232,27 @@ export async function setLeadQuoteStatus(input: {
     oldValue: before?.status ?? null,
     newValue: effectiveStatus,
     reason: input.rejectionReason?.trim() || input.withdrawnReason?.trim() || null,
-    meta: { quoteId: input.quoteId },
+    // `uninvoiced` marks a conversion recorded while billing wasn't connected — no
+    // invoice stood behind it and the branch credit was assumed from the raising
+    // branch. Written into the permanent record so these are still identifiable later,
+    // when billing is live and every other conversion has an invoice behind it.
+    meta: {
+      quoteId: input.quoteId,
+      ...(uninvoiced
+        ? { uninvoiced: true, creditAssumedBranchId: before?.branchId ?? null }
+        : {}),
+    },
   });
-  logger.info(`Quote ${input.quoteId} → ${input.status} by ${user.email ?? "?"}`);
+  logger.info(
+    `Quote ${input.quoteId} → ${input.status}${uninvoiced ? " (no invoice — billing not connected)" : ""} by ${user.email ?? "?"}`,
+  );
   revalidatePath(`/leads/${input.leadId}`);
-  return { ok: true };
+  return {
+    ok: true,
+    info: uninvoiced
+      ? `Converted without an invoice — credited to ${before?.branch?.name ?? "no branch"}. Billing isn't connected yet; this is recorded as an uninvoiced conversion.`
+      : undefined,
+  };
 }
 
 /// Generate the quote PDF and send it to the lead over WhatsApp (§multi-quote:

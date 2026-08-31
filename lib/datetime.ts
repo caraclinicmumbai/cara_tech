@@ -34,6 +34,29 @@ export function formatIstDate(d: Date | string | number): string {
   return new Intl.DateTimeFormat("en-IN", IST_DATE).format(date);
 }
 
+const IST_OFFSET_MS = (5 * 60 + 30) * 60_000; // +05:30, no DST
+
+/// An instant as the IST wall-clock string `<input type="datetime-local">` speaks,
+/// "YYYY-MM-DDTHH:mm". Deliberately NOT the viewer's local time: a follow-up at
+/// "3:30 pm" means 3:30 pm at the clinic, whatever timezone the laptop is set to.
+export function istDateTimeLocal(d: Date | string | number): string {
+  const date = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 16);
+}
+
+/// The inverse: read a "YYYY-MM-DDTHH:mm" (or "YYYY-MM-DD") as IST wall-clock and
+/// return the instant. Null when it isn't a date at all — the caller decides whether
+/// that means "clear it" or "reject it".
+export function parseIstDateTimeLocal(value: string): Date | null {
+  const m = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?$/);
+  if (!m) return null;
+  const [, y, mo, d, hh, mi] = m;
+  const utc = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(hh ?? 0), Number(mi ?? 0));
+  const date = new Date(utc - IST_OFFSET_MS);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 /// The IST calendar day as "YYYY-MM-DD" — the value an `<input type="date">` speaks.
 /// Comparing formatted labels would break the moment the format changes, and comparing
 /// UTC days puts anything after 6:30pm IST on the wrong date.

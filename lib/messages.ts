@@ -26,15 +26,57 @@ import { logger } from "@/lib/logger";
 // text for 24h. Outside it, only an approved TEMPLATE can re-open the thread.
 export const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+/// The last 10 digits of a phone number — the comparison key used everywhere a
+/// number is matched (dedupe, inbound routing, the shared thread), so `+919876543210`,
+/// `919876543210` and `9876543210` are one person. Empty when there aren't enough
+/// digits to be confident.
+export function phoneKey(phone: string): string {
+  const last10 = (phone.match(/\d/g)?.join("") ?? "").slice(-10);
+  return last10.length >= 7 ? last10 : "";
+}
+
 /// Find the canonical lead for an inbound WhatsApp number (last-10-digit match,
 /// oldest record — mirrors lib/leadIntake dedupe). Returns null if unknown.
 export async function findLeadByPhone(phone: string) {
-  const last10 = (phone.match(/\d/g)?.join("") ?? "").slice(-10);
-  if (last10.length < 7) return null;
+  const last10 = phoneKey(phone);
+  if (!last10) return null;
   return prisma.lead.findFirst({
     where: { phone: { contains: last10 } },
     orderBy: { createdAt: "asc" },
   });
+}
+
+/// Every lead record that shares this lead's phone number — the same human being,
+/// filed more than once.
+///
+/// **Why the thread is keyed on the NUMBER rather than the lead row.** WhatsApp has
+/// one conversation per phone number; the CRM can hold several lead records for it
+/// (a walk-in typed in by the front desk, a web form, an ad — all the same patient).
+/// Inbound replies are routed to the OLDEST matching record, so a counsellor working
+/// any of the others saw an empty thread and a permanently closed 24h window while
+/// the reply sat on a record nobody had open. Reading the conversation by number
+/// makes every record show the same, complete thread — which is what the patient
+/// sees at their end, and the only version that is actually true.
+///
+/// Returns the ids oldest-first and always includes `leadId` itself, so a caller can
+/// use the result unconditionally. Deleted records are excluded — a trashed duplicate
+/// shouldn't drag its history back into view.
+export async function leadIdsSharingPhone(leadId: string): Promise<string[]> {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { id: true, phone: true },
+  });
+  if (!lead) return [leadId];
+  const key = phoneKey(lead.phone);
+  if (!key) return [leadId];
+
+  const siblings = await prisma.lead.findMany({
+    where: { phone: { contains: key }, deletedAt: null },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  const ids = siblings.map((s) => s.id);
+  return ids.includes(leadId) ? ids : [leadId, ...ids];
 }
 
 /// Find the lead for an inbound WhatsApp number, or create one when an unknown
@@ -82,11 +124,18 @@ async function saveMessage(data: Prisma.MessageUncheckedCreateInput): Promise<Me
   return message;
 }
 
-/// Is the 24h free-form window currently open for this lead? True iff the lead's
-/// most recent INBOUND message arrived within the last 24h.
+/// Is the 24h free-form window currently open for this lead? True iff the most recent
+/// INBOUND message from this PHONE NUMBER arrived within the last 24h.
+///
+/// Meta grants the window per number, not per CRM record: once the patient writes to
+/// us, we may reply freely for 24h no matter which of their duplicate records is on
+/// screen. Checking one record's rows used to report the window closed while it was
+/// open at Meta's end — the counsellor was pushed into sending a template for a
+/// conversation the patient had just opened.
 export async function isServiceWindowOpen(leadId: string, now = new Date()): Promise<boolean> {
+  const ids = await leadIdsSharingPhone(leadId);
   const last = await prisma.message.findFirst({
-    where: { leadId, direction: "inbound" },
+    where: { leadId: { in: ids }, direction: "inbound" },
     orderBy: { createdAt: "desc" },
     select: { createdAt: true },
   });

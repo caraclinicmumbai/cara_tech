@@ -279,6 +279,99 @@ export async function applyStageChangeToRoadmap(input: {
   }
 }
 
+/// The lead's NEXT follow-up — the earliest pending step carrying a due date. This is
+/// exactly what the leads table's "Follow up" column shows, so the editor and the
+/// column can't disagree about which step is being changed.
+export async function nextFollowUpStep(leadId: string) {
+  return prisma.leadFollowUpStep.findFirst({
+    where: { leadId, status: "pending", dueAt: { not: null } },
+    orderBy: { dueAt: "asc" },
+    select: { id: true, title: true, dueAt: true, channel: true },
+  });
+}
+
+/// The next follow-up plus the ones queued behind it.
+///
+/// Leads are seeded with a small ladder of steps at intake, and only the earliest shows
+/// in the column. That matters when someone edits the date: push the next step into
+/// October and the step behind it becomes "next", so the screen would show a date the
+/// counsellor didn't type and looks like the save failed. Handing the queue to the UI
+/// lets it say what's actually there instead.
+export async function followUpQueue(leadId: string): Promise<{
+  next: { id: string; title: string; dueAt: Date | null } | null;
+  laterCount: number;
+  laterFirstAt: Date | null;
+}> {
+  const pending = await prisma.leadFollowUpStep.findMany({
+    where: { leadId, status: "pending", dueAt: { not: null } },
+    orderBy: { dueAt: "asc" },
+    select: { id: true, title: true, dueAt: true },
+  });
+  return {
+    next: pending[0] ?? null,
+    laterCount: Math.max(0, pending.length - 1),
+    laterFirstAt: pending[1]?.dueAt ?? null,
+  };
+}
+
+/// Set (or clear) when this lead is next followed up.
+///
+/// The date lives on a roadmap STEP rather than on the lead, because a follow-up is
+/// something somebody does — it has a title, an owner and a completion state. The
+/// roadmap panel that used to edit these was removed when the clinic asked for "just
+/// the dates", which left the column read-only; this is the narrow way back in.
+///
+/// Retargets the existing next step where there is one, so the counsellor moves the
+/// work rather than accumulating duplicates. With no step to move, one is created and
+/// owned by the lead's counsellor. Passing `null` clears the date, which takes the
+/// step out of the column without deleting the work.
+export async function setNextFollowUp(input: {
+  leadId: string;
+  dueAt: Date | null;
+  title?: string | null;
+}): Promise<{ stepId: string; previous: Date | null; created: boolean }> {
+  const existing = await nextFollowUpStep(input.leadId);
+
+  if (existing) {
+    await prisma.leadFollowUpStep.update({
+      where: { id: existing.id },
+      data: {
+        dueAt: input.dueAt,
+        ...(input.title?.trim() ? { title: input.title.trim().slice(0, 120) } : {}),
+      },
+    });
+    return { stepId: existing.id, previous: existing.dueAt, created: false };
+  }
+
+  // Nothing pending to move — add a step at the end of the roadmap. Clearing a date
+  // that doesn't exist is a no-op rather than an empty step nobody asked for.
+  if (!input.dueAt) return { stepId: "", previous: null, created: false };
+
+  const lead = await prisma.lead.findUnique({
+    where: { id: input.leadId },
+    select: { assignedRepId: true },
+  });
+  const max = await prisma.leadFollowUpStep.aggregate({
+    where: { leadId: input.leadId },
+    _max: { order: true },
+  });
+  const step = await prisma.leadFollowUpStep.create({
+    data: {
+      leadId: input.leadId,
+      order: (max._max.order ?? -1) + 1,
+      title: input.title?.trim().slice(0, 120) || "Follow up",
+      channel: "custom",
+      dueAt: input.dueAt,
+      status: "pending",
+      ownerKind: "rep",
+      ownerRepId: lead?.assignedRepId ?? null,
+      source: "manual",
+    },
+    select: { id: true },
+  });
+  return { stepId: step.id, previous: null, created: true };
+}
+
 // Best-effort seed helper for intake — logs and swallows failures so a roadmap
 // hiccup never blocks lead creation.
 export async function seedFollowUpStepsSafe(input: {

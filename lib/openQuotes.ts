@@ -121,6 +121,11 @@ export type OpenQuotesFilter = {
   // ── Scope: narrows what the query loads, so the summary reflects it. ──
   /// Lead-visibility scope for the signed-in user (from `leadWhereForUser`).
   leadWhere?: Prisma.LeadWhereInput;
+  /// Quote-OWNERSHIP scope for a counsellor (from `quoteWhereForUser`). This desk is
+  /// a personal work list, so a counsellor sees the quotes that are hers — owning the
+  /// patient doesn't hand her a colleague's quote on that patient. Undefined for
+  /// managers, who see the whole board.
+  quoteWhere?: Prisma.QuoteWhereInput;
   branchId?: string | null;
   // ── Pills: applied in memory, so the summary and the owner list stay whole. ──
   ownerRepId?: string | null;
@@ -162,6 +167,7 @@ export async function getOpenQuotes(
       status: { in: OPEN_QUOTE_STATUSES },
       // A quote on a trashed lead is not in play.
       lead: { deletedAt: null, ...(filter.leadWhere ?? {}) },
+      ...(filter.quoteWhere ?? {}),
       ...(filter.branchId ? { branchId: filter.branchId } : {}),
     },
     orderBy: { createdAt: "desc" },
@@ -362,13 +368,14 @@ export type ConvertedQuotesBoard = {
 
 /// The most recently converted quotes in scope, newest first.
 export async function getConvertedQuotes(
-  filter: Pick<OpenQuotesFilter, "leadWhere" | "branchId"> = {},
+  filter: Pick<OpenQuotesFilter, "leadWhere" | "quoteWhere" | "branchId"> = {},
   limit = 50,
   now: number = Date.now(),
 ): Promise<ConvertedQuotesBoard> {
   const where: Prisma.QuoteWhereInput = {
     status: { in: WON_QUOTE_STATUSES },
     lead: { deletedAt: null, ...(filter.leadWhere ?? {}) },
+    ...(filter.quoteWhere ?? {}),
     ...(filter.branchId ? { branchId: filter.branchId } : {}),
   };
 

@@ -24,6 +24,32 @@ manual follow-up.
    session-gated proxy (`/api/whatsapp/media/[mediaId]`) — Meta media expires (~30d),
    so it's fetched on demand rather than stored.
 
+## One conversation per NUMBER, not per lead record
+
+WhatsApp has exactly one conversation per phone number. The CRM can hold **several lead
+records for that number** — a walk-in typed in at the desk, a web form, an ad enquiry,
+all the same patient. Inbound replies are routed to the **oldest** matching record
+(step 2 above), which used to mean:
+
+- a counsellor working any *other* record saw an empty thread, and
+- the 24h window read as closed on that record while it was open at Meta's end, pushing
+  them into sending a template for a conversation the patient had just started.
+
+So the thread is keyed on the **number**. `leadIdsSharingPhone()` (`lib/messages.ts`)
+resolves every non-deleted record sharing the last 10 digits, and the lead page, the
+live SSE stream and `isServiceWindowOpen()` all read across that set. Open any of the
+patient's records and you see the same, complete conversation — the one the patient
+sees at their end.
+
+A lead with siblings shows a banner naming the other records, because a thread
+containing messages that were never sent *from this record* needs explaining. **Merging
+the duplicates is still the fix**; this makes the conversation legible until someone
+does, rather than silently hiding replies.
+
+> Deliberately unchanged: the WhatsApp **inbox** lists one row per record that actually
+> holds messages, so a patient appears once there. And sends still go from the record
+> you're on — same number, so the patient can't tell the difference.
+
 ## Outbound (clinic → patient)
 
 - **Inside the 24h customer-service window:** a free-form text from an agent

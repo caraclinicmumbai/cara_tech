@@ -13,6 +13,31 @@
 
 ## Open
 
+### 🔴 Merge the duplicate lead records (data, not code)
+Testing surfaced **seven lead records on one phone number** (`+919536108238` — `fahar` ×4,
+`Dr.Asif`, `asif`). Inbound WhatsApp replies route to the *oldest* record, which is why replies
+looked missing. The code now shows one shared conversation on every record and flags the
+siblings — but the duplicates themselves still split quotes, calls and ownership across seven
+rows, and every report counts them as seven people.
+
+**Someone has to merge them** (open a duplicate → its Merge control), choosing which name, owner
+and stage survive. Worth checking production for other numbers in the same state:
+```sql
+SELECT right(regexp_replace(phone,'\D','','g'),10) AS last10, count(*), string_agg(name,' | ')
+FROM "Lead" WHERE "deletedAt" IS NULL GROUP BY 1 HAVING count(*) > 1 ORDER BY 2 DESC;
+```
+Also unresolved: **what created them**. Dedup exists (`duplicateOfId`) but these got through, so
+intake has a gap worth finding before the merge is undone by new duplicates.
+_Added 2026-09-01._
+
+### 🟠 `fresh_inquiry` — a lead stage that isn't in `LEAD_STAGES`
+7 local leads carry `stage = "fresh_inquiry"`, which no longer exists in `lib/leadStages.ts`
+(a past migration was meant to convert them to `ai_contacted` — see CHANGELOG 2026-08-11).
+`stageRank()` falls back safely so reports and SLAs behave, but `stageLabel()` renders the raw
+key, now visible in the duplicate banner. Either finish the migration on the rows or add the
+stage back deliberately (it's the same decision as the "Fresh Lead default stage" item below).
+**Check production for the same rows.** _Added 2026-09-01._
+
 ### 🔴 Go-live: actually turn ON follow-up campaigns
 The campaign **code** is deployed to production, but the engine is **dormant** by design
 (`CAMPAIGNS_ENABLED` defaults off) and messaging templates aren't set, so nothing enrolls or
@@ -72,8 +97,9 @@ open:
   and call-outcome stage mapping.
 - **Lead creation-date filter (M).** `LeadsTable` has only enum/text filter kinds; add a
   date-range kind (the Created column now exists to filter on).
-- **Editable Follow-Up date (M).** Only call-driven `callbackAt` exists; make it staff-editable
-  (add to `LeadEditForm` + an action). Pairs with the Follow-Up rename already shipped.
+- ~~**Editable Follow-Up date (M).**~~ **Done 2026-09-01** — a date+time field on the lead
+  retargets the step the leads table reads (`setLeadFollowUp`), IST wall-clock, audited. See
+  [flows/01-lead-intake.md](flows/01-lead-intake.md). Raised by the business in testing.
 - **Tags dropdown (deferred by user).** `lead.tag` is free text; convert `TagField` to a
   select once the **preset tag list is provided**. No preset list exists yet.
 - **Interest/Treatment auto-fill (M).** Transcript-derived treatment currently lands in `tag`,

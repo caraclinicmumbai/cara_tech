@@ -210,6 +210,30 @@ authoritative and replaces a role's built-in list wholesale — see the warning 
 | **Post-sales** | One journey per converted quote. [flow 9](09-post-sales-journey.md) |
 | **Billing** | An invoice is what converts a quote, and it names the branch that earns the credit. See below. |
 
+### Who sees which quotes on the desk
+
+The desk is a **personal work list**, so a counsellor (an "own scope" role) sees:
+
+- **quotes she owns** — wherever the patient has since ended up. A handover moves the
+  lead; it doesn't take her quote off her board.
+- **plus unowned quotes on her own leads** — somebody has to work them, and hiding them
+  from every counsellor would leave real money invisible.
+
+She does **not** see a colleague's quote merely because she owns the patient — owning the
+lead is not owning the quote (§multi-quote is explicit that the two owners can differ).
+Managers and admins see the whole board, unchanged.
+
+These are one `OR`, not two filters ANDed: see `quoteWhereForUser()` in
+[lib/authz.ts](../../lib/authz.ts). Ordering them the other way took a counsellor's own
+quote off her board as soon as the lead moved to a colleague.
+
+> The **lead page** is unaffected: open a patient and you see all their quotes, because
+> that's the context you need to work them. Only the desk is scoped.
+>
+> Consequence worth knowing: a counsellor can hold a quote on a lead she can't open. The
+> board names the patient; opening the record still needs the lead or a temporary access
+> grant.
+
 ## Invoiced = converted (§billing)
 
 **"Converted" means an invoice exists for that specific quote.** Not a counsellor's
@@ -234,6 +258,31 @@ optimism and not a status someone picked — a document billing raised.
   different quote is refused (422), not silently re-pointed.
 - **No card or bank details, ever.** An invoice here is a number, an amount, a branch and
   a date. Anything else in the payload is ignored.
+
+### Until billing is connected (§settings)
+
+The rule above assumes something is sending us invoices. **Nothing is yet** — no billing
+integration exists (see [deferred-todo.md](../deferred-todo.md)) — so enforcing it would
+leave the clinic unable to record sales it genuinely made.
+
+`quotes.allowUninvoicedConversion` (Settings → Quotes & billing, admin-only) lifts the
+requirement. While it is **on**:
+
+- anyone with `quotes.convert` can mark a quote Converted directly;
+- the conversion is flagged `uninvoiced: true` in the audit log, so these stay
+  identifiable later, when every other conversion has an invoice behind it;
+- **the credit falls to the branch that RAISED the quote** (`Quote.branchId`) rather than
+  being read off an invoice. It's the only defensible guess, it's recorded as a guess
+  (`creditAssumedBranchId`), and the 7-day dispute below is there to move it;
+- the counsellor is told all of this when the conversion goes through, rather than
+  discovering it in a report.
+
+**Turn it off the day billing is wired up.** Conversion then goes back to meaning a real
+invoice exists, with no code change. The admin by-hand override stays available either
+way, and remains the cleaner path because it leaves a real `Invoice` row.
+
+The switch is stored in `AppSetting` and read through `lib/settings.ts` (30s cache).
+Every flip is audited with the actor and a reason.
 
 ### The credit, and the 7-day dispute (§branch credit)
 
