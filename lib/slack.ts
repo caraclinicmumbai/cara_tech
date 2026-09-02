@@ -44,21 +44,52 @@ export function isSlackConfigured(): boolean {
   return !!process.env.SLACK_BOT_TOKEN && !!process.env.SLACK_DEFAULT_CHANNEL;
 }
 
+/// Does this look like something Slack can actually deliver to?
+///
+/// Slack ids are letter-prefixed and upper-case: `U…`/`W…` a person, `C…`/`G…`/`D…` a
+/// channel or DM. A `#name` is fine too. Anything else — most often a human's handle
+/// typed into `SalesRep.slackUserId`, e.g. "rohit" — is not addressable, and Slack
+/// answers `channel_not_found`.
+///
+/// This matters more than it looks. Five places DM a counsellor by their `slackUserId`
+/// (handover, escalation, ownership, CQS extremes, follow-up reminders). With an
+/// unusable id, every one of those messages was being dropped for that person and the
+/// only trace was one line in the log.
+const ADDRESSABLE = /^(#|[UWCGD][A-Z0-9]{6,}$)/;
+
+export function isAddressableSlackTarget(target: string | null | undefined): boolean {
+  return !!target && ADDRESSABLE.test(target.trim());
+}
+
 /// Post a message to Slack. Returns true on success, false (logged) otherwise.
 /// Never throws.
+///
+/// A message addressed at a specific person FALLS BACK to the default channel when that
+/// address doesn't work, rather than vanishing. A handover alert in the shared channel
+/// is imperfect; a handover alert nobody receives is a lead going cold.
 export async function sendSlack(msg: SlackMessage): Promise<boolean> {
   const token = process.env.SLACK_BOT_TOKEN;
-  const channel = msg.channel ?? process.env.SLACK_DEFAULT_CHANNEL;
+  const fallback = process.env.SLACK_DEFAULT_CHANNEL;
+  // An unusable target is treated as no target at all, so it goes straight to the
+  // shared channel instead of burning a round trip to be told it doesn't exist.
+  const requested =
+    msg.channel && isAddressableSlackTarget(msg.channel) ? msg.channel.trim() : undefined;
+  if (msg.channel && !requested) {
+    logger.warn(
+      `Slack target "${msg.channel}" isn't a Slack id (expected U…/C…/#channel) — using the default channel instead`,
+    );
+  }
+  const channel = requested ?? fallback;
 
   if (!token || !channel) {
     logger.warn("Slack not configured (SLACK_BOT_TOKEN / SLACK_DEFAULT_CHANNEL) — skipping notification");
     return false;
   }
 
-  try {
+  const post = async (to: string) => {
     const res = await axios.post(
       POST_MESSAGE_URL,
-      { channel, text: msg.text, ...(msg.blocks ? { blocks: msg.blocks } : {}) },
+      { channel: to, text: msg.text, ...(msg.blocks ? { blocks: msg.blocks } : {}) },
       {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json; charset=utf-8" },
         timeout: 10_000,
@@ -66,11 +97,26 @@ export async function sendSlack(msg: SlackMessage): Promise<boolean> {
     );
     // Slack returns HTTP 200 with { ok: false, error } on logical failures
     // (invalid_auth, channel_not_found, not_in_channel, …).
-    if (!res.data?.ok) {
-      logger.error(`Slack post failed: ${res.data?.error ?? "unknown_error"}`);
+    return { ok: !!res.data?.ok, error: res.data?.error as string | undefined };
+  };
+
+  try {
+    const first = await post(channel);
+    if (first.ok) return true;
+
+    // The address was well-formed but Slack can't reach it — a departed member, a
+    // private channel the bot isn't in. Don't lose the message.
+    const undeliverable = first.error === "channel_not_found" || first.error === "not_in_channel";
+    if (undeliverable && fallback && channel !== fallback) {
+      logger.warn(`Slack could not deliver to ${channel} (${first.error}) — retrying in the default channel`);
+      const retry = await post(fallback);
+      if (retry.ok) return true;
+      logger.error(`Slack post failed on fallback too: ${retry.error ?? "unknown_error"}`);
       return false;
     }
-    return true;
+
+    logger.error(`Slack post failed: ${first.error ?? "unknown_error"}`);
+    return false;
   } catch (err) {
     logger.error(`Slack post error: ${String(err)}`);
     return false;
