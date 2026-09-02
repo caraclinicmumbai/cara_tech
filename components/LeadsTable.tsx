@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { saveLeadQueue } from "@/lib/leadQueue";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { StageSelect } from "@/components/StageSelect";
 import { TagField } from "@/components/TagField";
 import { LeadDeleteButton } from "@/components/LeadDeleteButton";
@@ -59,6 +59,14 @@ type Col = {
   label: string;
   /// Underlying value used for filtering/sorting ("" = empty, shown as "—").
   value: (l: LeadRow) => string;
+  /// What the CELL renders. Every column defines its own, so the header row and the
+  /// body row are generated from ONE list and cannot drift apart.
+  ///
+  /// They used to be two lists — headers mapped from this array, cells hand-written in
+  /// a fixed order — and reordering a column silently shifted every cell to its right
+  /// under the wrong heading. A table that quietly puts a phone number under "Created"
+  /// is worse than one that's ugly, so the two are now the same list by construction.
+  cell: (l: LeadRow, ctx: CellContext) => ReactNode;
   /// For a "date" column: the row's date as YYYY-MM-DD, or "" when it has none.
   dateValue?: (l: LeadRow) => string;
   /// For a "date" column offering the Overdue shortcut: is this row past due?
@@ -68,7 +76,43 @@ type Col = {
   display?: (v: string) => string;
   filter: FilterKind;
   number?: boolean;
+  /// Cell layout. `wrap` opts out of the default whitespace-nowrap.
+  align?: "right";
+  wrap?: boolean;
 };
+
+/// What a cell renderer may need beyond the row itself.
+type CellContext = {
+  sourceLabels: Record<string, string>;
+  canRemark: boolean;
+  onOpenLead: () => void;
+};
+
+const MUTED = "text-black/60 dark:text-white/60";
+
+/// The small status pills on a lead's name — duplicate, opted out, held, handover.
+const BADGE_TONES = {
+  amber: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  red: "bg-red-500/15 text-red-700 dark:text-red-400",
+  orange: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
+  purple: "bg-purple-500/15 text-purple-700 dark:text-purple-400",
+} as const;
+
+function Badge({
+  tone,
+  title,
+  children,
+}: {
+  tone: keyof typeof BADGE_TONES;
+  title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span title={title} className={`ml-2 rounded-full px-2 py-0.5 text-xs ${BADGE_TONES[tone]}`}>
+      {children}
+    </span>
+  );
+}
 
 type OpenFilter = { key: string; x: number; y: number };
 
@@ -120,7 +164,25 @@ export function LeadsTable({
 
   const columns: Col[] = useMemo(
     () => [
-      { key: "name", label: "Name", value: (l) => l.name, filter: "none" },
+      {
+        key: "name",
+        label: "Name",
+        value: (l) => l.name,
+        filter: "none",
+        cell: (l, ctx) => (
+          <>
+            <Link href={`/leads/${l.id}`} className="font-medium hover:underline" onClick={ctx.onOpenLead}>
+              {l.name}
+            </Link>
+            {l.duplicateOfId && <Badge tone="amber" title="Possible duplicate — no AI call">dup</Badge>}
+            {l.optedOut && <Badge tone="red" title="Opted out — all outreach suppressed">opted out</Badge>}
+            {l.heldForReview && <Badge tone="orange" title="Held for review — no AI call">review</Badge>}
+            {l.needsHandover && (
+              <Badge tone="purple" title={l.handoverReason ?? "Handover to sales"}>handover</Badge>
+            )}
+          </>
+        ),
+      },
       // Created sits second, right after the name, because the first question the desk
       // asks a lead list every morning is "which of these came in today?" — it used to
       // be sixteen columns to the right, past the edge of the screen.
@@ -131,32 +193,65 @@ export function LeadsTable({
         dateValue: (l) => l.createdDate,
         dateShortcuts: ["today", "yesterday"],
         filter: "date",
+        cell: (l) => <span className={MUTED}>{l.created}</span>,
       },
-      { key: "phone", label: "Phone", value: (l) => l.phone, filter: "text" },
+      { key: "phone", label: "Phone", value: (l) => l.phone, filter: "text", cell: (l) => l.phone },
       {
         key: "source",
         label: "Source",
         value: (l) => l.source ?? "",
         display: (v) => (v ? (sourceLabels[v] ?? v) : "Other"),
         filter: "enum",
+        cell: (l, ctx) => (
+          <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs dark:bg-white/10">
+            {l.source ? (ctx.sourceLabels[l.source] ?? l.source) : "—"}
+          </span>
+        ),
       },
-      { key: "campaign", label: "Campaign", value: (l) => l.campaign ?? "", filter: "text" },
+      {
+        key: "campaign",
+        label: "Campaign",
+        value: (l) => l.campaign ?? "",
+        filter: "text",
+        cell: (l) =>
+          l.campaign ? <span title={l.adId ? `Ad: ${l.adId}` : undefined}>{l.campaign}</span> : "—",
+      },
       {
         key: "stage",
         label: "Stage",
         value: (l) => l.stage,
         display: (v) => stageLabels[v] ?? v,
         filter: "enum",
+        cell: (l) => <StageSelect leadId={l.id} stage={l.stage} />,
       },
-      { key: "tag", label: "Tag", value: (l) => l.tag ?? "", filter: "text" },
-      { key: "interest", label: "Treatment", value: (l) => l.interest ?? "", filter: "text" },
-      { key: "status", label: "Status", value: (l) => l.status, filter: "enum" },
+      {
+        key: "tag",
+        label: "Tag",
+        value: (l) => l.tag ?? "",
+        filter: "text",
+        cell: (l) => <TagField leadId={l.id} tag={l.tag} />,
+      },
+      {
+        key: "interest",
+        label: "Treatment",
+        value: (l) => l.interest ?? "",
+        filter: "text",
+        wrap: true,
+        cell: (l) => (
+          <span className="block max-w-50 truncate" title={l.interest ?? undefined}>
+            {l.interest ?? "—"}
+          </span>
+        ),
+      },
+      { key: "status", label: "Status", value: (l) => l.status, filter: "enum", cell: (l) => l.status },
       {
         key: "assignedRep",
         label: "Owner",
         value: (l) => l.assignedRep ?? "",
         display: (v) => v || "Unassigned",
         filter: "enum",
+        cell: (l) =>
+          l.assignedRep ?? <span className="text-black/40 dark:text-white/40">Unassigned</span>,
       },
       {
         key: "nextFollowUp",
@@ -166,15 +261,55 @@ export function LeadsTable({
         dateOverdue: (l) => l.nextFollowUpOverdue,
         dateShortcuts: ["today", "tomorrow", "overdue"],
         filter: "date",
+        cell: (l) =>
+          l.nextFollowUp ? (
+            <span
+              title={l.nextFollowUpTitle ?? undefined}
+              className={
+                l.nextFollowUpOverdue
+                  ? "rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-700 dark:text-red-400"
+                  : MUTED
+              }
+            >
+              {l.nextFollowUp}
+            </span>
+          ) : (
+            "—"
+          ),
       },
       {
         key: "dealAmount",
         label: "Deal amount",
         value: (l) => (l.dealAmount == null ? "" : String(l.dealAmount)),
         filter: "none",
+        align: "right",
+        cell: (l) =>
+          l.dealAmount == null ? (
+            "—"
+          ) : (
+            <span
+              title={l.dealWon ? "Total of won quotes" : "Latest open quote — not converted yet"}
+              className={l.dealWon ? "font-medium" : MUTED}
+            >
+              ₹{l.dealAmount.toLocaleString("en-IN")}
+            </span>
+          ),
       },
-      { key: "calls", label: "Calls", value: (l) => String(l.calls), filter: "enum", number: true },
-      { key: "lastCall", label: "Last call", value: (l) => l.lastCall ?? "", filter: "none" },
+      {
+        key: "calls",
+        label: "Calls",
+        value: (l) => String(l.calls),
+        filter: "enum",
+        number: true,
+        cell: (l) => l.calls,
+      },
+      {
+        key: "lastCall",
+        label: "Last call",
+        value: (l) => l.lastCall ?? "",
+        filter: "none",
+        cell: (l) => <span className={MUTED}>{l.lastCall ?? "—"}</span>,
+      },
       {
         key: "cqs",
         label: "CQS",
@@ -182,8 +317,39 @@ export function LeadsTable({
         display: (v) => (v === "" ? "—" : v),
         filter: "enum",
         number: true,
+        cell: (l) =>
+          typeof l.cqs === "number" ? (
+            <span
+              title="Conversation Quality Score (latest scored call)"
+              className={`rounded-full px-2 py-0.5 text-xs ${
+                l.cqs >= 75
+                  ? "bg-green-600/15 text-green-700 dark:text-green-400"
+                  : l.cqs >= 50
+                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                    : "bg-red-500/15 text-red-700 dark:text-red-400"
+              }`}
+            >
+              {l.cqs}
+            </span>
+          ) : (
+            "—"
+          ),
       },
-      { key: "remark", label: "Remark", value: (l) => l.remark ?? "", filter: "text" },
+      {
+        key: "remark",
+        label: "Remark",
+        value: (l) => l.remark ?? "",
+        filter: "text",
+        wrap: true,
+        cell: (l, ctx) =>
+          ctx.canRemark ? (
+            <RemarkField leadId={l.id} remark={l.remark} />
+          ) : (
+            <span className="block max-w-[18rem] truncate text-xs" title={l.remark ?? undefined}>
+              {l.remark ?? "—"}
+            </span>
+          ),
+      },
       // History rather than a commitment, so this offers Today/Yesterday and no
       // Overdue — there's nothing to fall behind on. (Created carries the same filter
       // and now sits second, next to the name.)
@@ -194,6 +360,7 @@ export function LeadsTable({
         dateValue: (l) => l.updatedDate,
         dateShortcuts: ["today", "yesterday"],
         filter: "date",
+        cell: (l) => <span className={MUTED}>{l.updated}</span>,
       },
     ],
     [sourceLabels, stageLabels],
@@ -313,6 +480,17 @@ export function LeadsTable({
     return parts.length ? parts.join(" · ") : "All leads";
   }, [columns, search, enumFilters, textFilters, dateFilters]);
 
+  /// Everything a cell renderer needs beyond its row. Clicking a lead's name captures
+  /// the current filtered list so the lead page can step through it (§leads table).
+  const cellContext: CellContext = useMemo(
+    () => ({
+      sourceLabels,
+      canRemark,
+      onOpenLead: () => saveLeadQueue({ ids: rows.map((r) => r.id), label: filterLabel }),
+    }),
+    [sourceLabels, canRemark, rows, filterLabel],
+  );
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
@@ -401,154 +579,23 @@ export function LeadsTable({
           <tbody>
             {rows.map((lead) => (
               <tr key={lead.id} className="border-t border-black/5 dark:border-white/10">
-                <td className="sticky left-0 z-10 whitespace-nowrap border-r border-black/5 bg-background px-4 py-2 dark:border-white/10">
-                  <Link
-                    href={`/leads/${lead.id}`}
-                    className="font-medium hover:underline"
-                    // Hand the lead page the filtered list, so the telecaller can step
-                    // to the next one without coming back here (§leads table).
-                    onClick={() => saveLeadQueue({ ids: rows.map((r) => r.id), label: filterLabel })}
+                {/* Cells come from the same `columns` list as the headers above, so a
+                    column can be reordered in one place without data sliding under the
+                    wrong heading. */}
+                {columns.map((c, i) => (
+                  <td
+                    key={c.key}
+                    className={`px-4 py-2 ${c.wrap ? "" : "whitespace-nowrap"} ${
+                      c.align === "right" ? "text-right tabular-nums" : ""
+                    } ${
+                      i === 0
+                        ? "sticky left-0 z-10 border-r border-black/5 bg-background dark:border-white/10"
+                        : ""
+                    }`}
                   >
-                    {lead.name}
-                  </Link>
-                  {lead.duplicateOfId && (
-                    <span
-                      title="Possible duplicate — no AI call"
-                      className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-400"
-                    >
-                      dup
-                    </span>
-                  )}
-                  {lead.optedOut && (
-                    <span
-                      title="Opted out — all outreach suppressed"
-                      className="ml-2 rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-700 dark:text-red-400"
-                    >
-                      opted out
-                    </span>
-                  )}
-                  {lead.heldForReview && (
-                    <span
-                      title="Held for review — no AI call"
-                      className="ml-2 rounded-full bg-orange-500/15 px-2 py-0.5 text-xs text-orange-700 dark:text-orange-400"
-                    >
-                      review
-                    </span>
-                  )}
-                  {lead.needsHandover && (
-                    <span
-                      title={lead.handoverReason ?? "Handover to sales"}
-                      className="ml-2 rounded-full bg-purple-500/15 px-2 py-0.5 text-xs text-purple-700 dark:text-purple-400"
-                    >
-                      handover
-                    </span>
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2">{lead.phone}</td>
-                <td className="whitespace-nowrap px-4 py-2">
-                  <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs dark:bg-white/10">
-                    {lead.source ? (sourceLabels[lead.source] ?? lead.source) : "—"}
-                  </span>
-                </td>
-                <td className="whitespace-nowrap px-4 py-2">
-                  {lead.campaign ? (
-                    <span title={lead.adId ? `Ad: ${lead.adId}` : undefined}>{lead.campaign}</span>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2">
-                  <StageSelect leadId={lead.id} stage={lead.stage} />
-                </td>
-                <td className="whitespace-nowrap px-4 py-2">
-                  <TagField leadId={lead.id} tag={lead.tag} />
-                </td>
-                <td className="px-4 py-2">
-                  <span
-                    className="block max-w-[200px] truncate"
-                    title={lead.interest ?? undefined}
-                  >
-                    {lead.interest ?? "—"}
-                  </span>
-                </td>
-                <td className="whitespace-nowrap px-4 py-2">{lead.status}</td>
-                <td className="whitespace-nowrap px-4 py-2">
-                  {lead.assignedRep ?? (
-                    <span className="text-black/40 dark:text-white/40">Unassigned</span>
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2">
-                  {lead.nextFollowUp ? (
-                    <span
-                      title={lead.nextFollowUpTitle ?? undefined}
-                      className={
-                        lead.nextFollowUpOverdue
-                          ? "rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-700 dark:text-red-400"
-                          : "text-black/60 dark:text-white/60"
-                      }
-                    >
-                      {lead.nextFollowUp}
-                    </span>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums">
-                  {lead.dealAmount == null ? (
-                    "—"
-                  ) : (
-                    <span
-                      title={
-                        lead.dealWon
-                          ? "Total of won quotes"
-                          : "Latest open quote — not converted yet"
-                      }
-                      className={lead.dealWon ? "font-medium" : "text-black/60 dark:text-white/60"}
-                    >
-                      ₹{lead.dealAmount.toLocaleString("en-IN")}
-                    </span>
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2">{lead.calls}</td>
-                <td className="whitespace-nowrap px-4 py-2 text-black/60 dark:text-white/60">
-                  {lead.lastCall ?? "—"}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2">
-                  {typeof lead.cqs === "number" ? (
-                    <span
-                      title="Conversation Quality Score (latest scored call)"
-                      className={`rounded-full px-2 py-0.5 text-xs ${
-                        lead.cqs >= 75
-                          ? "bg-green-600/15 text-green-700 dark:text-green-400"
-                          : lead.cqs >= 50
-                            ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                            : "bg-red-500/15 text-red-700 dark:text-red-400"
-                      }`}
-                    >
-                      {lead.cqs}
-                    </span>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td className="px-4 py-2">
-                  {canRemark ? (
-                    <RemarkField leadId={lead.id} remark={lead.remark} />
-                  ) : (
-                    <span
-                      className="block max-w-[18rem] truncate text-xs"
-                      title={lead.remark ?? undefined}
-                    >
-                      {lead.remark ?? "—"}
-                    </span>
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2 text-black/60 dark:text-white/60">
-                  {lead.created}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2 text-black/60 dark:text-white/60">
-                  {lead.updated}
-                </td>
+                    {c.cell(lead, cellContext)}
+                  </td>
+                ))}
                 <td className="whitespace-nowrap px-4 py-2 text-right">
                   {canDelete ? (
                     <LeadDeleteButton leadId={lead.id} name={lead.name} />
@@ -558,13 +605,6 @@ export function LeadsTable({
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
-              <tr>
-                <td className="px-3 py-6 text-center text-black/50" colSpan={columns.length + 1}>
-                  No leads match the current filters.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
