@@ -13,6 +13,35 @@
 
 ## Open
 
+### 🔴 Indian caller ID — patients don't answer the CRM's calls (blocks calling)
+From the 2026-09-03 test run: **two calls placed from the CRM went unanswered; the same
+patients answered a Neodove call minutes later.** Not a bug — `TWILIO_CALLER_ID` is a **US
+`+1` number**, so an Indian patient sees an unknown international caller, and Truecaller
+(which most of India runs) flags it as spam. The calls connect; nobody picks up.
+
+**No code fix exists.** The number has to change. In rough order of effort:
+
+1. **Verify an Indian number you already own as a Twilio outgoing caller ID** (Twilio
+   Console → Phone Numbers → Verified Caller IDs). Twilio calls the number, you enter a
+   code, and it can then be used as `callerId` — no new number, no porting, testable this
+   week. **Try this first**; it may be the whole fix. Note the clinic must genuinely own
+   the number, and outbound recording/consent rules still apply.
+2. **An Indian telephony provider** — Exotel, Knowlarity, Ozonetel, MyOperator, Acefone.
+   This is what Indian clinics (and Neodove) actually run on: TRAI/DLT-compliant Indian
+   virtual numbers, click-to-call APIs, call recording. The bigger change — `lib/providers/
+   twilio.ts` would need a sibling adapter — but it's the durable answer, and it also
+   settles the TRAI DND gap noted in `gaps-and-roadmap.md`.
+3. **A Twilio Indian (+91) number** — possible but the heaviest path: an India regulatory
+   bundle (business + address proof) and restrictions on how +91 numbers may be used for
+   outbound. Don't start here.
+
+Whichever number ends up dialling, **register it with Truecaller Business** and let it
+warm up — a brand-new number making dozens of calls a day gets flagged on reputation
+alone, Indian or not.
+
+`scripts/preflight.ts` now warns when the caller ID isn't `+91`, so this can't quietly
+come back. _Added 2026-09-03._
+
 ### 🔴 Merge the duplicate lead records (data, not code)
 Testing surfaced **seven lead records on one phone number** (`+919536108238` — `fahar` ×4,
 `Dr.Asif`, `asif`). Inbound WhatsApp replies route to the *oldest* record, which is why replies

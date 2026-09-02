@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { saveLeadQueue } from "@/lib/leadQueue";
 import { useMemo, useState } from "react";
 import { StageSelect } from "@/components/StageSelect";
 import { TagField } from "@/components/TagField";
@@ -120,6 +121,17 @@ export function LeadsTable({
   const columns: Col[] = useMemo(
     () => [
       { key: "name", label: "Name", value: (l) => l.name, filter: "none" },
+      // Created sits second, right after the name, because the first question the desk
+      // asks a lead list every morning is "which of these came in today?" — it used to
+      // be sixteen columns to the right, past the edge of the screen.
+      {
+        key: "created",
+        label: "Created",
+        value: (l) => l.created,
+        dateValue: (l) => l.createdDate,
+        dateShortcuts: ["today", "yesterday"],
+        filter: "date",
+      },
       { key: "phone", label: "Phone", value: (l) => l.phone, filter: "text" },
       {
         key: "source",
@@ -172,16 +184,9 @@ export function LeadsTable({
         number: true,
       },
       { key: "remark", label: "Remark", value: (l) => l.remark ?? "", filter: "text" },
-      // History rather than a commitment, so these offer Today/Yesterday and no
-      // Overdue — there's nothing to fall behind on.
-      {
-        key: "created",
-        label: "Created",
-        value: (l) => l.created,
-        dateValue: (l) => l.createdDate,
-        dateShortcuts: ["today", "yesterday"],
-        filter: "date",
-      },
+      // History rather than a commitment, so this offers Today/Yesterday and no
+      // Overdue — there's nothing to fall behind on. (Created carries the same filter
+      // and now sits second, next to the name.)
       {
         key: "updated",
         label: "Updated",
@@ -291,15 +296,54 @@ export function LeadsTable({
 
   const openCol = openFilter ? columns.find((c) => c.key === openFilter.key) : null;
 
+  /// What the current filter is, in words — carried into the lead page so the queue
+  /// nav can say which list it's stepping through ("Follow-up: today · Owner: Rohit").
+  const filterLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (search.trim()) parts.push(`"${search.trim()}"`);
+    for (const c of columns) {
+      const sel = enumFilters[c.key];
+      if (sel?.size) parts.push(`${c.label}: ${Array.from(sel).slice(0, 2).join(", ")}${sel.size > 2 ? "…" : ""}`);
+      const t = textFilters[c.key]?.trim();
+      if (t) parts.push(`${c.label}: ${t}`);
+      const d = dateFilters[c.key];
+      if (d?.day) parts.push(`${c.label}: ${d.day}`);
+      if (d?.overdue) parts.push(`${c.label}: overdue`);
+    }
+    return parts.length ? parts.join(" · ") : "All leads";
+  }, [columns, search, enumFilters, textFilters, dateFilters]);
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name…"
-          className="w-64 rounded border border-black/15 bg-background px-3 py-1.5 text-sm outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50"
-        />
+        {/* The search box used to be a plain bordered box on a bordered panel and the
+            desk couldn't find it. Now it carries a magnifier, a filled ground and a
+            wider frame — it should read as the one thing on the row you type into. */}
+        <div className="relative">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base leading-none text-cara-muted"
+          >
+            🔍
+          </span>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search leads by name…"
+            aria-label="Search leads by name"
+            className="w-72 rounded-lg border-2 border-cara-rule bg-cara-surface-2 py-2 pl-9 pr-8 text-sm outline-none transition-colors placeholder:text-cara-faint focus:border-cara-beige-deep focus:bg-cara-page"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1 text-sm text-cara-muted hover:text-cara-ink"
+            >
+              ×
+            </button>
+          )}
+        </div>
         <span className="text-sm text-black/50 dark:text-white/50">
           {rows.length} of {leads.length}
         </span>
@@ -318,7 +362,9 @@ export function LeadsTable({
         )}
       </div>
 
-      <div className="overflow-x-auto rounded border border-black/10 dark:border-white/15">
+      {/* cara-scroll-x forces a visible scrollbar — see app/globals.css. With overlay
+          scrollbars and a mouse, seventeen columns read as "the table ends here". */}
+      <div className="cara-scroll-x rounded border border-black/10 dark:border-white/15">
         <table className="min-w-full text-sm">
           <thead className="bg-black/5 text-left dark:bg-white/10">
             <tr>
@@ -356,7 +402,13 @@ export function LeadsTable({
             {rows.map((lead) => (
               <tr key={lead.id} className="border-t border-black/5 dark:border-white/10">
                 <td className="sticky left-0 z-10 whitespace-nowrap border-r border-black/5 bg-background px-4 py-2 dark:border-white/10">
-                  <Link href={`/leads/${lead.id}`} className="font-medium hover:underline">
+                  <Link
+                    href={`/leads/${lead.id}`}
+                    className="font-medium hover:underline"
+                    // Hand the lead page the filtered list, so the telecaller can step
+                    // to the next one without coming back here (§leads table).
+                    onClick={() => saveLeadQueue({ ids: rows.map((r) => r.id), label: filterLabel })}
+                  >
                     {lead.name}
                   </Link>
                   {lead.duplicateOfId && (

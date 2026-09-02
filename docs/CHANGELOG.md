@@ -7,6 +7,54 @@ Format: newest first.
 
 ---
 
+## 2026-09-03 — Second test round: the telecaller's day
+
+Flow doc updated: **[flows/01-lead-intake.md](flows/01-lead-intake.md)** (the Follow Up
+field's 12-hour picker, and the new reminder section).
+Files: `lib/followUpReminders.ts`, `lib/leadQueue.ts`, `components/LeadQueueNav.tsx` (all
+new), `components/{FollowUpField,LeadsTable}.tsx`, `lib/followups.ts`,
+`lib/notifications.ts`, `workers/callQueueWorker.ts`, `scripts/preflight.ts`,
+`app/(dashboard)/leads/[id]/page.tsx`, `app/globals.css`.
+Schema: `LeadFollowUpStep.remindedAt` (migration `..._followup_reminders`).
+
+Six of the seven observations from the business's test run. The seventh isn't code — see
+below.
+
+- **Follow-up reminders now fire.** A date on a lead was a promise nothing kept: the CRM
+  stored it, showed it in a column, and never told anyone the moment arrived. A worker
+  sweep (every 5 min) raises the **in-app bell** for the accountable counsellor and posts
+  to Slack as well where it's configured — bell first, because it works with nothing set
+  up, and Slack isn't connected yet. One reminder per due date; **rescheduling arms a
+  fresh one**; nothing older than 24h reminds, so a worker outage can't produce a burst.
+- **12-hour clock with AM/PM.** The follow-up field was `<input type="datetime-local">`,
+  which renders in the browser's locale — the desk got a 24-hour clock and a spinner they
+  couldn't scroll. Now a date input plus hour / minute / AM-PM selects: 12-hour
+  everywhere, natively scrollable, keyboard-friendly. Minutes in fives; a date with no
+  time defaults to 10:00 AM rather than midnight.
+- **Next-lead arrow.** A telecaller filtered to today's work, opened a lead, then had to
+  go back and re-apply the filter to reach the next one — forty times over forty leads.
+  The table now hands the lead page its filtered list (per-tab sessionStorage), and the
+  lead shows *"Lead 7 of 41 · Follow-up: today"* with Prev / **Next lead →**. Nothing
+  appears when the lead wasn't opened from a list.
+- **Created is the second column**, next to the name. "Which of these came in today?" is
+  the first question asked of the list every morning, and the answer was sixteen columns
+  to the right, off-screen.
+- **The leads table scrolls sideways.** Nothing was broken: macOS hides overlay scrollbars
+  until something scrolls and a mouse wheel only scrolls vertically, so seventeen columns
+  read as "the table ends here". A permanent styled scrollbar (`.cara-scroll-x`) gives it
+  something to grab.
+- **The search box is findable** — magnifier, filled ground, wider frame and a clear
+  button, instead of a bordered box on a bordered panel.
+- **Calls go unanswered because the caller ID is American.** `TWILIO_CALLER_ID` is a `+1`
+  number, so Indian patients see an unknown international caller and Truecaller flags it
+  as spam — the same patients answered a Neodove call minutes later. **No code fixes
+  this**; the number has to change. Options, cheapest first, are in
+  [deferred-todo.md](deferred-todo.md) ("Indian caller ID") — start by verifying an Indian
+  number the clinic already owns as a Twilio caller ID. `scripts/preflight.ts` now warns
+  when the caller ID isn't `+91`, so it can't quietly come back.
+
+---
+
 ## 2026-09-01 — Five fixes from the business's testing round
 
 Flow docs updated: **[flows/06-whatsapp-messaging.md](flows/06-whatsapp-messaging.md)**

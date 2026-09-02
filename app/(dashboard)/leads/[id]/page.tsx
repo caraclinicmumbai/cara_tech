@@ -28,6 +28,7 @@ import { LeadOwnershipPanel } from "@/components/LeadOwnershipPanel";
 import { LeadEditForm } from "@/components/LeadEditForm";
 import { AuditTable } from "@/components/AuditTable";
 import { RecordViewLogger } from "@/components/RecordViewLogger";
+import { LeadQueueNav } from "@/components/LeadQueueNav";
 import { getLeadCampaign } from "@/lib/campaigns/enrollments";
 import { LeadCampaignCard } from "@/components/LeadCampaignCard";
 import { LeadComments } from "@/components/LeadComments";
@@ -251,10 +252,15 @@ export default async function LeadDetailPage({
   return (
     <div className="space-y-8">
       <RecordViewLogger entityType="lead" entityId={lead.id} />
-      <div>
+      <div className="flex flex-wrap items-center gap-3">
         <Link href="/leads" className="text-sm text-black/50 hover:underline dark:text-white/50">
           ← Leads
         </Link>
+        {/* §leads table — step to the next lead in the filtered list without going back
+            to re-apply the filter. Renders nothing unless this lead came from one. */}
+        <div className="min-w-0 flex-1">
+          <LeadQueueNav leadId={lead.id} />
+        </div>
       </div>
 
       <section className="space-y-4">
