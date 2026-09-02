@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { saveLeadQueue } from "@/lib/leadQueue";
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { StageSelect } from "@/components/StageSelect";
 import { TagField } from "@/components/TagField";
 import { LeadDeleteButton } from "@/components/LeadDeleteButton";
@@ -480,6 +480,50 @@ export function LeadsTable({
     return parts.length ? parts.join(" · ") : "All leads";
   }, [columns, search, enumFilters, textFilters, dateFilters]);
 
+  // ── Sideways scrolling (§leads table) ──────────────────────────────
+  // Eighteen columns don't fit on a laptop, and a mouse wheel only scrolls vertically —
+  // so the desk gets explicit ‹ › buttons as well as the scrollbar. They sit ABOVE the
+  // table rather than floating over it: a long list would otherwise put a
+  // vertically-centred arrow somewhere you have to scroll down to reach, and an overlay
+  // on the edge covers the very cells you're trying to read.
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const [scrollState, setScrollState] = useState({ left: false, right: false });
+
+  /// Recompute which directions are still available. Called from the scroll handler and
+  /// from the container's callback ref — never from an effect, which React 19 forbids
+  /// setting state in.
+  ///
+  /// The equality bail-out is load-bearing, not an optimisation: the ref callback runs
+  /// on every render, so setting a fresh state object each time would re-render, re-run
+  /// the ref, and loop until React gave up with "Maximum update depth exceeded".
+  const syncScroll = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    const left = el.scrollLeft > 1;
+    const right = el.scrollLeft < max - 1;
+    setScrollState((prev) => (prev.left === left && prev.right === right ? prev : { left, right }));
+  }, []);
+
+  /// Stable so the ref isn't detached and reattached on every render.
+  const attachScroller = useCallback(
+    (node: HTMLDivElement | null) => {
+      scrollerRef.current = node;
+      syncScroll(node);
+    },
+    [syncScroll],
+  );
+
+  /// One press moves about four-fifths of a screen, so a column or two stays visible as
+  /// an anchor rather than the whole view jumping to unfamiliar content.
+  function nudge(direction: -1 | 1) {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction * Math.max(240, el.clientWidth * 0.8), behavior: "smooth" });
+  }
+
+  const scrollBtn =
+    "rounded-lg border border-cara-rule bg-cara-surface-2 px-2.5 py-1.5 text-sm leading-none text-cara-ink transition-colors hover:bg-cara-page disabled:cursor-not-allowed disabled:opacity-35";
+
   /// Everything a cell renderer needs beyond its row. Clicking a lead's name captures
   /// the current filtered list so the lead page can step through it (§leads table).
   const cellContext: CellContext = useMemo(
@@ -538,11 +582,44 @@ export function LeadsTable({
             Clear all filters
           </button>
         )}
+
+        {/* Sideways scroll, right-aligned so it sits over the far edge of the table —
+            where the columns you're trying to reach actually are. */}
+        <div className="ml-auto flex items-center gap-1.5">
+          <span className="text-[11px] text-cara-faint">Scroll columns</span>
+          <button
+            type="button"
+            onClick={() => nudge(-1)}
+            disabled={!scrollState.left}
+            aria-label="Scroll table left"
+            title="Scroll left"
+            className={scrollBtn}
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            onClick={() => nudge(1)}
+            disabled={!scrollState.right}
+            aria-label="Scroll table right"
+            title="Scroll right"
+            className={scrollBtn}
+          >
+            ›
+          </button>
+        </div>
       </div>
 
       {/* cara-scroll-x forces a visible scrollbar — see app/globals.css. With overlay
-          scrollbars and a mouse, seventeen columns read as "the table ends here". */}
-      <div className="cara-scroll-x rounded border border-black/10 dark:border-white/15">
+          scrollbars and a mouse, eighteen columns read as "the table ends here". */}
+      <div
+        // A callback ref rather than useEffect: it fires on mount with the element in
+        // hand, which is exactly when the arrows need enabling, and it keeps
+        // state-setting out of an effect.
+        ref={attachScroller}
+        onScroll={(e) => syncScroll(e.currentTarget)}
+        className="cara-scroll-x rounded border border-black/10 dark:border-white/15"
+      >
         <table className="min-w-full text-sm">
           <thead className="bg-black/5 text-left dark:bg-white/10">
             <tr>
