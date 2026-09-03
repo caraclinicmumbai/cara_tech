@@ -13,34 +13,48 @@
 
 ## Open
 
-### 🔴 Indian caller ID — patients don't answer the CRM's calls (blocks calling)
+### 🟠 Indian caller ID — configured, needs a production switch and a live test
 From the 2026-09-03 test run: **two calls placed from the CRM went unanswered; the same
-patients answered a Neodove call minutes later.** Not a bug — `TWILIO_CALLER_ID` is a **US
-`+1` number**, so an Indian patient sees an unknown international caller, and Truecaller
-(which most of India runs) flags it as spam. The calls connect; nobody picks up.
+patients answered a Neodove call minutes later.** The cause was `TWILIO_CALLER_ID` being a
+**US `+1` number** — an Indian patient sees an unknown international caller, and Truecaller
+flags it as spam.
 
-**No code fix exists.** The number has to change. In rough order of effort:
+**Resolved locally, 2026-09-04.** No purchase was needed: the Twilio account already had
+**two verified Indian outgoing caller IDs**. `TWILIO_CALLER_ID` is now
+**`+917710070566`** (verified 23 Apr 2025; matches no lead and no rep, and shares the
+`77100` series with the WhatsApp number, so it reads as the clinic's line). `preflight.ts`
+confirms it.
 
-1. **Verify an Indian number you already own as a Twilio outgoing caller ID** (Twilio
-   Console → Phone Numbers → Verified Caller IDs). Twilio calls the number, you enter a
-   code, and it can then be used as `callerId` — no new number, no porting, testable this
-   week. **Try this first**; it may be the whole fix. Note the clinic must genuinely own
-   the number, and outbound recording/consent rules still apply.
-2. **An Indian telephony provider** — Exotel, Knowlarity, Ozonetel, MyOperator, Acefone.
-   This is what Indian clinics (and Neodove) actually run on: TRAI/DLT-compliant Indian
-   virtual numbers, click-to-call APIs, call recording. The bigger change — `lib/providers/
-   twilio.ts` would need a sibling adapter — but it's the durable answer, and it also
-   settles the TRAI DND gap noted in `gaps-and-roadmap.md`.
-3. **A Twilio Indian (+91) number** — possible but the heaviest path: an India regulatory
-   bundle (business + address proof) and restrictions on how +91 numbers may be used for
-   outbound. Don't start here.
+**Two things remain:**
 
-Whichever number ends up dialling, **register it with Truecaller Business** and let it
-warm up — a brand-new number making dozens of calls a day gets flagged on reputation
-alone, Indian or not.
+1. **Set `TWILIO_CALLER_ID=+917710070566` on Railway** (web *and* worker). Until then
+   production still dials as `+1 810 428 0484` — the local change fixes nothing for
+   patients.
+2. **Place one real test call and look at the handset**, because this may not survive
+   contact with Indian carriers. India's DoT has directed operators to **block incoming
+   international calls that display an Indian CLI**, precisely because that is the
+   signature of spoofed scam calls. A Twilio call originating outside India showing `+91`
+   fits that description. Three outcomes are possible and only a test distinguishes them:
+   - the `+91` number shows → problem solved, for free;
+   - the CLI is replaced or shows as unknown/international → no better than before;
+   - the call is blocked outright → worse than before, revert immediately.
 
-`scripts/preflight.ts` now warns when the caller ID isn't `+91`, so this can't quietly
-come back. _Added 2026-09-03._
+**If the test fails, the durable answer is an Indian provider** — Exotel, Knowlarity,
+Ozonetel, MyOperator or Acefone. They originate the call *inside* India, so the CLI is
+legitimate rather than borrowed; this is what Neodove itself runs on, and it also settles
+the TRAI DND gap in `gaps-and-roadmap.md`. Cost: a monthly plan plus per-minute. Work: a
+sibling adapter to `lib/providers/twilio.ts` — the call-placing surface is small
+(`dialLeadTwiML`, `placeCall`, the recording + dial-result webhooks), so it is contained,
+but it is a real integration and needs credentials to build against.
+
+**Whichever number ends up dialling, register it with Truecaller Business** and let it warm
+up. A new number making dozens of calls a day gets flagged on reputation alone.
+
+**Note the operational consequence:** patients now ring back **+91 77100 70566**, a
+physical clinic phone — not the CRM. Nothing about that call is logged, recorded or
+attributed. Inbound routing into the CRM (flow 11) is a separate, still-unconfigured
+feature (`TWILIO_INBOUND_NUMBER` is unset).
+_Added 2026-09-03; caller ID configured locally 2026-09-04._
 
 ### 🔴 Merge the duplicate lead records (data, not code)
 Testing surfaced **seven lead records on one phone number** (`+919536108238` — `fahar` ×4,

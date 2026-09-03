@@ -72,6 +72,8 @@ discloses recording to the patient, and inbound routing from the clinic number.
 | Opened | 23 April 2025 |
 | Balance | **USD 16.32** — prepaid, so there is no renewal date; it runs out instead |
 | Numbers owned | **1** — `+1 810 428 0484`, voice + SMS, held since 7 June 2026 |
+| **Verified caller IDs** | **2 Indian numbers** — `+91 77100 70566` (23 Apr 2025) and `+91 95361 08238` (7 Jun 2026) |
+| **Caller ID in use** | **`+91 77100 70566`** as of 4 Sep 2026 — *locally; still `+1` in production until Railway is updated* |
 | **Number rental** | **USD 1.15 / month** |
 | **Outbound to India (mobile)** | **USD 0.05 / minute** |
 | **Spend — Jun 2026** | USD 5.89 |
@@ -85,11 +87,12 @@ discloses recording to the patient, and inbound routing from the clinic number.
 > volume, not a fixed subscription, is what decides — so the balance needs watching in a
 > month when calling ramps up, not on a calendar.
 
-> 🔴 **This is the number patients don't answer.** It is a **US** number. Indian patients
-> see an unknown international caller and Truecaller flags it as spam — in the 3 Sep test
-> run two calls went unanswered and the same patients answered a Neodove call minutes
-> later. Options are written up in [deferred-todo.md](deferred-todo.md) ("Indian caller
-> ID"). Budget for either a verified Indian caller ID or an Indian provider (see Gaps).
+> 🟠 **The caller ID has moved to an Indian number — but it is unproven.** No purchase was
+> needed; two Indian numbers were already verified on the account. **Still to do:** set it
+> on Railway, then place one real test call and look at the handset. India's DoT directs
+> carriers to block incoming international calls displaying an Indian CLI (the signature
+> of spoofed scam calls), and a Twilio call from outside India showing `+91` fits that
+> description. See [deferred-todo.md](deferred-todo.md).
 
 > ⚠️ **A prepaid balance has no invoice to remind you.** At USD 16.32 this is small; when
 > it hits zero, calling stops dead. The account was suspended for non-payment once before
