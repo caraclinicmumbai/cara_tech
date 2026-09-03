@@ -3,12 +3,17 @@
 Every third-party service Cara depends on, what it does, what breaks without it, and
 where the money goes.
 
-**Status of this document.** Everything under *Verified* was read live from each
-provider's API on **2 September 2026** — account status, plan tier, balances, renewal
-dates, numbers owned. Everything under *To complete* is **deliberately blank**: prices,
-billing dates, payment methods and account owners live in billing portals that the CRM
-has no access to, and a plausible-looking invented figure in a cost document is worse
-than an empty field. Fill them in from the invoices.
+**Status of this document.** Everything under *Verified* was read live from each provider's
+API on **3 September 2026** — account status, plan tier, balances, renewal dates, numbers
+owned, and **every cost figure the providers will actually surrender**. Twilio gives up its
+real monthly spend and per-minute rates, so those are filled in below; ElevenLabs gives its
+next payment date and amount due.
+
+What is still blank is what is genuinely locked behind a login: **five providers expose no
+billing data to an API at all** (Railway, Slack, n8n, GitHub's owner plan, and Meta's
+conversation spend), and Anthropic's cost report needs an Admin key this system doesn't
+hold. Each of those now names the exact screen to read it from. Nothing here is estimated —
+an invented figure in a cost document is worse than an empty field.
 
 > **Re-run the verified half any time:** `./node_modules/.bin/dotenv -e .env.local -- npx tsx scripts/preflight.ts`
 
@@ -47,9 +52,10 @@ to `main` on GitHub — both web and worker rebuild.
 > the health monitor all live there, not in the web app. If the worker service is stopped
 > or crash-looping, the CRM looks fine and quietly stops doing anything on a timer.
 
-**To complete:** plan/tier · monthly cost · billing date · payment method · account owner ·
-whether Postgres/Redis are on the same plan or billed separately · **is there a custom
-domain, or is `*.up.railway.app` the production URL?**
+**Still to complete** — no Railway API token is configured, so nothing here is readable
+automatically: plan/tier · monthly cost · billing date · payment method · account owner ·
+whether Postgres and Redis are billed separately · whether there's a custom domain. All at
+**railway.app → Project → Settings → Usage**.
 
 ---
 
@@ -58,7 +64,7 @@ domain, or is `*.up.railway.app` the production URL?**
 Counsellor click-to-call (the "Call & record" button), call recording, the whisper that
 discloses recording to the patient, and inbound routing from the clinic number.
 
-**Verified 2 Sep 2026:**
+**Verified 3 Sep 2026** — spend read from Twilio's usage records, rates from its pricing API:
 
 | | |
 |---|---|
@@ -66,6 +72,18 @@ discloses recording to the patient, and inbound routing from the clinic number.
 | Opened | 23 April 2025 |
 | Balance | **USD 16.32** — prepaid, so there is no renewal date; it runs out instead |
 | Numbers owned | **1** — `+1 810 428 0484`, voice + SMS, held since 7 June 2026 |
+| **Number rental** | **USD 1.15 / month** |
+| **Outbound to India (mobile)** | **USD 0.05 / minute** |
+| **Spend — Jun 2026** | USD 5.89 |
+| **Spend — Jul 2026** | USD 13.94 |
+| **Spend — Aug 2026** | USD 1.76 |
+| **Spend — Sep 2026** (to 3rd) | USD 0.22 |
+| **All-time spend** | **USD 21.82** since 23 April 2025 |
+
+> ℹ️ **Run-rate vs balance.** July cost USD 13.94; August only USD 1.76. At July's rate the
+> USD 16.32 balance is roughly **five weeks**; at August's, closer to nine months. Call
+> volume, not a fixed subscription, is what decides — so the balance needs watching in a
+> month when calling ramps up, not on a calendar.
 
 > 🔴 **This is the number patients don't answer.** It is a **US** number. Indian patients
 > see an unknown international caller and Truecaller flags it as spam — in the 3 Sep test
@@ -77,8 +95,8 @@ discloses recording to the patient, and inbound routing from the clinic number.
 > it hits zero, calling stops dead. The account was suspended for non-payment once before
 > (Aug 2026), which surfaced as "Twilio API down" alerts. Worth an auto-recharge.
 
-**To complete:** monthly spend to date · per-minute rate to India · number rental
-cost/month · auto-recharge on or off, and at what threshold · billing contact.
+**Still to complete** (not exposed by the API): whether auto-recharge is on, and at what
+threshold — Twilio Console → **Billing → Auto-recharge** · billing contact / card owner.
 
 ---
 
@@ -96,14 +114,22 @@ human-handover call recordings.
 | Period resets | **30 September 2026** |
 | Overflow | **Disabled** — the quota is a hard stop, not an overage charge |
 | Voice slots | 30 |
+| **Next payment attempt** | **30 September 2026** — same day the quota resets |
+| **Next invoice — amount due** | **INR 0.00** |
+| **Open invoices** | **None** |
+
+> ℹ️ **An active paid plan showing INR 0.00 due** usually means credit, an annual payment
+> already made, or a discount on the account — the API reports the figure, not the reason.
+> Worth confirming against the invoice, because it changes what happens on 30 September.
 
 > ⚠️ **Overflow is off, which is a deliberate spending cap but also a cliff.** This account
 > hit **100% of quota on 30 August 2026** and AI calling stopped completely until reset.
 > The worker warns on Slack at 90% (`ELEVENLABS_LOW_CREDIT_PCT`). Decide which you want:
 > a hard stop, or overflow enabled with a budget.
 
-**To complete:** monthly cost (INR) · billing date · whether the annual plan is cheaper ·
-who holds the login.
+**Still to complete:** the plan's headline monthly price (the API gives the amount *due*,
+not the list price) · whether an annual plan is cheaper · who holds the login. All at
+**elevenlabs.io → Subscription**.
 
 ---
 
@@ -129,8 +155,15 @@ payment method on the Meta business account.
 > the number; a low rating cuts the daily messaging limit, and a further drop can suspend
 > the number. The follow-up campaigns are the main volume risk here.
 
-**To complete:** monthly conversation spend · billing date · payment method on the Meta
-business account · messaging tier (limit per 24h) · who administers the Business Manager.
+> ⚠️ **Conversation spend could not be read.** Meta's `conversation_analytics` endpoint
+> returns **zero data points** over 90 days, while the CRM's own records show 17 outbound
+> and 2 inbound messages in that window — so this is a permission or reporting gap, **not**
+> evidence that nothing was billed. Don't read it as "WhatsApp is free"; read it from
+> Meta Billing.
+
+**Still to complete:** monthly conversation spend — **business.facebook.com → Billing &
+Payments → WhatsApp** · billing date · payment method on the Meta business account ·
+messaging tier (limit per 24h) · who administers the Business Manager.
 
 ---
 
@@ -158,8 +191,13 @@ triggers and the Sales Head's alerts on exceptional and failed calls.
 Billed by usage (per token). **Spend is not exposed by the API** — read it from
 `console.anthropic.com`.
 
-**To complete:** prepaid credits or monthly invoice · current balance/spend · monthly
-budget cap, if any · billing date.
+> ⚠️ **Spend needs an Admin key.** Anthropic's cost and usage reports rejected the CRM's
+> key: *"The Admin API requires an Admin API key or an organization-scoped API key."* The
+> figure exists, but not to this credential.
+
+**Still to complete:** current spend and any budget cap — **console.anthropic.com →
+Usage / Cost** (or issue an Admin API key there if you want it read automatically) ·
+prepaid credits or monthly invoice · billing date.
 
 ---
 
@@ -181,7 +219,9 @@ messages deliver to the default channel.
 > channel. To get true DMs: Slack → click the person → **View full profile** → **More** →
 > **Copy member ID**, then paste it onto the rep.
 
-**To complete:** plan (Free / Pro / Business+) · paid seats · cost/month · billing date.
+**Still to complete** — the bot token lacks `team:read`, so none of this is readable from
+here: plan (Free / Pro / Business+) · paid seats · cost/month · billing date. All at
+**slack.com/admin/billing**.
 
 ---
 
@@ -190,26 +230,35 @@ messages deliver to the default channel.
 Hosted at **`caraclinic.app.n8n.cloud`**. Sits between the CRM and ElevenLabs: the CRM
 fires a "new lead" webhook, n8n formats it and asks ElevenLabs to place the call.
 
-**To complete:** plan · monthly cost · billing date · execution quota and current usage ·
-who owns the workspace.
+**Still to complete** — `N8N_API_KEY` isn't set in this environment, and n8n's public API
+exposes workflows and executions but **no billing endpoint at all**, so this can only come
+from the portal: plan · monthly cost · billing date · execution quota and usage · workspace
+owner. All at **caraclinic.app.n8n.cloud → Settings → Usage and plan**.
 
 ---
 
 ## 9. GitHub — source code
 
-Repository **`caraclinicmumbai/cara_tech`**, made **private on 3 Sep 2026**. A push to
-`main` triggers the Railway deploy.
+Repository **`caraclinicmumbai/cara_tech`**. A push to `main` triggers the Railway deploy.
+
+> 🔴 **The repository is still PUBLIC.** Verified against the GitHub API on 3 Sep 2026:
+> `"visibility": "public"`. An earlier version of this document said it had been made
+> private on 3 September — that was an assumption, not a check, and it was wrong.
+> Changing visibility is owner-only: sign in as `caraclinicmumbai` →
+> `github.com/caraclinicmumbai/cara_tech/settings` → **Danger Zone → Change visibility**.
 
 **Verified:** no credentials were ever committed across all 251 commits — only a
-placeholder `.env.example`. The three months it spent public exposed source code, not
-access.
+placeholder `.env.example`. So what is exposed is source code and documentation, not
+access to anything. That is a reason to fix it calmly rather than urgently, but it is
+still worth fixing.
 
 > ℹ️ Owned by the personal account `caraclinicmumbai`, not an organisation. The
 > `Faharimran` account has push access but **not admin**, which is why visibility had to be
 > changed by the owner.
 
-**To complete:** plan (Free / Team) · cost · who else has access · whether a paid plan is
-needed for branch protection on `main`.
+**Still to complete** — the signed-in account (`Faharimran`) is a collaborator, not the
+owner, so the owner's plan isn't visible to it: plan (Free / Team) · cost · who else has
+access. **github.com/settings/billing** as `caraclinicmumbai`.
 
 ---
 
@@ -278,7 +327,7 @@ To be explicit, since this is a cost document:
   to the system.
 - **Slack's plan** could not be read (missing API scope).
 - **Anthropic's spend** is not exposed by their API.
-- Everything else marked *Verified* was read live from the provider on **2 September 2026**
-  and can be re-checked with `scripts/preflight.ts`.
+- Everything marked *Verified* was read live from the provider on **3 September 2026** and
+  can be re-checked with `scripts/preflight.ts`.
 
-_Last verified: 2 September 2026._
+_Last verified: 3 September 2026._
