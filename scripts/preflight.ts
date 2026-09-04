@@ -123,9 +123,31 @@ async function twilio() {
     const type = acct.data?.type ?? "?"; // Trial | Full
     const icon = acct.data?.status !== "active" ? BAD : Number.isFinite(balance) && balance < 5 ? WARN : OK;
     line(icon, "Twilio", `${acct.data?.status} (${type}) · balance ${Number.isFinite(balance) ? money(balance, cur) : "?"} · caller ${process.env.TWILIO_CALLER_ID ?? "unset"}`);
+    callerIdRegion();
   } catch (err) {
     line(BAD, "Twilio", axios.isAxiosError(err) ? err.message : String(err));
   }
+}
+
+/// Warn when the outbound caller ID isn't an Indian number.
+///
+/// This isn't a misconfiguration Twilio will ever complain about — the calls connect
+/// fine. It's that patients don't ANSWER them: a +1 number calling an Indian mobile
+/// shows up as an unknown international caller and gets flagged as spam by Truecaller,
+/// which most of the country runs. Observed in a test run where the same patients
+/// answered an Indian dialler minutes later. Worth surfacing here because the symptom
+/// ("nobody picks up") looks like a lead-quality problem, not a phone-number problem.
+function callerIdRegion() {
+  const caller = process.env.TWILIO_CALLER_ID?.trim();
+  if (!caller) return line(WARN, "Caller ID", "TWILIO_CALLER_ID unset — click-to-call will fail");
+  if (caller.startsWith("+91")) return line(OK, "Caller ID", `${caller} — Indian number`);
+  line(
+    WARN,
+    "Caller ID",
+    `${caller} is not an Indian (+91) number. Patients in India rarely answer foreign ` +
+      `numbers and Truecaller flags them as spam — expect very low answer rates. ` +
+      `See docs/deferred-todo.md ("Indian caller ID").`,
+  );
 }
 
 async function whatsapp() {

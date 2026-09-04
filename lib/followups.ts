@@ -337,6 +337,10 @@ export async function setNextFollowUp(input: {
       where: { id: existing.id },
       data: {
         dueAt: input.dueAt,
+        // Moving the date arms a fresh reminder (§follow-up reminders). Without this,
+        // a step reminded once would never remind again however often it was
+        // rescheduled — the reschedule is exactly when a reminder matters most.
+        remindedAt: null,
         ...(input.title?.trim() ? { title: input.title.trim().slice(0, 120) } : {}),
       },
     });

@@ -23,6 +23,7 @@ import { runStageSlaScan } from "@/lib/stageSla";
 import { DIGEST_QUEUE, scheduleDailyDigest, sendDailyDigest } from "@/lib/digest";
 import { monitorSystemHealth } from "@/lib/healthMonitor";
 import { sweepIdle, IDLE_MINUTES } from "@/lib/presence";
+import { runFollowUpReminders } from "@/lib/followUpReminders";
 import { runCampaignTick } from "@/lib/campaigns/engine";
 import { runWinBackSweep } from "@/lib/campaigns/winback";
 import { runRetentionPurge, retentionMonths } from "@/lib/dataRetention";
@@ -148,6 +149,17 @@ const runPresenceSweep = () =>
 runPresenceSweep();
 setInterval(runPresenceSweep, PRESENCE_SWEEP_MS);
 logger.info(`Presence idle-sweep active (every ${PRESENCE_SWEEP_MS / 1000}s, threshold ${IDLE_MINUTES}m)`);
+
+// Follow-up reminders (§follow-up reminders) — a date on a lead is a promise to call
+// somebody back, and until now nothing told the counsellor the moment arrived. Raises
+// the in-app bell (works with nothing configured) and Slack on top when it's wired up.
+// Needs no enabling flag: a reminder for a date a human typed is never unwanted.
+const FOLLOWUP_REMINDER_MS = Number(process.env.FOLLOWUP_REMINDER_MINUTES ?? 5) * 60_000;
+const runFollowUpSweep = () =>
+  runFollowUpReminders().catch((err) => logger.error(`Follow-up reminder sweep error: ${String(err)}`));
+runFollowUpSweep();
+setInterval(runFollowUpSweep, FOLLOWUP_REMINDER_MS);
+logger.info(`Follow-up reminders active (every ${FOLLOWUP_REMINDER_MS / 60_000} min)`);
 
 // Follow-up campaign engine (§follow-up) — advance every enrollment whose next step is
 // due: run the guardrail gate, send the step, schedule the next (or complete + mark Lost).

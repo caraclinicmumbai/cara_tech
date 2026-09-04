@@ -17,7 +17,13 @@ import { logger } from "@/lib/logger";
 ///   handover_cover — someone else's lead needs covering while its owner is away
 ///   access_grant   — you were given temporary access to a lead you don't own
 ///   call_failed    — a click-to-call you started never reached the patient
-export type NotificationKind = "handover" | "handover_cover" | "access_grant" | "call_failed";
+///   followup_due   — a follow-up you own has come due (§follow-up reminders)
+export type NotificationKind =
+  | "handover"
+  | "handover_cover"
+  | "access_grant"
+  | "call_failed"
+  | "followup_due";
 
 export type NotifyInput = {
   /// Recipient login (User.id).

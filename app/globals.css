@@ -374,3 +374,31 @@ h1, h2, h3 {
 }
 .cara-table tbody tr:last-child td { border-bottom: 0; }
 .cara-table tbody tr:hover { background: var(--cara-surface-2); }
+
+/* ── Always-visible horizontal scrollbar (§leads table) ──────────────
+   macOS hides overlay scrollbars until something scrolls, and a mouse wheel only
+   scrolls vertically — so a wide table looks like it simply ends at the right edge of
+   the screen, with no hint that more columns exist. The desk reported the leads table
+   as "cannot scroll to the right"; nothing was broken, there was just nothing to grab.
+   This forces a permanent, styled scrollbar on the containers that scroll sideways. */
+.cara-scroll-x {
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Firefox */
+  scrollbar-width: auto;
+  scrollbar-color: var(--cara-rule-strong) transparent;
+}
+.cara-scroll-x::-webkit-scrollbar {
+  height: 12px;
+  -webkit-appearance: none; /* opt out of the overlay style, which auto-hides */
+}
+.cara-scroll-x::-webkit-scrollbar-track {
+  background: var(--cara-surface-2);
+  border-radius: 999px;
+}
+.cara-scroll-x::-webkit-scrollbar-thumb {
+  background: var(--cara-rule-strong);
+  border: 3px solid var(--cara-surface-2);
+  border-radius: 999px;
+}
+.cara-scroll-x::-webkit-scrollbar-thumb:hover { background: var(--cara-text-faint); }

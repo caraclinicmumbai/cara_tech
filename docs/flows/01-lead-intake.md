@@ -104,10 +104,44 @@ not a checklist to maintain. What's left visible is the **next due step**:
   - Times are **IST wall-clock**, parsed as IST on the server rather than trusting the
     browser's timezone — "3:30 pm" means half past three at the clinic.
     (`parseIstDateTimeLocal` / `istDateTimeLocal` in `lib/datetime.ts`.)
+  - A date input plus **hour / minute / AM-PM selects**, not `<input type="datetime-local">`.
+    The native control renders in whatever format the browser and OS locale decide — the
+    desk got a 24-hour clock and a spinner they couldn't scroll. Three selects give a
+    12-hour clock everywhere, and a `<select>` is a native scrollable list on every
+    platform. Minutes are offered in fives; picking a date with no time yet defaults to
+    **10:00 AM**, when the clinic is open, rather than midnight.
   - When other steps are queued behind this one, the field **says so and names the next
     date**. Push this step past them and one of those becomes the lead's next follow-up;
     without the warning that reads as a failed save.
   - Audited as `lead.followup.due` with the old and new timestamps.
+
+### The reminder (§follow-up reminders)
+
+A date on a lead is a promise to call somebody back, and until now nothing told the
+counsellor the moment arrived — they had to remember to go and look, which is what the
+date was meant to replace. `runFollowUpReminders()` (`lib/followUpReminders.ts`) sweeps
+every 5 minutes from the worker (`FOLLOWUP_REMINDER_MINUTES`) and, for each step that has
+come due:
+
+- raises the **in-app bell** for the accountable counsellor — the step's owner, falling
+  back to the lead's. The bell is FIRST because it needs nothing configured;
+- **also** posts to Slack when Slack is wired up (a DM where the rep has a `slackUserId`,
+  the shared channel otherwise). Slack is an addition, never a replacement: a Slack
+  outage must not mean a silent reminder. *Slack is not connected in production yet — the
+  bell works regardless.*
+
+Rules worth knowing:
+
+- **One reminder per due date** (`LeadFollowUpStep.remindedAt`). Moving the date clears
+  it, so a rescheduled follow-up reminds again at its new time — the reschedule is
+  exactly when a reminder matters most.
+- **Nothing older than 24h is reminded.** Past that it's archaeology, not a reminder, and
+  a worker outage shouldn't produce a burst of week-old bells. The overdue marker in the
+  leads table covers those.
+- **AI-owned steps and lost leads are skipped** (marked reminded so they aren't re-read
+  every sweep). A step with no owner at all is logged and skipped rather than retried
+  forever.
+- No enabling flag: a reminder for a date a human typed is never unwanted.
 - **Leads table** — the `Follow up` column, same source (earliest pending step),
   highlighted when overdue, and **filterable by date**: the column's ▾ opens a calendar
   (a native date picker, so it's keyboard- and mobile-friendly) plus *Today*, *Tomorrow*
