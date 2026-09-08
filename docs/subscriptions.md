@@ -21,6 +21,7 @@ an invented figure in a cost document is worse than an empty field.
 
 ## At a glance
 
+
 | # | Service | What it does | Without it | Billing model |
 |---|---------|--------------|-----------|----------------|
 | 1 | **Railway** | Hosts the CRM: web, worker, Postgres, Redis | Everything stops | Usage (per service/hour + storage) |
@@ -73,7 +74,7 @@ discloses recording to the patient, and inbound routing from the clinic number.
 | Balance | **USD 16.32** — prepaid, so there is no renewal date; it runs out instead |
 | Numbers owned | **1** — `+1 810 428 0484`, voice + SMS, held since 7 June 2026 |
 | **Verified caller IDs** | **2 Indian numbers** — `+91 77100 70566` (23 Apr 2025) and `+91 95361 08238` (7 Jun 2026) |
-| **Caller ID in use** | **`+91 77100 70566`** as of 4 Sep 2026 — *locally; still `+1` in production until Railway is updated* |
+| **Caller ID in use** | **`+1 810 428 0484`** in production, verified from the Twilio call log on 8 Sep 2026. `+91 77100 70566` is set locally only — Railway was never updated. |
 | **Number rental** | **USD 1.15 / month** |
 | **Outbound to India (mobile)** | **USD 0.05 / minute** |
 | **Spend — Jun 2026** | USD 5.89 |

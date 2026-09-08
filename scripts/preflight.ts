@@ -123,7 +123,7 @@ async function twilio() {
     const type = acct.data?.type ?? "?"; // Trial | Full
     const icon = acct.data?.status !== "active" ? BAD : Number.isFinite(balance) && balance < 5 ? WARN : OK;
     line(icon, "Twilio", `${acct.data?.status} (${type}) · balance ${Number.isFinite(balance) ? money(balance, cur) : "?"} · caller ${process.env.TWILIO_CALLER_ID ?? "unset"}`);
-    callerIdRegion();
+    await callerIdRegion();
   } catch (err) {
     line(BAD, "Twilio", axios.isAxiosError(err) ? err.message : String(err));
   }
@@ -137,9 +137,35 @@ async function twilio() {
 /// which most of the country runs. Observed in a test run where the same patients
 /// answered an Indian dialler minutes later. Worth surfacing here because the symptom
 /// ("nobody picks up") looks like a lead-quality problem, not a phone-number problem.
-function callerIdRegion() {
+async function callerIdRegion() {
   const caller = process.env.TWILIO_CALLER_ID?.trim();
   if (!caller) return line(WARN, "Caller ID", "TWILIO_CALLER_ID unset — click-to-call will fail");
+
+  // The patient-facing caller ID must not be a counsellor's own handset: a
+  // click-to-call rings the counsellor first, and Twilio refuses From == To. The
+  // symptom is that calling breaks for exactly one member of staff, which is
+  // miserable to attribute — so it's checked here instead.
+  const last10 = (n: string) => n.replace(/\D/g, "").slice(-10);
+  const reps = await prisma.salesRep.findMany({
+    where: { active: true },
+    select: { name: true, phone: true },
+  });
+  const clash = reps.find((r) => r.phone && last10(r.phone) === last10(caller));
+  if (clash) {
+    const repFrom = process.env.TWILIO_REP_CALLER_ID?.trim() || process.env.TWILIO_OWNED_NUMBER?.trim();
+    if (repFrom && last10(repFrom) !== last10(caller)) {
+      line(OK, "Rep leg", `rings counsellors from ${repFrom} — avoids From == To with ${clash.name}'s phone`);
+    } else {
+      line(
+        BAD,
+        "Caller ID clash",
+        `${caller} is ${clash.name}'s own phone. A click-to-call rings the counsellor first, so ` +
+          `Twilio will reject From == To and calling will fail FOR THAT COUNSELLOR ONLY. ` +
+          `Set TWILIO_REP_CALLER_ID (or TWILIO_OWNED_NUMBER) to a Twilio number you own.`,
+      );
+    }
+  }
+
   if (caller.startsWith("+91")) return line(OK, "Caller ID", `${caller} — Indian number`);
   line(
     WARN,

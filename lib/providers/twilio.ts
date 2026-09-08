@@ -25,6 +25,54 @@ export function publicBase(): string {
   return (process.env.TWILIO_PUBLIC_BASE ?? process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "");
 }
 
+// ── Two caller IDs, because a click-to-call is two calls ─────────────
+// Twilio rings the COUNSELLOR first, then bridges to the PATIENT. Those legs are
+// seen by different people and want different numbers, and using one env var for
+// both is what made this hard to fix:
+//
+//   • the patient must see an INDIAN number, or they don't answer — an unknown +1
+//     caller gets a Truecaller spam warning and is ignored;
+//   • the counsellor's leg should come from a number the CLINIC OWNS on Twilio,
+//     because the patient-facing number is often a staff mobile — and dialling a
+//     handset from its own number is `From == To`, which Twilio refuses.
+//
+// So: `TWILIO_CALLER_ID` is what the patient sees. `TWILIO_REP_CALLER_ID` rings the
+// counsellor and defaults to the same value, which is correct whenever the two are
+// genuinely different numbers.
+
+/// What the PATIENT sees. Should be a +91 number for an Indian clinic.
+export function patientCallerId(): string {
+  return process.env.TWILIO_CALLER_ID ?? "";
+}
+
+/// The number used to ring the COUNSELLOR. Falls back to the patient caller ID.
+///
+/// `avoid` is the counsellor's own number: when the two would collide, this drops
+/// back to a Twilio-owned number rather than letting Twilio reject the call. Without
+/// that, pointing the patient caller ID at a staff mobile silently breaks
+/// click-to-call for exactly that member of staff — the hardest kind of bug to
+/// attribute, because it works for everyone else.
+export function repCallerId(avoid?: string): string {
+  const configured = process.env.TWILIO_REP_CALLER_ID?.trim() || patientCallerId();
+  if (!avoid) return configured;
+  const same = (a: string, b: string) =>
+    a.replace(/\D/g, "").slice(-10) === b.replace(/\D/g, "").slice(-10);
+  if (!same(configured, avoid)) return configured;
+
+  const owned = process.env.TWILIO_OWNED_NUMBER?.trim();
+  if (owned && !same(owned, avoid)) {
+    logger.warn(
+      `Twilio: the caller ID (${configured}) is this counsellor's own number — ringing them from ${owned} instead`,
+    );
+    return owned;
+  }
+  logger.error(
+    `Twilio: caller ID ${configured} is the counsellor's own number and no TWILIO_OWNED_NUMBER is set — ` +
+      `Twilio will reject From == To. Set TWILIO_REP_CALLER_ID or TWILIO_OWNED_NUMBER to a Twilio number you own.`,
+  );
+  return configured;
+}
+
 export type ClickToCallResult = { ok: true; sid: string } | { ok: false; error: string };
 
 /// Start a recorded click-to-call: ring `repPhone`; on answer Twilio fetches our
@@ -34,7 +82,9 @@ export type ClickToCallResult = { ok: true; sid: string } | { ok: false; error: 
 export async function clickToCall(repPhone: string, leadId: string, repId?: string): Promise<ClickToCallResult> {
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
-  const from = process.env.TWILIO_CALLER_ID;
+  // This leg rings the counsellor, so it uses the rep caller ID — and never their own
+  // number, which Twilio would refuse as From == To.
+  const from = repCallerId(repPhone);
   if (!sid || !token || !from) return { ok: false, error: "Twilio not configured" };
   const base = publicBase();
   if (!base) return { ok: false, error: "No public base URL (set TWILIO_PUBLIC_BASE or NEXTAUTH_URL)" };
@@ -87,7 +137,9 @@ export function dialLeadTwiML(leadPhone: string, leadId: string, repId?: string)
   const cb =
     `${base}/api/webhooks/twilio/recording?leadId=${encodeURIComponent(leadId)}` +
     (repId ? `&repId=${encodeURIComponent(repId)}` : "");
-  const from = process.env.TWILIO_CALLER_ID ?? "";
+  // This leg reaches the PATIENT, so it carries the patient-facing caller ID — the
+  // Indian number they'll actually answer.
+  const from = patientCallerId();
   const whisper = `${base}/api/twilio/whisper`;
   // Where Twilio reports how the dial ended. Without it, a leg that never connects
   // (wrong number, busy, no answer) just drops the rep into silence and the CRM
