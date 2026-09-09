@@ -7,6 +7,58 @@ Format: newest first.
 
 ---
 
+## 2026-09-09 — Daily, weekly and monthly database backups
+
+Flow doc added: **[flows/13-backups.md](flows/13-backups.md)**. Also updated:
+[gaps-and-roadmap.md](gaps-and-roadmap.md) (O1), [deferred-todo.md](deferred-todo.md)
+(the bucket still has to be created).
+Files: `lib/backup/{index,dump,storage,crypto,gzip}.ts` (new),
+`scripts/{runBackup,restoreBackup}.ts` (new), `workers/callQueueWorker.ts`,
+`scripts/preflight.ts`, `.env.example`, `package.json`. New dependency:
+`@aws-sdk/client-s3` + `lib-storage`. No schema change.
+
+Until now the clinic's entire history — every lead, quote, call, WhatsApp thread and
+audit entry — existed in exactly one place, and a bad migration or a lapsed Railway
+account would have ended it. Now: one dump a day at 02:00 IST, copied into a weekly tier
+on Sundays and a monthly tier on the 1st, each pruned to its own retention (7 / 5 / 12 —
+a year of month-ends). Grandfather-father-son, because **not every disaster announces
+itself**: a corrupted column or a bad backfill can surface weeks later, by which time
+seven dailies have rotated past it.
+
+- **Off Railway, on purpose.** An S3-compatible bucket (Cloudflare R2; the same four
+  variables work for B2, S3 or MinIO). A backup living inside the platform it protects is
+  not a backup — one suspended account takes the database and its copies together.
+- **Encrypted before it leaves.** The dump is every patient's name, phone, treatment and
+  transcript going to a third party's storage, so with `BACKUP_ENCRYPTION_KEY` set it is
+  AES-256-GCM sealed first and a leaked bucket token yields ciphertext. Optional, and
+  loudly flagged when off, because a lost key makes every backup unreadable.
+- **Two dump modes, for a deployment reason.** Railway's Railpack image has no
+  `pg_dump`, so it is there only if someone sets `RAILPACK_DEPLOY_APT_PACKAGES` —
+  one console field away from being forgotten, and "no backups at all, quietly" is the
+  failure this cannot have. `pg_dump` when present; otherwise a portable gzipped-NDJSON
+  dump written here, typed by Postgres's own `row_to_json` and read inside a single
+  repeatable-read transaction so it is a consistent copy rather than a smear. Slack says
+  which mode ran, every time it is the fallback.
+- **Every run reads its own object back** and fails unless it exists, exceeds 1 KB and
+  holds exactly the bytes that were sent. Failures always alert; successes are silent
+  unless `BACKUP_REPORT_SUCCESS` — a daily "all fine" is a message people stop reading.
+- **The restore half exists too**, which is the half that usually doesn't:
+  `backup:list` / `backup:verify` / `backup:restore`, a runbook in the flow doc, and a
+  target URL that is a required argument rather than a defaulted one. Restore runs in one
+  transaction, so a failure halfway rolls back instead of leaving a half-populated
+  database.
+- Preflight now reports backup **freshness** — a configured bucket with nothing recent in
+  it reads as a failure, since "set up" and "working" are different claims.
+
+Verified end to end against a local Postgres and a mock S3: both dump modes, the
+encryption round trip (including that a wrong key is rejected rather than silently
+decrypted), upload/copy/list/prune, tier selection across a Sunday and a 1st, and **two
+full restores into scratch databases** — pg_dump and portable — compared table by table,
+1097 rows, 31 tables. **⚠️ Dormant in production until the bucket exists** — see
+[deferred-todo.md](deferred-todo.md).
+
+---
+
 ## 2026-09-09 — An Indian caller ID, and the follow-up field on one line
 
 Flow docs updated: **[flows/04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**

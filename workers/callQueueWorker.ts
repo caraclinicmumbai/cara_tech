@@ -21,6 +21,8 @@ import {
 } from "@/lib/handoverSla";
 import { runStageSlaScan } from "@/lib/stageSla";
 import { DIGEST_QUEUE, scheduleDailyDigest, sendDailyDigest } from "@/lib/digest";
+import { BACKUP_QUEUE, scheduleBackup, runBackup } from "@/lib/backup";
+import { isBackupConfigured } from "@/lib/backup/storage";
 import { monitorSystemHealth } from "@/lib/healthMonitor";
 import { sweepIdle, IDLE_MINUTES } from "@/lib/presence";
 import { runFollowUpReminders } from "@/lib/followUpReminders";
@@ -236,3 +238,22 @@ const digestWorker = new Worker(
 );
 digestWorker.on("failed", (job, err) => logger.error(`Digest job ${job?.id} failed: ${err.message}`));
 scheduleDailyDigest().catch((err) => logger.error(`Failed to schedule daily digest: ${String(err)}`));
+
+// Database backup (§backups) — one dump a day at BACKUP_HOUR_IST, copied into the
+// weekly and monthly tiers on Sunday and the 1st. Registered and processed here.
+// Concurrency 1: two dumps at once would double the load on the database for no
+// second copy. Idle unless BACKUP_S3_* is configured.
+const backupWorker = new Worker(BACKUP_QUEUE, async () => runBackup(), {
+  connection: bullConnection,
+  concurrency: 1,
+  // A dump can outlive the default lock; renew it while the job is genuinely running
+  // so BullMQ doesn't declare it stalled and start a second one.
+  lockDuration: 30 * 60_000,
+});
+backupWorker.on("failed", (job, err) => logger.error(`Backup job ${job?.id} failed: ${err.message}`));
+scheduleBackup(bullConnection).catch((err) =>
+  logger.error(`Failed to schedule database backup: ${String(err)}`),
+);
+if (!isBackupConfigured()) {
+  logger.warn("Database backups are OFF — BACKUP_S3_* is unset, nothing is being copied off Railway");
+}
