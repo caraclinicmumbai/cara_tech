@@ -152,10 +152,13 @@ items are addressed (and keep [CHANGELOG.md](CHANGELOG.md) in step).
   off-by-one-prone logic that needs coverage. (`package.json`) → Add Vitest; unit-test
   `callWindow`, the attempt ladder, opt-out suppression, dedup. *(`playwright` is installed
   but unused — wire up e2e too.)*
-- ⬜ 🟠 **O1 — No error tracking / external uptime / documented backups.** No Sentry; the
-  health monitor runs inside the worker so can't catch total-platform downtime; no DB-backup
-  runbook. → Add Sentry; **external uptime check** on `/login` *(already a tracked follow-up)*;
-  document Railway/Postgres backups + an incident runbook.
+- 🟡 **O1 — No error tracking / external uptime / ~~documented backups~~.** No Sentry; the
+  health monitor runs inside the worker so can't catch total-platform downtime.
+  → Add Sentry; **external uptime check** on `/login` *(already a tracked follow-up)*.
+  ✅ **Backups DONE** — daily/weekly/monthly dumps to an S3-compatible bucket off Railway,
+  GFS retention, encrypted, with verify + restore commands and a runbook
+  ([flows/13-backups.md](flows/13-backups.md)). **Dormant until the bucket variables are
+  set on the Railway worker** — see [deferred-todo.md](deferred-todo.md).
 - ⬜ 🟠 **O2 — No audit trail.** Stage/status changes, message sends, and **recording access**
   are logged to ephemeral Winston only — no per-lead, queryable record of who did/saw what.
   For health data, "who listened to this recording" is a baseline requirement.

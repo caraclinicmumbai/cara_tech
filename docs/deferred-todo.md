@@ -62,6 +62,59 @@ Those calls are invisible to the CRM: not logged, recorded or attributed. Routin
 into the CRM is a separate, unconfigured feature (`TWILIO_INBOUND_NUMBER` is unset).
 _Added 2026-09-03; caller ID split into two legs 2026-09-08._
 
+### 🔴 Backups — the code is done, THE BUCKET IS NOT CREATED
+Daily/weekly/monthly database backups are built, tested and merged
+([flows/13-backups.md](flows/13-backups.md)) — and **taking no backups at all**, because
+`BACKUP_S3_*` is unset. The presence of a bucket is the on-switch. Until this is done the
+CRM's entire history exists in exactly one place.
+
+**1. Create the bucket** — Cloudflare dashboard → R2 → *Create bucket*, name `cara-backups`,
+location Asia-Pacific. Then **R2 → Manage API tokens → Create token**, permission *Object
+Read & Write*, **scoped to that one bucket** (not the whole account — this token is going
+to live on a server). Copy the Access Key ID, the Secret, and the account ID from the S3
+endpoint it shows you.
+
+**2. Generate the encryption key** and put it somewhere that survives losing Railway:
+```
+openssl rand -hex 32
+```
+**Not only in Railway** — the disaster these backups exist for is the one where the
+Railway account is gone, and a key stored only there goes with it. Password manager, and
+one printed copy in the clinic safe.
+
+**3. Set on the Railway WORKER service** (the web service takes no backups):
+```
+BACKUP_S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+BACKUP_S3_BUCKET=cara-backups
+BACKUP_S3_ACCESS_KEY_ID=…
+BACKUP_S3_SECRET_ACCESS_KEY=…
+BACKUP_ENCRYPTION_KEY=…              # from step 2
+RAILPACK_DEPLOY_APT_PACKAGES=postgresql-client-17
+```
+That last one is what puts `pg_dump` in the image. Without it backups still run, on the
+portable fallback, and say so in Slack every single day until it's fixed.
+
+**4. Prove it, the same day.** Backups are believed until they're needed, so:
+```
+npm run backup:now                   # with the same vars in .env.local, against prod
+npm run backup:list
+npm run backup:verify -- <key>
+```
+Then restore one into a scratch database and count the leads. A backup nobody has
+restored is a hypothesis. _(The dump, encryption, retention and restore paths are all
+tested against a local Postgres and a mock bucket — what is untested is **this** bucket,
+**these** credentials and **that** network path.)_
+
+**5. Turn on Railway's own Postgres backups too** — different failure modes, one click,
+and they restore faster than a dump does.
+
+**Also unbacked-up: the environment variables themselves.** Every secret the CRM runs on
+lives in the Railway console and nowhere else. Restoring the database into a new project
+would still mean reconstructing ~40 variables by hand, some of which (the ElevenLabs
+webhook secret, the WhatsApp permanent token) cannot be re-read from the provider and
+would have to be regenerated. Export them somewhere safe.
+_Added 2026-09-09._
+
 ### 🔴 Merge the duplicate lead records (data, not code)
 Testing surfaced **seven lead records on one phone number** (`+919536108238` — `fahar` ×4,
 `Dr.Asif`, `asif`). Inbound WhatsApp replies route to the *oldest* record, which is why replies

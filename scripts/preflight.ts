@@ -7,6 +7,9 @@ import "dotenv/config";
 import axios from "axios";
 import { PrismaClient } from "@prisma/client";
 import IORedis from "ioredis";
+import { isBackupConfigured, storageConfig, listObjects } from "@/lib/backup/storage";
+import { isEncryptionEnabled } from "@/lib/backup/crypto";
+import { chooseMode } from "@/lib/backup/dump";
 
 const prisma = new PrismaClient();
 const line = (icon: string, name: string, detail: string) => console.log(`${icon}  ${name.padEnd(22)} ${detail}`);
@@ -259,6 +262,49 @@ async function slack() {
   }
 }
 
+/// Backups (§backups). Deliberately noisy: this is the check whose failure nobody
+/// notices until the day it matters, so "off" reads as ❌ rather than a skip.
+async function backups() {
+  if (!isBackupConfigured()) {
+    line(BAD, "Backups", "OFF — BACKUP_S3_* unset, nothing is copied off Railway");
+    return;
+  }
+  const cfg = storageConfig()!;
+  const { mode, reason } = await chooseMode();
+  line(
+    mode === "pg_dump" ? OK : WARN,
+    "Backup dump mode",
+    mode === "pg_dump" ? reason : `portable fallback — ${reason}`,
+  );
+  line(
+    isEncryptionEnabled() ? OK : WARN,
+    "Backup encryption",
+    isEncryptionEnabled() ? "on (AES-256-GCM)" : "OFF — patient data would sit in the bucket in the clear",
+  );
+
+  // Freshness beats configuration: a bucket that is set up and has nothing recent in
+  // it is the failure this whole check exists to catch.
+  try {
+    const daily = await listObjects(cfg, `${cfg.prefix}/daily/`);
+    if (daily.length === 0) {
+      line(BAD, "Backup freshness", "the bucket is configured but EMPTY — no backup has ever run");
+      return;
+    }
+    const newest = daily.reduce((a, b) => (a.modified > b.modified ? a : b));
+    const hours = (Date.now() - newest.modified.getTime()) / 3_600_000;
+    const weekly = await listObjects(cfg, `${cfg.prefix}/weekly/`);
+    const monthly = await listObjects(cfg, `${cfg.prefix}/monthly/`);
+    line(
+      hours < 26 ? OK : BAD,
+      "Backup freshness",
+      `newest ${newest.key.split("/").pop()} — ${hours < 1 ? "under an hour" : `${Math.round(hours)}h`} old` +
+        ` · ${daily.length} daily / ${weekly.length} weekly / ${monthly.length} monthly`,
+    );
+  } catch (err) {
+    line(BAD, "Backup bucket", `unreachable — ${String(err).slice(0, 90)}`);
+  }
+}
+
 async function readiness() {
   // The data-side things that make a demo look broken even when every API is up.
   const [ownerless, unlinkedReps, undialable] = await Promise.all([
@@ -289,6 +335,8 @@ async function main() {
   await whatsapp();
   await anthropic();
   await slack();
+  console.log("");
+  await backups();
   console.log("");
   await readiness();
   console.log("─".repeat(78));
