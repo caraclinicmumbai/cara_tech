@@ -67,6 +67,15 @@ thresholds.
      E.164, so a bare 10-digit mobile is read as `+91`. A number that can't be dialled
      (or an Indian mobile mis-prefixed `+1`, which is E.164-shaped but unroutable)
      **refuses the call with the reason on screen** instead of starting one that dies.
+   - **The two legs use different caller IDs** (`lib/providers/twilio.ts`). The patient
+     must see an **Indian** number or they don't pick up — an unknown `+1` arrives with a
+     Truecaller spam warning — so `TWILIO_CALLER_ID` is strictly patient-facing. But that
+     number is often a **staff mobile**, and ringing a handset from its own number is
+     `From == To`, which Twilio refuses: one shared caller ID would break click-to-call
+     for exactly one counsellor. `TWILIO_REP_CALLER_ID` rings the counsellor from a number
+     the clinic owns, `repCallerId(avoid)` refuses the collision (falling back to
+     `TWILIO_OWNED_NUMBER`), and `scripts/preflight.ts` fails if the patient caller ID is
+     any active rep's phone.
    - **A call that never connects is recorded too.** The `<Dial action>` callback
      (`/api/twilio/dial-result`) fires whatever the outcome — busy, no answer, carrier
      rejection — files a `Call` with the outcome, rings the rep's bell, reverts their
