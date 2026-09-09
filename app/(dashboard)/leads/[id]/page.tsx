@@ -55,9 +55,25 @@ function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Field({ label, value }: { label: string; value: React.ReactNode }) {
+function Field({
+  label,
+  value,
+  className,
+  inline,
+}: {
+  label: string;
+  value: React.ReactNode;
+  /// Extra classes on the cell — used to let a field span the whole grid row.
+  className?: string;
+  /// Label beside the value instead of above it, so the field is one line tall.
+  inline?: boolean;
+}) {
   return (
-    <div className="space-y-0.5">
+    <div
+      className={`${inline ? "flex flex-wrap items-center gap-x-3 gap-y-1" : "space-y-0.5"} ${
+        className ?? ""
+      }`}
+    >
       <dt className="text-xs uppercase tracking-wide text-black/40 dark:text-white/40">
         {label}
       </dt>
@@ -373,6 +389,47 @@ export default async function LeadDetailPage({
         {leadCampaign && <LeadCampaignCard campaign={leadCampaign} canStop={canManageCampaigns} />}
 
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {/* Its own full-width row, at the top: the date is the prompt the whole desk
+              works from, and it needs the width to stay one line tall. */}
+          <Field
+            label="Follow Up"
+            inline
+            className="col-span-2 sm:col-span-3"
+            value={
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                {/* Editable for anyone who works this lead (§follow-up). The roadmap
+                    panel is gone, but the DATE still has to be settable. */}
+                {canEditLead ? (
+                  <FollowUpField
+                    leadId={lead.id}
+                    dueAtLocal={nextFollowUp?.dueAt ? istDateTimeLocal(nextFollowUp.dueAt) : ""}
+                    title={nextFollowUp?.title ?? null}
+                    overdue={nextFollowUp?.visual === "missed"}
+                    laterCount={followUpAhead.laterCount}
+                    laterFirst={
+                      followUpAhead.laterFirstAt ? formatIstDate(followUpAhead.laterFirstAt) : null
+                    }
+                  />
+                ) : nextFollowUp?.dueAt ? (
+                  <span
+                    className={
+                      nextFollowUp.visual === "missed" ? "text-red-600 dark:text-red-400" : ""
+                    }
+                    title={nextFollowUp.title}
+                  >
+                    {formatIstDate(nextFollowUp.dueAt)} · {nextFollowUp.title}
+                    {nextFollowUp.visual === "missed" ? " (overdue)" : ""}
+                  </span>
+                ) : null}
+                {/* What the patient themselves asked for, when they named a time. */}
+                {lead.callbackAt ? (
+                  <span className="text-xs text-black/45 dark:text-white/45">
+                    Callback requested {formatIst(lead.callbackAt)}
+                  </span>
+                ) : null}
+              </span>
+            }
+          />
           <Field label="Phone" value={lead.phone} />
           <Field label="Email" value={lead.email} />
           <Field
@@ -387,44 +444,6 @@ export default async function LeadDetailPage({
           />
           <Field label="Campaign" value={lead.campaign} />
           <Field label="Ad ID" value={lead.adId} />
-          <Field
-            label="Follow Up"
-            value={
-              <span className="block space-y-1">
-                {/* Editable for anyone who works this lead (§follow-up). The roadmap
-                    panel is gone, but the DATE still has to be settable — it's the
-                    prompt the whole desk works from. */}
-                {canEditLead ? (
-                  <FollowUpField
-                    leadId={lead.id}
-                    dueAtLocal={nextFollowUp?.dueAt ? istDateTimeLocal(nextFollowUp.dueAt) : ""}
-                    title={nextFollowUp?.title ?? null}
-                    overdue={nextFollowUp?.visual === "missed"}
-                    laterCount={followUpAhead.laterCount}
-                    laterFirst={
-                      followUpAhead.laterFirstAt ? formatIstDate(followUpAhead.laterFirstAt) : null
-                    }
-                  />
-                ) : nextFollowUp?.dueAt ? (
-                  <span
-                    className={`block ${
-                      nextFollowUp.visual === "missed" ? "text-red-600 dark:text-red-400" : ""
-                    }`}
-                    title={nextFollowUp.title}
-                  >
-                    {formatIstDate(nextFollowUp.dueAt)} · {nextFollowUp.title}
-                    {nextFollowUp.visual === "missed" ? " (overdue)" : ""}
-                  </span>
-                ) : null}
-                {/* What the patient themselves asked for, when they named a time. */}
-                {lead.callbackAt ? (
-                  <span className="block text-xs text-black/45 dark:text-white/45">
-                    Callback requested {formatIst(lead.callbackAt)}
-                  </span>
-                ) : null}
-              </span>
-            }
-          />
           <Field label="Created" value={formatIst(lead.createdAt)} />
           <Field label="Updated" value={formatIst(lead.updatedAt)} />
         </dl>

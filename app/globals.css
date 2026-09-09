@@ -283,6 +283,17 @@ h1, h2, h3 {
   margin-bottom: 8px;
 }
 
+/* Compact control — for controls that sit inline on one row with others.
+   `.cara-input`/`.cara-select` are full-width by design, which stacks every
+   control onto its own line inside a flex row; this sizes them to content.
+   Declared after them so it wins on source order (both are unlayered, so a
+   Tailwind `w-*`/`py-*` utility would lose to them). */
+.cara-control-compact {
+  width: auto;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
 /* Multi-select chip */
 .cara-chip {
   display: inline-flex;

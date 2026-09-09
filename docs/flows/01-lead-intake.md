@@ -113,6 +113,12 @@ not a checklist to maintain. What's left visible is the **next due step**:
   - When other steps are queued behind this one, the field **says so and names the next
     date**. Push this step past them and one of those becomes the lead's next follow-up;
     without the warning that reads as a failed save.
+  - **One line, its own row** at the top of the details grid. The controls are full-width
+    by default (`.cara-input`), so in a third-of-a-width grid cell each one landed on its
+    own line and three paragraphs of explanation sat under them — the most-used field on
+    the page was also the tallest. The controls now size to their content
+    (`.cara-control-compact`) and the prose is a word or two on the same row
+    — *step title*, `Overdue`, `+2 later` — with the full sentence on hover.
   - Audited as `lead.followup.due` with the old and new timestamps.
 
 ### The reminder (§follow-up reminders)
