@@ -109,18 +109,33 @@ export function FollowUpField({
     commit(next);
   }
 
-  const sel = "cara-select py-1 text-[13px]";
+  const sel = "cara-select cara-control-compact";
+
+  /// The step being moved, and what else is queued — said in a few words on the row,
+  /// with the full sentence on hover. This used to be three paragraphs under the
+  /// controls, which cost more vertical space than the control itself.
+  const scheduleHint = title
+    ? `Moves “${title}” — the date the leads table shows.`
+    : "Nothing scheduled. Setting a date adds a follow-up owned by this lead's counsellor.";
+
+  const laterHint =
+    laterCount > 0
+      ? `${laterCount} more follow-up${laterCount === 1 ? "" : "s"} scheduled after this` +
+        (laterFirst ? ` — next on ${laterFirst}.` : ".") +
+        ` Push this one past ${laterFirst ?? "them"} and that one becomes the lead's next follow-up.`
+      : "";
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex flex-wrap items-center gap-1.5">
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="flex items-center gap-1.5">
         <input
           type="date"
           aria-label="Next follow-up date"
+          title={scheduleHint}
           value={parts.date}
           disabled={pending}
           onChange={(e) => update({ date: e.target.value })}
-          className="cara-input py-1 text-[13px]"
+          className="cara-input cara-control-compact"
         />
 
         {/* Only ask for a time once there's a day to put it on. */}
@@ -163,51 +178,50 @@ export function FollowUpField({
               <option value="AM">AM</option>
               <option value="PM">PM</option>
             </select>
+            <span className="text-[11px] text-cara-faint" title="Times are IST.">
+              IST
+            </span>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => update({ date: "" })}
+              className="cara-btn cara-control-compact"
+            >
+              Clear
+            </button>
           </>
         )}
+      </span>
 
-        {parts.date && (
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => update({ date: "" })}
-            className="cara-btn py-1 text-[12px]"
-          >
-            Clear
-          </button>
+      {/* Everything that used to be prose under the controls, said in a word or two on
+          the same row. The long version is on hover, so nothing is lost — including the
+          warning about pushing this date past a queued step, which otherwise makes the
+          field reload showing that step and reads as a failed save. */}
+      <span className="flex items-center gap-2 text-[11px] text-cara-faint">
+        {pending && <span>Saving…</span>}
+
+        {!pending && msg && (
+          <span className={msg.kind === "ok" ? "text-success" : "text-danger"}>{msg.text}</span>
         )}
-        {pending && <span className="text-[12px] text-cara-faint">Saving…</span>}
-      </div>
 
-      <p className="text-[11px] text-cara-faint">
-        {title ? (
-          <>
-            Moves <span className="text-cara-muted">{title}</span> — the date shown in the
-            leads table.
-          </>
-        ) : (
-          "Nothing scheduled. Setting a date adds a follow-up owned by this lead's counsellor."
+        {!pending && !msg && overdue && (
+          <span className="text-danger" title="This follow-up date has already passed.">
+            Overdue
+          </span>
         )}
-        {overdue && !pending && <span className="ml-1 text-danger">Currently overdue.</span>}
-        <span className="ml-1">Times are IST.</span>
-      </p>
 
-      {/* Say what's queued behind this one. Otherwise pushing this date past the next
-          step makes the field reload showing that step instead, which reads as a
-          failed save rather than as "something else is now sooner". */}
-      {laterCount > 0 && (
-        <p className="text-[11px] text-cara-faint">
-          {laterCount} more follow-up{laterCount === 1 ? "" : "s"} scheduled after this
-          {laterFirst ? <> — next on {laterFirst}</> : null}. Push this one past{" "}
-          {laterFirst ?? "them"} and that one becomes the lead&rsquo;s next follow-up.
-        </p>
-      )}
+        {!pending && !msg && !overdue && (
+          <span className="max-w-88 truncate" title={scheduleHint}>
+            {title ?? "Nothing scheduled"}
+          </span>
+        )}
 
-      {msg && (
-        <p className={`text-[12px] ${msg.kind === "ok" ? "text-success" : "text-danger"}`}>
-          {msg.text}
-        </p>
-      )}
-    </div>
+        {laterCount > 0 && (
+          <span title={laterHint}>
+            +{laterCount} later
+          </span>
+        )}
+      </span>
+    </span>
   );
 }

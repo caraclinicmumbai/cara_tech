@@ -13,48 +13,54 @@
 
 ## Open
 
-### 🟠 Indian caller ID — configured, needs a production switch and a live test
-From the 2026-09-03 test run: **two calls placed from the CRM went unanswered; the same
-patients answered a Neodove call minutes later.** The cause was `TWILIO_CALLER_ID` being a
-**US `+1` number** — an Indian patient sees an unknown international caller, and Truecaller
-flags it as spam.
+### 🔴 Indian caller ID — code is ready, PRODUCTION ENV IS NOT SET
+From the 2026-09-03 test run: calls from the CRM go unanswered; the same patients answer a
+Neodove call minutes later. Cause: an **unknown +1 caller** gets a Truecaller spam warning
+and is ignored.
 
-**Resolved locally, 2026-09-04.** No purchase was needed: the Twilio account already had
-**two verified Indian outgoing caller IDs**. `TWILIO_CALLER_ID` is now
-**`+917710070566`** (verified 23 Apr 2025; matches no lead and no rep, and shares the
-`77100` series with the WhatsApp number, so it reads as the clinic's line). `preflight.ts`
-confirms it.
+**Verified 2026-09-08 from Twilio's call log — production is still dialling as
+`+18104280484`.** Every call up to 08 Sep 06:51 used it. The local `.env.local` was changed
+on 4 Sep; **Railway has its own copy and was never updated**, so nothing changed for a
+patient. This is the whole of the remaining problem.
 
-**Two things remain:**
+**Do this:** on Railway, on **both the web and the worker** services, set
+```
+TWILIO_CALLER_ID=+917710070566        # what the patient sees
+TWILIO_REP_CALLER_ID=+18104280484     # rings the counsellor — a number we own
+TWILIO_OWNED_NUMBER=+18104280484      # fallback if the above would collide
+```
 
-1. **Set `TWILIO_CALLER_ID=+917710070566` on Railway** (web *and* worker). Until then
-   production still dials as `+1 810 428 0484` — the local change fixes nothing for
-   patients.
-2. **Place one real test call and look at the handset**, because this may not survive
-   contact with Indian carriers. India's DoT has directed operators to **block incoming
-   international calls that display an Indian CLI**, precisely because that is the
-   signature of spoofed scam calls. A Twilio call originating outside India showing `+91`
-   fits that description. Three outcomes are possible and only a test distinguishes them:
-   - the `+91` number shows → problem solved, for free;
-   - the CLI is replaced or shows as unknown/international → no better than before;
-   - the call is blocked outright → worse than before, revert immediately.
+**Why three variables now.** A click-to-call is two calls: Twilio rings the counsellor,
+then bridges to the patient. They were sharing one caller ID, which breaks as soon as the
+patient-facing number is a **staff mobile** — and `+917710070566` is exactly that. The
+Twilio log shows it as the leg Twilio dials to *reach the rep*:
+```
+06:51  +1810…  →  +917710070566   outbound-api    ← ringing the COUNSELLOR
+06:51  +1810…  →  +919767975047   outbound-dial   ← the patient
+```
+Dialling a handset from its own number is `From == To`, which Twilio refuses — so setting
+one shared caller ID would have broken calling **for that counsellor only**, which is a
+miserable bug to attribute. `repCallerId()` now keeps the legs apart and refuses to
+collide, and `preflight.ts` fails loudly if the patient caller ID is any active rep's
+phone.
 
-**If the test fails, the durable answer is an Indian provider** — Exotel, Knowlarity,
-Ozonetel, MyOperator or Acefone. They originate the call *inside* India, so the CLI is
-legitimate rather than borrowed; this is what Neodove itself runs on, and it also settles
-the TRAI DND gap in `gaps-and-roadmap.md`. Cost: a monthly plan plus per-minute. Work: a
-sibling adapter to `lib/providers/twilio.ts` — the call-placing surface is small
-(`dialLeadTwiML`, `placeCall`, the recording + dial-result webhooks), so it is contained,
-but it is a real integration and needs credentials to build against.
+*(An earlier note here claimed `+917710070566` matched no rep. That check ran against the
+LOCAL database; production has different reps. Wrong database, wrong conclusion.)*
 
-**Whichever number ends up dialling, register it with Truecaller Business** and let it warm
-up. A new number making dozens of calls a day gets flagged on reputation alone.
+**Then still test on a handset.** India's DoT directs carriers to block incoming
+international calls displaying an Indian CLI — the signature of spoofed scam calls — and a
+Twilio call from outside India showing `+91` fits it. Three outcomes, only a test tells
+them apart: the `+91` shows (solved); the CLI is replaced or reads unknown (no better); the
+call is blocked (worse — revert). **If it fails, the durable answer is an Indian provider**
+(Exotel, Knowlarity, Ozonetel) that originates the call inside India, which is what Neodove
+uses; that also settles the TRAI DND gap in `gaps-and-roadmap.md`.
 
-**Note the operational consequence:** patients now ring back **+91 77100 70566**, a
-physical clinic phone — not the CRM. Nothing about that call is logged, recorded or
-attributed. Inbound routing into the CRM (flow 11) is a separate, still-unconfigured
-feature (`TWILIO_INBOUND_NUMBER` is unset).
-_Added 2026-09-03; caller ID configured locally 2026-09-04._
+**Register whichever number dials with Truecaller Business** and let it warm up.
+
+**Operational consequence:** patients ring back `+91 77100 70566` — a counsellor's handset.
+Those calls are invisible to the CRM: not logged, recorded or attributed. Routing inbound
+into the CRM is a separate, unconfigured feature (`TWILIO_INBOUND_NUMBER` is unset).
+_Added 2026-09-03; caller ID split into two legs 2026-09-08._
 
 ### 🔴 Merge the duplicate lead records (data, not code)
 Testing surfaced **seven lead records on one phone number** (`+919536108238` — `fahar` ×4,

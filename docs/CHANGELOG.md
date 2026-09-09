@@ -7,6 +7,41 @@ Format: newest first.
 
 ---
 
+## 2026-09-09 — An Indian caller ID, and the follow-up field on one line
+
+Flow docs updated: **[flows/04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**
+(the two caller IDs a click-to-call needs), **[flows/01-lead-intake.md](flows/01-lead-intake.md)**
+(the Follow Up field is one line).
+Files: `lib/providers/twilio.ts`, `scripts/preflight.ts`, `.env.example`,
+`components/FollowUpField.tsx`, `app/(dashboard)/leads/[id]/page.tsx`, `app/globals.css`,
+`docs/deferred-todo.md`, `docs/subscriptions.md`. No schema change.
+
+- **The caller ID is Indian, and it's now two variables.** Patients weren't answering
+  because the CRM dialled as `+1` — an unknown international caller with a Truecaller
+  warning attached. The account already had a verified Indian caller ID sitting unused, so
+  the fix was a variable, not a purchase. But Twilio's call log then showed the number in
+  question is a **counsellor's handset**: a click-to-call is two calls, and setting one
+  shared caller ID would have had Twilio dial that handset from its own number — `From ==
+  To`, which it refuses — breaking calling for that one counsellor while working for
+  everyone else. `TWILIO_CALLER_ID` is now strictly patient-facing; `TWILIO_REP_CALLER_ID`
+  rings the counsellor and refuses to collide with their own phone; `preflight.ts` fails
+  loudly if the patient caller ID is any active rep's number.
+  **⚠️ Production still dials `+1` until the Railway variables are set** on both web and
+  worker — see [deferred-todo.md](deferred-todo.md). Untested against Indian carriers:
+  India's DoT tells operators to block incoming international calls displaying an Indian
+  CLI, which is what this now looks like. One real call settles it.
+- **The follow-up field is one line.** It was the tallest thing on the lead page and the
+  most used. `.cara-input`/`.cara-select` are `width: 100%` by design, so inside a
+  third-of-a-width grid cell every control claimed its own line — and three paragraphs of
+  explanation sat underneath. The controls now size to their content
+  (`.cara-control-compact`) and the field gets its own full-width row at the top of the
+  details grid, label beside the value. The prose moved to hover: the step title stays
+  visible, `Overdue` and `+2 later` replace their sentences, and the long version —
+  including the warning that pushing this date past a queued step makes that step become
+  next — is the `title` attribute. 32px tall, at 1440 and at 900.
+
+---
+
 ## 2026-09-03 — Second test round: the telecaller's day
 
 Flow doc updated: **[flows/01-lead-intake.md](flows/01-lead-intake.md)** (the Follow Up
