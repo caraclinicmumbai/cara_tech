@@ -866,11 +866,11 @@ h1, h2, h3 {
   align-items: center;
   gap: 5px;
   padding: 1px 9px 1px 2px;
-  border: 1.5px solid var(--tag-line, var(--cara-rule-strong));
+  border: 1px solid var(--tag-line, var(--cara-rule-strong));
   border-radius: var(--cara-pill);
   background: var(--tag-fill, var(--cara-surface-2));
   color: var(--tag-ink, var(--cara-text));
-  box-shadow: 0 1.5px 0 var(--tag-line, var(--cara-rule-strong));
+  box-shadow: 0 1px 0 var(--tag-line, var(--cara-rule-strong));
   font-size: 11.5px;
   font-weight: 600;
   line-height: 17px;
@@ -893,26 +893,26 @@ h1, h2, h3 {
 /* A tag with no glyph closes the gap the chip would have filled. */
 .tag:not(:has(.tag-icon)) { padding-left: 9px; }
 
-.tag-klein     { --tag-fill: #e7e1ff; --tag-line: #4100f5; --tag-ink: #2e00ad; --tag-chip: #c9bbff; }
-.tag-citric    { --tag-fill: #f1fcd6; --tag-line: #8ab81c; --tag-ink: #55730d; --tag-chip: #d8f49a; }
-.tag-aqua      { --tag-fill: #e2fbf5; --tag-line: #17b39a; --tag-ink: #0c7261; --tag-chip: #a9f0e2; }
-.tag-fushia    { --tag-fill: #fde3f1; --tag-line: #f037a5; --tag-ink: #ad1569; --tag-chip: #f9b9dd; }
-.tag-tangerine { --tag-fill: #ffe4e0; --tag-line: #ff4632; --tag-ink: #bf2716; --tag-chip: #ffbcb2; }
-.tag-blue      { --tag-fill: #e8edfd; --tag-line: #3358e8; --tag-ink: #2440b8; --tag-chip: #c6d3fa; }
-.tag-lime      { --tag-fill: #ddf26b; --tag-line: #b4d43a; --tag-ink: #4d5c0a; --tag-chip: #cbe94f; }
-.tag-ink       { --tag-fill: #e8eaec; --tag-line: #3f4a52; --tag-ink: #1c252b; --tag-chip: #c6ccd1; }
+.tag-klein     { --tag-fill: #eeeaff; --tag-line: #a596f4; --tag-ink: #3f2bb5; --tag-chip: #dbd2ff; }
+.tag-citric    { --tag-fill: #f4fce0; --tag-line: #c2da85; --tag-ink: #5c7a10; --tag-chip: #e3f6b6; }
+.tag-aqua      { --tag-fill: #e9fbf7; --tag-line: #82dbcc; --tag-ink: #0f7b69; --tag-chip: #c2f2e8; }
+.tag-fushia    { --tag-fill: #fdebf5; --tag-line: #f49ecf; --tag-ink: #b02572; --tag-chip: #fbd4e9; }
+.tag-tangerine { --tag-fill: #ffece9; --tag-line: #ffa396; --tag-ink: #c2301f; --tag-chip: #ffd5cf; }
+.tag-blue      { --tag-fill: #eef2fe; --tag-line: #9cb0f5; --tag-ink: #2b48c2; --tag-chip: #d6dffc; }
+.tag-lime      { --tag-fill: #eef8b9; --tag-line: #d2e494; --tag-ink: #55660c; --tag-chip: #e2f39a; }
+.tag-ink       { --tag-fill: #edeff1; --tag-line: #a3adb4; --tag-ink: #2b343a; --tag-chip: #d8dde1; }
 .tag-neutral   { --tag-fill: var(--cara-surface-2); --tag-line: var(--cara-rule-strong); --tag-ink: var(--cara-text-muted); --tag-chip: var(--cara-rule); }
 
 /* On a dark ground the same three channels invert: the ground drops to a deep
    tint of the hue, the outline and ink come up to the light end. */
-.dark .tag-klein     { --tag-fill: #241a52; --tag-line: #7c5cff; --tag-ink: #cdbcff; --tag-chip: #3a2a7a; }
-.dark .tag-citric    { --tag-fill: #26300f; --tag-line: #9ccb2a; --tag-ink: #d6f293; --tag-chip: #3b4a1a; }
-.dark .tag-aqua      { --tag-fill: #0d3630; --tag-line: #2ac7ac; --tag-ink: #9cf0e0; --tag-chip: #145046; }
-.dark .tag-fushia    { --tag-fill: #3d1030; --tag-line: #f45cb5; --tag-ink: #f9b9dd; --tag-chip: #5c1949; }
-.dark .tag-tangerine { --tag-fill: #421611; --tag-line: #ff6a59; --tag-ink: #ffb5aa; --tag-chip: #61201a; }
-.dark .tag-blue      { --tag-fill: #1d2547; --tag-line: #6b8af0; --tag-ink: #c6d3fa; --tag-chip: #2f3c78; }
-.dark .tag-lime      { --tag-fill: #2a3310; --tag-line: #a3d12f; --tag-ink: #dcf08a; --tag-chip: #3e4a19; }
-.dark .tag-ink       { --tag-fill: #1e272d; --tag-line: #7d8b95; --tag-ink: #cfd7dd; --tag-chip: #2c3740; }
+.dark .tag-klein     { --tag-fill: #251d4e; --tag-line: #6b57c9; --tag-ink: #cdbcff; --tag-chip: #362a6e; }
+.dark .tag-citric    { --tag-fill: #262f13; --tag-line: #7e9c34; --tag-ink: #d6f293; --tag-chip: #37461c; }
+.dark .tag-aqua      { --tag-fill: #103330; --tag-line: #2d9b88; --tag-ink: #9cf0e0; --tag-chip: #174a43; }
+.dark .tag-fushia    { --tag-fill: #3a1630; --tag-line: #bf5694; --tag-ink: #f9b9dd; --tag-chip: #541c45; }
+.dark .tag-tangerine { --tag-fill: #3e1b16; --tag-line: #c05b4d; --tag-ink: #ffb5aa; --tag-chip: #5a241d; }
+.dark .tag-blue      { --tag-fill: #1d2547; --tag-line: #5468b8; --tag-ink: #c6d3fa; --tag-chip: #2b3568; }
+.dark .tag-lime      { --tag-fill: #2a3314; --tag-line: #8aa53b; --tag-ink: #dcf08a; --tag-chip: #3a4620; }
+.dark .tag-ink       { --tag-fill: #1f272c; --tag-line: #6e7a83; --tag-ink: #cfd7dd; --tag-chip: #2c353b; }
 
 /* The unread-WhatsApp count in the nav. It was a green pill, which the brand
    rules bar outright and which disappears against the blue column anyway. */
