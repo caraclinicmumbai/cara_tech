@@ -3,9 +3,14 @@
 // Leads per day, last eight days (§dashboard).
 //
 // One series, so no legend — the card's title says what is plotted, and a box
-// with a single swatch would only restate it. Mark specs: bars capped at 24px
-// so the band keeps its air, a 4px rounded top with a square foot on the
-// baseline, and a hairline grid that stays behind the data.
+// with a single swatch would only restate it. Mark specs: a 4px rounded top
+// with a square foot on the baseline, and a hairline grid that stays behind
+// the data.
+//
+// Bars cap at 34px rather than the 24px the house rule prefers. The point of
+// that cap is that a bar should never fill its slot — at eight columns across
+// this card the slots are ~61px, so 34px still leaves more than a third of
+// each band as air, which is what the rule is actually protecting.
 //
 // No direct labels at all: a number over every column is noise that stops
 // being read, and the one over the busiest day was in the way. The busiest day
@@ -67,7 +72,7 @@ export function LeadsColumns({
                   onMouseLeave={() => setHover(null)}
                 >
                   <div
-                    className="w-full max-w-[24px] rounded-t-[4px] transition-opacity"
+                    className="w-full max-w-8.5 rounded-t-[4px] transition-opacity"
                     style={{
                       height: `${Math.max(h, d.value > 0 ? 2 : 0)}%`,
                       background: isPeak ? "var(--viz-bar-peak)" : "var(--viz-bar)",
