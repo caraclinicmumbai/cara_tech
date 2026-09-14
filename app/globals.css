@@ -697,3 +697,109 @@ h1, h2, h3 {
   border-color: var(--enori-cobalt);
   box-shadow: 0 0 0 3px rgba(73, 111, 233, .18);
 }
+
+/* ─── Chart tokens ───────────────────────────────────────────────────────
+   Roles, not raw hex, so light/dark and CARA/enori swap in one place and the
+   chart bodies stay written against meaning.
+
+   The SEQUENCE is deliberately a single-hue ramp rather than a set of
+   categorical hues. The brand forbids green and red, and a validated check of
+   six blue/violet hues put the worst adjacent pair at ΔE 5.6 for NORMAL colour
+   vision — below the 15 floor, i.e. two slices most people cannot tell apart.
+   A band that narrow cannot carry identity, so magnitude carries it instead:
+   segments are ordered largest to smallest and darkest to lightest, and the
+   legend (name + count + share) is what actually names them. */
+:root {
+  --viz-bar:      var(--cara-beige-deep);
+  --viz-bar-peak: var(--cara-ink);
+  --viz-grid:     var(--cara-rule);
+  --viz-seq-1:    #8a6d2e;
+  --viz-seq-2:    #a98b4a;
+  --viz-seq-3:    #c9ab6e;
+  --viz-seq-4:    #e0c797;
+  --viz-seq-5:    #efe0c4;
+}
+.dark {
+  --viz-bar:      var(--cara-beige);
+  --viz-bar-peak: #ffffff;
+  --viz-seq-1:    #f0c24a;
+  --viz-seq-2:    #d9a93c;
+  --viz-seq-3:    #b98f34;
+  --viz-seq-4:    #8e6d29;
+  --viz-seq-5:    #5f4a1c;
+}
+.enori {
+  --viz-bar:      #496fe9;   /* Cobalt Spark — the deck's interactive blue */
+  --viz-bar-peak: #7266dc;   /* Iris Violet marks the one bar worth naming */
+  --viz-grid:     var(--cara-rule);
+  --viz-seq-1:    #4c1d95;
+  --viz-seq-2:    #6d28d9;
+  --viz-seq-3:    #8b5cf6;
+  --viz-seq-4:    #a78bfa;
+  --viz-seq-5:    #c4b5fd;
+}
+/* Dark gets its OWN steps off the same ramp — not an inversion. The darkest
+   violets disappear against a Deep Ink Slate ground, so the whole sequence
+   shifts up into the range that stays visible on it. */
+.enori.dark {
+  --viz-bar:      #6d8ff0;
+  --viz-bar-peak: #a78bfa;
+  --viz-seq-1:    #ede9fe;
+  --viz-seq-2:    #c4b5fd;
+  --viz-seq-3:    #a78bfa;
+  --viz-seq-4:    #8b5cf6;
+  --viz-seq-5:    #6d28d9;
+}
+
+/* ─── Dashboard tiles ────────────────────────────────────────────────────
+   The corner arrow the reference puts on every card: a number on a dashboard
+   should always open the screen it came from. */
+.cara-tile-arrow {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: var(--cara-pill);
+  background: var(--cara-surface-2);
+  border: 1px solid var(--cara-rule);
+  color: var(--cara-text-muted);
+  font-size: 12px;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.cara-tile-arrow:hover {
+  background: var(--cara-beige-deep);
+  border-color: var(--cara-beige-deep);
+  color: var(--cara-surface);
+}
+/* One tile leads — the reference gives its first card the filled treatment so
+   the eye has somewhere to land before it starts reading. */
+.cara-tile-featured { border-color: var(--cara-rule-strong); }
+.enori .cara-tile-featured {
+  background: linear-gradient(180deg, var(--cara-accent-bg), var(--cara-surface) 70%);
+  border-color: #ddd6fe;
+}
+.enori .cara-tile-featured .cara-tile-arrow {
+  background: var(--enori-iris);
+  border-color: var(--enori-iris);
+  color: #ffffff;
+}
+.enori.dark .cara-tile-featured {
+  background: linear-gradient(180deg, var(--cara-accent-bg), var(--cara-surface) 70%);
+  border-color: #3b3668;
+}
+
+.cara-queue-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--cara-surface-2);
+  border: 1px solid var(--cara-rule);
+  font-size: 17px;
+}
+.enori .cara-queue-icon {
+  background: var(--cara-accent-bg);
+  border-color: transparent;
+}
