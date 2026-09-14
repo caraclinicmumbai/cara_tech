@@ -448,16 +448,19 @@ h1, h2, h3 {
   --cara-ink:          #1b1b2e;   /* Deep Ink Slate */
   --cara-ink-soft:     #33334d;
 
-  /* Accent — Iris Violet is the 5%: primary CTAs and hero highlights only.
+  /* Accent — Cobalt Spark carries the interface. The deck assigns Iris Violet
+     to primary CTAs, but the clinic asked for the blues instead, so violet is
+     now held back for the logotype alone and Cobalt does the work.
      `--cara-beige` is the highlight FILL and `--cara-beige-deep` the readable
      TEXT accent; the names are legacy, the roles are what matter. */
-  --cara-beige:        #7266dc;   /* Iris Violet — fill */
-  --cara-beige-deep:   #4338ca;   /* Deep Violet — readable on white */
-  --cara-accent-bg:    #eef2ff;   /* Ice Iris */
+  --cara-beige:        #496fe9;   /* Cobalt Spark — fill */
+  --cara-beige-deep:   #1d4ed8;   /* deep blue — readable on white */
+  --cara-accent-bg:    #eff6ff;   /* the faintest blue wash */
 
-  /* Cobalt Spark is the 10%: interactive controls, active tabs, live state. */
+  /* Cobalt Spark is the interactive blue; Iris Violet survives in the
+     logotype, which the Brand Guidelines specify by name. */
   --enori-cobalt:      #496fe9;
-  --enori-iris:        #7266dc;
+  --enori-iris:        #7266dc;   /* logotype only */
   --enori-sky:         #dbeafe;   /* Soft Sky */
   --enori-indigo:      #1e40af;   /* Royal Indigo */
 
@@ -465,8 +468,8 @@ h1, h2, h3 {
      so no green or red can leak in through it. */
   --cara-yellow:       #496fe9;
   --cara-yellow-soft:  #dbeafe;
-  --cara-coral:        #7266dc;
-  --cara-coral-soft:   #eef2ff;
+  --cara-coral:        #1d4ed8;
+  --cara-coral-soft:   #eff6ff;
   --cara-dark:         #1b1b2e;
   --cara-dark-2:       #26263f;
 
@@ -487,15 +490,15 @@ h1, h2, h3 {
   --state-success-bd:   #bfdbfe;
   --state-success-tx:   #1e40af;
 
-  --state-warning-bg:   #f5f3ff;   /* was amber — the faintest violet */
-  --state-warning-bd:   #e9e5ff;
-  --state-warning-tx:   #6d28d9;
+  --state-warning-bg:   #eff6ff;   /* was amber — the faintest blue */
+  --state-warning-bd:   #dbeafe;
+  --state-warning-tx:   #1d4ed8;
 
-  --state-danger-bg:    #ddd6fe;   /* was red — pastel violet, the deepest
-                                      tint in the set but still a tint */
-  --state-danger-bd:    #bda9fb;   /* a border it alone carries */
-  --state-danger-tx:    #4c1d95;   /* deep violet ink, for the contrast the
-                                      fill no longer provides */
+  --state-danger-bg:    #bfdbfe;   /* was red — pastel blue, the deepest tint
+                                      in the set but still a tint */
+  --state-danger-bd:    #7fb0f5;   /* a border it alone carries */
+  --state-danger-tx:    #1e3a8a;   /* deep navy ink, for the contrast the fill
+                                      no longer provides */
 
   --path-hair-bg:       #dbeafe;
   --path-hair-accent:   #1e40af;
@@ -548,9 +551,9 @@ h1, h2, h3 {
 
   --cara-ink:          #f8fafc;
   --cara-ink-soft:     #cbd5e1;
-  --cara-beige:        #8b80e6;
-  --cara-beige-deep:   #a89fee;
-  --cara-accent-bg:    #2a2749;
+  --cara-beige:        #6d8ff0;
+  --cara-beige-deep:   #93c5fd;
+  --cara-accent-bg:    #17233f;
 
   --enori-sky:         #1e3a8a;
   --enori-indigo:      #bfdbfe;
@@ -574,12 +577,12 @@ h1, h2, h3 {
   --state-success-bg:   #1e2a54;
   --state-success-bd:   #2c3c73;
   --state-success-tx:   #bfdbfe;
-  --state-warning-bg:   #272247;
-  --state-warning-bd:   #342d5e;
-  --state-warning-tx:   #c9bdf8;
-  --state-danger-bg:    #392f6b;
-  --state-danger-bd:    #574a9c;
-  --state-danger-tx:    #ddd6fe;
+  --state-warning-bg:   #1a2540;
+  --state-warning-bd:   #26355c;
+  --state-warning-tx:   #bcd3fb;
+  --state-danger-bg:    #274375;
+  --state-danger-bd:    #4272bd;
+  --state-danger-tx:    #dbeafe;
 }
 
 /* ─── The tone ladder ────────────────────────────────────────────────────
@@ -591,9 +594,9 @@ h1, h2, h3 {
    nothing shouts with a saturated fill — three quieter cues carry it instead,
    and they stack:
 
-     • tint depth   #f5f3ff → #ddd6fe, faintest to deepest
+     • tint depth   #eff6ff → #bfdbfe, faintest to deepest
      • border       only the critical rung carries a visible one
-     • ink + weight #6d28d9 regular → #4c1d95 semibold
+     • ink + weight #1d4ed8 regular → #1e3a8a semibold
 
    One of those alone would be too soft to catch a telecaller scanning forty
    rows; together they read as a clear step up without raising the volume.
@@ -674,20 +677,22 @@ h1, h2, h3 {
      gap on the flex parent and the sidebar's own padding. */
 }
 
-/* Iris Violet is "reserved for primary calls-to-action" (p.6), so the primary
-   button leads with it rather than with Deep Ink Slate — which the deck assigns
-   to typography, not to action. This is the 5% of the 60-30-10 split, which is
-   why it stays on ONE button per screen. */
+/* The primary button leads with Cobalt Spark rather than Deep Ink Slate, which
+   the deck assigns to typography and not to action.
+   DEVIATION: p.6 reserves Iris Violet for primary calls-to-action. The clinic
+   asked for blue over violet across the interface, so Cobalt takes the CTA and
+   violet is held back for the logotype. Still the 5% of the 60-30-10 split —
+   one button per screen. */
 .enori .cara-btn-primary,
 .enori.dark .cara-btn-primary {
-  background: var(--enori-iris);
-  border-color: var(--enori-iris);
+  background: var(--enori-cobalt);
+  border-color: var(--enori-cobalt);
   color: #ffffff;
 }
 .enori .cara-btn-primary:hover,
 .enori.dark .cara-btn-primary:hover {
-  background: #6355d6;
-  border-color: #6355d6;
+  background: #3a5fd4;
+  border-color: #3a5fd4;
 }
 
 /* Cobalt Spark drives interactive controls and focus (p.6). */
@@ -730,25 +735,26 @@ h1, h2, h3 {
 }
 .enori {
   --viz-bar:      #496fe9;   /* Cobalt Spark — the deck's interactive blue */
-  --viz-bar-peak: #7266dc;   /* Iris Violet marks the one bar worth naming */
+  --viz-bar-peak: #1e3a8a;   /* deep navy marks the one bar worth naming —
+                                emphasis by depth, since hue is spoken for */
   --viz-grid:     var(--cara-rule);
-  --viz-seq-1:    #4c1d95;
-  --viz-seq-2:    #6d28d9;
-  --viz-seq-3:    #8b5cf6;
-  --viz-seq-4:    #a78bfa;
-  --viz-seq-5:    #c4b5fd;
+  --viz-seq-1:    #1e3a8a;
+  --viz-seq-2:    #1d4ed8;
+  --viz-seq-3:    #3b82f6;
+  --viz-seq-4:    #60a5fa;
+  --viz-seq-5:    #93c5fd;
 }
 /* Dark gets its OWN steps off the same ramp — not an inversion. The darkest
    violets disappear against a Deep Ink Slate ground, so the whole sequence
    shifts up into the range that stays visible on it. */
 .enori.dark {
-  --viz-bar:      #6d8ff0;
-  --viz-bar-peak: #a78bfa;
-  --viz-seq-1:    #ede9fe;
-  --viz-seq-2:    #c4b5fd;
-  --viz-seq-3:    #a78bfa;
-  --viz-seq-4:    #8b5cf6;
-  --viz-seq-5:    #6d28d9;
+  --viz-bar:      #4d76d8;
+  --viz-bar-peak: #bfdbfe;
+  --viz-seq-1:    #dbeafe;
+  --viz-seq-2:    #93c5fd;
+  --viz-seq-3:    #60a5fa;
+  --viz-seq-4:    #3b82f6;
+  --viz-seq-5:    #2563eb;
 }
 
 /* ─── Dashboard tiles ────────────────────────────────────────────────────
@@ -777,16 +783,16 @@ h1, h2, h3 {
 .cara-tile-featured { border-color: var(--cara-rule-strong); }
 .enori .cara-tile-featured {
   background: linear-gradient(180deg, var(--cara-accent-bg), var(--cara-surface) 70%);
-  border-color: #ddd6fe;
+  border-color: #bfdbfe;
 }
 .enori .cara-tile-featured .cara-tile-arrow {
-  background: var(--enori-iris);
-  border-color: var(--enori-iris);
+  background: var(--enori-cobalt);
+  border-color: var(--enori-cobalt);
   color: #ffffff;
 }
 .enori.dark .cara-tile-featured {
   background: linear-gradient(180deg, var(--cara-accent-bg), var(--cara-surface) 70%);
-  border-color: #3b3668;
+  border-color: #26355c;
 }
 
 .cara-queue-icon {
