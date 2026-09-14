@@ -474,23 +474,28 @@ h1, h2, h3 {
   --cara-text-muted:   #64748b;
   --cara-text-faint:   #94a3b8;
 
-  /* Semantic ramps, rebuilt without green or red. Depth and fill weight
-     carry the urgency that hue used to. */
-  --state-info-bg:      #dbeafe;
+  /* Semantic ramps, rebuilt without green or red — and entirely in PASTEL.
+     No rung is a solid vibrant fill: saturation stays low throughout, and the
+     hierarchy is carried by tint DEPTH, border presence and text weight
+     instead. Solid violet is reserved for the two places the deck actually
+     asks for it: the logo squircle and the single primary CTA. */
+  --state-info-bg:      #dbeafe;   /* Soft Sky — the deck's Growth & Lift */
   --state-info-bd:      #bfdbfe;
-  --state-info-tx:      #1e40af;
+  --state-info-tx:      #1e40af;   /* Royal Indigo */
 
   --state-success-bg:   #dbeafe;   /* was green — now Growth & Lift */
   --state-success-bd:   #bfdbfe;
   --state-success-tx:   #1e40af;
 
-  --state-warning-bg:   #eef2ff;   /* was amber — now Ice Iris */
-  --state-warning-bd:   #c7d2fe;
-  --state-warning-tx:   #4338ca;
+  --state-warning-bg:   #f5f3ff;   /* was amber — the faintest violet */
+  --state-warning-bd:   #e9e5ff;
+  --state-warning-tx:   #6d28d9;
 
-  --state-danger-bg:    #4338ca;   /* was red — now a SOLID deep violet */
-  --state-danger-bd:    #4338ca;
-  --state-danger-tx:    #ffffff;
+  --state-danger-bg:    #ddd6fe;   /* was red — pastel violet, the deepest
+                                      tint in the set but still a tint */
+  --state-danger-bd:    #bda9fb;   /* a border it alone carries */
+  --state-danger-tx:    #4c1d95;   /* deep violet ink, for the contrast the
+                                      fill no longer provides */
 
   --path-hair-bg:       #dbeafe;
   --path-hair-accent:   #1e40af;
@@ -561,18 +566,20 @@ h1, h2, h3 {
   --cara-text-muted:   #9aa3b2;
   --cara-text-faint:   #6b7280;
 
+  /* The same pastel ladder inverted: on a dark ground "pastel" means a muted
+     violet surface carrying light violet ink, rather than a bright fill. */
   --state-info-bg:      #1e2a54;
   --state-info-bd:      #2c3c73;
   --state-info-tx:      #bfdbfe;
   --state-success-bg:   #1e2a54;
   --state-success-bd:   #2c3c73;
   --state-success-tx:   #bfdbfe;
-  --state-warning-bg:   #2a2749;
-  --state-warning-bd:   #3b3668;
-  --state-warning-tx:   #c7d2fe;
-  --state-danger-bg:    #6d63e0;
-  --state-danger-bd:    #6d63e0;
-  --state-danger-tx:    #ffffff;
+  --state-warning-bg:   #272247;
+  --state-warning-bd:   #342d5e;
+  --state-warning-tx:   #c9bdf8;
+  --state-danger-bg:    #392f6b;
+  --state-danger-bd:    #574a9c;
+  --state-danger-tx:    #ddd6fe;
 }
 
 /* ─── The tone ladder ────────────────────────────────────────────────────
@@ -580,10 +587,18 @@ h1, h2, h3 {
    not decoration. "Overdue", "call failed", "lost", "CQS 31" have to be
    legible at a glance down a seventeen-column table.
 
-   Hue used to do that work. Without green or red, the ladder does it with
-   DEPTH and FILL WEIGHT instead: pale tint = for information, tinted with a
-   border = wants attention, SOLID = act on this. That ordering survives
-   greyscale and colour-blindness, which the old red/green pair did not.
+   Hue used to do that work. Without green or red — and staying in PASTEL, so
+   nothing shouts with a saturated fill — three quieter cues carry it instead,
+   and they stack:
+
+     • tint depth   #f5f3ff → #ddd6fe, faintest to deepest
+     • border       only the critical rung carries a visible one
+     • ink + weight #6d28d9 regular → #4c1d95 semibold
+
+   One of those alone would be too soft to catch a telecaller scanning forty
+   rows; together they read as a clear step up without raising the volume.
+   The ordering also survives greyscale and colour-blindness, which the
+   red/green pair it replaces never did.
 
    Each class renders today's colours by default and the enori palette under
    `.enori`, so the same markup shows either design and the swap is a CSS
@@ -606,13 +621,14 @@ h1, h2, h3 {
 .tone-attention { background: var(--state-warning-bg); color: var(--state-warning-tx); border-color: var(--state-warning-bd); }
 .tone-critical  { background: var(--state-danger-bg);  color: var(--state-danger-tx);  border-color: var(--state-danger-bd); }
 
-/* Default (CARA) keeps critical as a red tint rather than a solid fill —
-   red already shouts, so it does not need the weight. Under enori it does. */
-:root:not(.enori) .tone-critical {
-  background: var(--state-danger-bg);
-  color: var(--state-danger-tx);
+/* Under enori the critical rung has no fill to lean on, so it takes the ink
+   weight and keeps the only visible border in the set. In the CARA design red
+   already shouts and needs neither. */
+.enori .tone-critical {
+  font-weight: 600;
+  border-width: 1px;
 }
-.enori .tone-critical { font-weight: 500; }
+.enori .tone-attention { border-color: var(--state-warning-bd); }
 
 /* Interactive text: Cobalt Spark drives links and active controls. */
 .enori .tone-link { color: var(--enori-cobalt); }
