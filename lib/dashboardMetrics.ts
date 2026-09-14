@@ -84,6 +84,12 @@ const DAILY_DAYS = 8;
 export async function getDashboardData(now: Date = new Date()): Promise<DashboardData> {
   const thisMonth = istMonthStart(now, 0);
   const lastMonth = istMonthStart(now, 1);
+  // Compare LIKE FOR LIKE: the same elapsed stretch of last month, not all of
+  // it. Fourteen days into September, measuring against a complete August makes
+  // every figure on the dashboard read as a catastrophic fall — the shortfall is
+  // the seventeen days that haven't happened yet. The pill's tooltip has always
+  // said "versus the same point last month"; this is what makes that true.
+  const lastMonthSamePoint = new Date(lastMonth.getTime() + (now.getTime() - thisMonth.getTime()));
   const windowStart = istDayStart(now, DAILY_DAYS - 1);
 
   const live = { deletedAt: null };
@@ -105,19 +111,19 @@ export async function getDashboardData(now: Date = new Date()): Promise<Dashboar
     dailyRows,
   ] = await Promise.all([
     prisma.lead.count({ where: { ...live, createdAt: { gte: thisMonth } } }),
-    prisma.lead.count({ where: { ...live, createdAt: { gte: lastMonth, lt: thisMonth } } }),
+    prisma.lead.count({ where: { ...live, createdAt: { gte: lastMonth, lt: lastMonthSamePoint } } }),
     prisma.call.count({ where: { createdAt: { gte: thisMonth } } }),
-    prisma.call.count({ where: { createdAt: { gte: lastMonth, lt: thisMonth } } }),
+    prisma.call.count({ where: { createdAt: { gte: lastMonth, lt: lastMonthSamePoint } } }),
     prisma.lead.count({ where: { ...live, status: "confirmed", updatedAt: { gte: thisMonth } } }),
     prisma.lead.count({
-      where: { ...live, status: "confirmed", updatedAt: { gte: lastMonth, lt: thisMonth } },
+      where: { ...live, status: "confirmed", updatedAt: { gte: lastMonth, lt: lastMonthSamePoint } },
     }),
     prisma.call.count({ where: { outcome: "no_answer", createdAt: { gte: thisMonth } } }),
     prisma.call.count({
-      where: { outcome: "no_answer", createdAt: { gte: lastMonth, lt: thisMonth } },
+      where: { outcome: "no_answer", createdAt: { gte: lastMonth, lt: lastMonthSamePoint } },
     }),
     prisma.lead.count({ where: { ...live, stage: "lost", lostAt: { gte: thisMonth } } }),
-    prisma.lead.count({ where: { ...live, stage: "lost", lostAt: { gte: lastMonth, lt: thisMonth } } }),
+    prisma.lead.count({ where: { ...live, stage: "lost", lostAt: { gte: lastMonth, lt: lastMonthSamePoint } } }),
     // The two operational queues the desk actually works from.
     prisma.lead.count({ where: { ...live, status: "new", calls: { none: {} } } }),
     prisma.lead.count({ where: { ...live, needsHandover: true } }),
