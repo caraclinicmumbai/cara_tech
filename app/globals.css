@@ -433,76 +433,77 @@ h1, h2, h3 {
    over both.
    ═══════════════════════════════════════════════════════════════════════ */
 .enori {
-  /* Surfaces — Light grey is the canvas, white the cards. */
-  --cara-page:         #f2f6f8;   /* Light grey */
+  /* Surfaces — a near-white grey ground, white cards. */
+  --cara-page:         #f5f6f8;
   --cara-surface:      #ffffff;
-  --cara-surface-2:    #e9eff3;
-  --cara-tint:         #e0e7eb;   /* Dark grey */
+  --cara-surface-2:    #eef0f4;
+  --cara-tint:         #eef0f4;
 
-  --cara-rule:         #dbe4ea;
-  --cara-rule-strong:  #c3d0d9;
-  --cara-rule-soft:    #e8eef2;
+  --cara-rule:         #e6e8ee;
+  --cara-rule-strong:  #d2d6e0;
+  --cara-rule-soft:    #eff1f5;
 
-  /* Ink — Dark blue, near-black with a blue cast, for all typography. */
-  --cara-ink:          #0a1e2b;   /* Dark blue, lifted off black */
-  --cara-ink-soft:     #22333f;
+  --cara-ink:          #14161d;
+  --cara-ink-soft:     #363b47;
 
-  /* Accent — Bright blue does the work. It clears 4.6:1 against white, so it
-     can carry text as well as fills, which is why it is both roles here.
-     Light blue is the softer partner for hovers and secondary marks. */
-  --cara-beige:        #0077cc;   /* Bright blue — fill */
-  --cara-beige-deep:   #0069b4;   /* readable on white */
-  --cara-accent-bg:    #e6f3fc;
+  /* Accent — the royal blue the reference leads with. White measures 5.65:1
+     against it, so it can carry the navbar as a flat field as well as fill
+     buttons and marks. */
+  --cara-beige:        #3358e8;   /* royal blue — fill */
+  --cara-beige-deep:   #2a46c4;   /* the deeper step, for text on white */
+  --cara-accent-bg:    #e8edfd;
 
-  --enori-cobalt:      #0077cc;   /* Bright blue */
-  --enori-light:       #3da7f5;   /* Light blue */
-  --enori-deep:        #0b4a75;   /* the dark end of the gradient */
-  --enori-sky:         #d6ecfa;
-  --enori-indigo:      #00507f;
+  --enori-cobalt:      #3358e8;
+  --enori-light:       #7f9bf2;
+  --enori-deep:        #2440b8;
+  --enori-sky:         #e8edfd;
+  --enori-indigo:      #2440b8;
+  /* The lime the reference uses for its one highlighted figure. */
+  --enori-lime:        #ddf26b;
 
-  --cara-yellow:       #0077cc;
-  --cara-yellow-soft:  #d6ecfa;
-  --cara-coral:        #3da7f5;
-  --cara-coral-soft:   #e6f3fc;
-  --cara-dark:         #0a1e2b;
-  --cara-dark-2:       #14303f;
+  --cara-yellow:       #3358e8;
+  --cara-yellow-soft:  #e8edfd;
+  --cara-coral:        #7f9bf2;
+  --cara-coral-soft:   #eef2fe;
+  --cara-dark:         #14161d;
+  --cara-dark-2:       #242938;
 
-  --cara-text:         #0a1e2b;
-  --cara-text-muted:   #5b6b76;
-  --cara-text-faint:   #8fa0ab;
+  --cara-text:         #14161d;
+  --cara-text-muted:   #6b7280;
+  --cara-text-faint:   #9aa1ad;
 
-  /* Semantic ramps, still without green or red: depth, border and ink weight
-     carry the urgency. Identity, where a badge needs it, is handled by the tag
-     palette further down instead — this ladder is for quiet states and trends. */
-  --state-info-bg:      #d6ecfa;
-  --state-info-bd:      #b3daf4;
-  --state-info-tx:      #00507f;
+  /* Semantic ramps in the same family: depth, border and ink weight carry the
+     urgency. Identity, where a badge needs it, comes from the tag palette. */
+  --state-info-bg:      #e8edfd;
+  --state-info-bd:      #c6d3fa;
+  --state-info-tx:      #2440b8;
 
-  --state-success-bg:   #d6ecfa;
-  --state-success-bd:   #b3daf4;
-  --state-success-tx:   #00507f;
+  --state-success-bg:   #e8edfd;
+  --state-success-bd:   #c6d3fa;
+  --state-success-tx:   #2440b8;
 
-  --state-warning-bg:   #eff7fd;
-  --state-warning-bd:   #dceaf5;
-  --state-warning-tx:   #0069b4;
+  --state-warning-bg:   #f2f5fe;
+  --state-warning-bd:   #dfe6fc;
+  --state-warning-tx:   #2a46c4;
 
-  --state-danger-bg:    #b9dcf6;
-  --state-danger-bd:    #6fb4e6;
-  --state-danger-tx:    #00395e;
+  --state-danger-bg:    #ccd7fb;
+  --state-danger-bd:    #8fa8f3;
+  --state-danger-tx:    #1c3391;
 
-  --path-hair-bg:       #d6ecfa;
-  --path-hair-accent:   #00507f;
-  --path-skin-bg:       #eff7fd;
-  --path-skin-accent:   #0069b4;
-  --path-nsr-bg:        #e6f3fc;
-  --path-nsr-accent:    #3da7f5;
+  --path-hair-bg:       #e8edfd;
+  --path-hair-accent:   #2440b8;
+  --path-skin-bg:       #f2f5fe;
+  --path-skin-accent:   #2a46c4;
+  --path-nsr-bg:        #eef2fe;
+  --path-nsr-accent:    #7f9bf2;
 
-  --cara-shadow:    0 1px 2px rgba(1,12,20,.04), 0 4px 16px rgba(1,12,20,.06);
-  --cara-shadow-lg: 0 10px 30px rgba(1,12,20,.10);
+  --cara-shadow:    0 1px 2px rgba(20,22,29,.04), 0 4px 16px rgba(20,22,29,.06);
+  --cara-shadow-lg: 0 10px 30px rgba(20,22,29,.10);
 
   --background: var(--cara-page);
   --foreground: var(--cara-ink);
 }
+
 
 
 /* Type system: Playfair Display for display headings (it shares the Didone
@@ -530,50 +531,49 @@ h1, h2, h3 {
    the Deep Ink Slate root and need brand sign-off before they ship. The
    app has a working dark mode today, so the alternative was to break it. */
 .enori.dark {
-  /* Lifted off the reference's #010C14 — as a full-page ground that read as
-     black rather than as the dark blue it is. */
-  --cara-page:         #071a27;
-  --cara-surface:      #102a3b;
-  --cara-surface-2:    #1a3a4e;
-  --cara-tint:         #102a3b;
+  --cara-page:         #0f1220;
+  --cara-surface:      #181d31;
+  --cara-surface-2:    #222842;
+  --cara-tint:         #181d31;
 
-  --cara-rule:         #234559;
-  --cara-rule-strong:  #33596f;
-  --cara-rule-soft:    #1b3848;
+  --cara-rule:         #2b3252;
+  --cara-rule-strong:  #3b4468;
+  --cara-rule-soft:    #212743;
 
-  --cara-ink:          #f2f6f8;
-  --cara-ink-soft:     #c3d0d9;
-  --cara-beige:        #3da7f5;   /* Light blue carries on dark */
-  --cara-beige-deep:   #6fc0fa;
-  --cara-accent-bg:    #0c2740;
+  --cara-ink:          #f5f6f8;
+  --cara-ink-soft:     #d2d6e0;
+  --cara-beige:        #6b8af0;
+  --cara-beige-deep:   #a5b9f7;
+  --cara-accent-bg:    #1d2547;
 
-  --enori-sky:         #0c2740;
-  --enori-indigo:      #b3daf4;
+  --enori-sky:         #1d2547;
+  --enori-indigo:      #c6d3fa;
 
-  --cara-yellow:       #3da7f5;
-  --cara-yellow-soft:  #0c2740;
-  --cara-coral:        #6fc0fa;
-  --cara-coral-soft:   #0c2740;
-  --cara-dark:         #162735;
-  --cara-dark-2:       #1e3243;
+  --cara-yellow:       #6b8af0;
+  --cara-yellow-soft:  #1d2547;
+  --cara-coral:        #a5b9f7;
+  --cara-coral-soft:   #1d2547;
+  --cara-dark:         #222842;
+  --cara-dark-2:       #2b3252;
 
-  --cara-text:         #eef4f8;
-  --cara-text-muted:   #93a6b3;
-  --cara-text-faint:   #64798a;
+  --cara-text:         #eef0f6;
+  --cara-text-muted:   #9aa1b5;
+  --cara-text-faint:   #6d7590;
 
-  --state-info-bg:      #0c2740;
-  --state-info-bd:      #164a75;
-  --state-info-tx:      #a8d6f6;
-  --state-success-bg:   #0c2740;
-  --state-success-bd:   #164a75;
-  --state-success-tx:   #a8d6f6;
-  --state-warning-bg:   #0b1f2e;
-  --state-warning-bd:   #143348;
-  --state-warning-tx:   #8cc5ee;
-  --state-danger-bg:    #17537f;
-  --state-danger-bd:    #2f7fb8;
-  --state-danger-tx:    #d6ecfa;
+  --state-info-bg:      #1d2547;
+  --state-info-bd:      #2f3c78;
+  --state-info-tx:      #c6d3fa;
+  --state-success-bg:   #1d2547;
+  --state-success-bd:   #2f3c78;
+  --state-success-tx:   #c6d3fa;
+  --state-warning-bg:   #191f3a;
+  --state-warning-bd:   #26305a;
+  --state-warning-tx:   #b3c2f8;
+  --state-danger-bg:    #2b3a8f;
+  --state-danger-bd:    #4a5cc4;
+  --state-danger-tx:    #e8edfd;
 }
+
 
 
 /* ─── The tone ladder ────────────────────────────────────────────────────
@@ -682,8 +682,8 @@ h1, h2, h3 {
 }
 .enori .cara-btn-primary:hover,
 .enori.dark .cara-btn-primary:hover {
-  background: #0066b0;
-  border-color: #0066b0;
+  background: #2a46c4;
+  border-color: #2a46c4;
 }
 
 /* Cobalt Spark drives interactive controls and focus (p.6). */
@@ -725,27 +725,27 @@ h1, h2, h3 {
   --viz-seq-5:    #5f4a1c;
 }
 .enori {
-  --viz-bar:      #0077cc;   /* Bright blue */
-  --viz-bar-peak: #0b4a75;   /* the busiest day, a deeper step of the same blue.
+  --viz-bar:      #3358e8;   /* royal blue */
+  --viz-bar-peak: #2440b8;   /* the busiest day, a deeper step of the same blue.
                                 Emphasis by depth — the chart stays one hue. */
   --viz-grid:     var(--cara-rule);
-  --viz-seq-1:    #0b4a75;
-  --viz-seq-2:    #00507f;
-  --viz-seq-3:    #0077cc;
-  --viz-seq-4:    #3da7f5;
-  --viz-seq-5:    #9fd2fa;
+  --viz-seq-1:    #2440b8;
+  --viz-seq-2:    #3358e8;
+  --viz-seq-3:    #6b8af0;
+  --viz-seq-4:    #a5b9f7;
+  --viz-seq-5:    #d8e1fc;
 }
 /* Dark gets its OWN steps off the same ramp — not an inversion. The darkest
    violets disappear against a Deep Ink Slate ground, so the whole sequence
    shifts up into the range that stays visible on it. */
 .enori.dark {
-  --viz-bar:      #1e6ea8;
-  --viz-bar-peak: #9fd2fa;
-  --viz-seq-1:    #cfe8fb;
-  --viz-seq-2:    #6fc0fa;
-  --viz-seq-3:    #3da7f5;
-  --viz-seq-4:    #0077cc;
-  --viz-seq-5:    #00507f;
+  --viz-bar:      #4260cf;
+  --viz-bar-peak: #a5b9f7;
+  --viz-seq-1:    #d8e1fc;
+  --viz-seq-2:    #a5b9f7;
+  --viz-seq-3:    #6b8af0;
+  --viz-seq-4:    #3358e8;
+  --viz-seq-5:    #2440b8;
 }
 
 /* ─── Dashboard tiles ────────────────────────────────────────────────────
@@ -774,7 +774,7 @@ h1, h2, h3 {
 .cara-tile-featured { border-color: var(--cara-rule-strong); }
 .enori .cara-tile-featured {
   background: linear-gradient(180deg, var(--cara-accent-bg), var(--cara-surface) 70%);
-  border-color: #b3daf4;
+  border-color: #c6d3fa;
 }
 .enori .cara-tile-featured .cara-tile-arrow {
   background: var(--enori-cobalt);
@@ -783,7 +783,7 @@ h1, h2, h3 {
 }
 .enori.dark .cara-tile-featured {
   background: linear-gradient(180deg, var(--cara-accent-bg), var(--cara-surface) 70%);
-  border-color: #164a75;
+  border-color: #2f3c78;
 }
 
 .cara-queue-icon {
@@ -804,16 +804,11 @@ h1, h2, h3 {
 /* ─── The navbar ─────────────────────────────────────────────────────────
    A single blue field with white type, per the reference.
 
-   It starts at Bright blue rather than the lighter #1484C5 for a measurable
-   reason: white on #0077CC is 4.66:1, which clears AA for body text, while
-   white on #1484C5 is 4.09:1, which does not.
-
-   It ENDS at #0B4A75 rather than the reference's #001E33, which read as
-   near-black rather than as blue. White still measures 9.3:1 against it, so
-   the column stays comfortably legible top to bottom while remaining a blue
-   the whole way down. */
+   A flat field rather than a gradient, as the reference has it. White measures
+   5.65:1 against #3358E8, which clears AA for body text, so the column is
+   legible top to bottom without needing to darken as it descends. */
 .enori .cara-sidebar {
-  background: linear-gradient(180deg, #0077cc 0%, #0a5e96 50%, #0b4a75 100%);
+  background: #3358e8;
   border-right-color: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
@@ -839,10 +834,10 @@ h1, h2, h3 {
    Guidelines direct for dark surfaces, and the squircle flips to a white chip
    carrying the blue — the mark stays readable instead of vanishing into it. */
 .enori .cara-sidebar .enori-wordmark { color: #ffffff; }
-.enori .cara-sidebar .enori-wordmark-en { color: #9fd2fa; }
+.enori .cara-sidebar .enori-wordmark-en { color: #c6d3fa; }
 .enori .cara-sidebar .enori-squircle {
   background: #ffffff;
-  color: #0077cc;
+  color: #3358e8;
 }
 
 /* ─── Tags ───────────────────────────────────────────────────────────────
@@ -903,8 +898,8 @@ h1, h2, h3 {
 .tag-aqua      { --tag-fill: #e2fbf5; --tag-line: #17b39a; --tag-ink: #0c7261; --tag-chip: #a9f0e2; }
 .tag-fushia    { --tag-fill: #fde3f1; --tag-line: #f037a5; --tag-ink: #ad1569; --tag-chip: #f9b9dd; }
 .tag-tangerine { --tag-fill: #ffe4e0; --tag-line: #ff4632; --tag-ink: #bf2716; --tag-chip: #ffbcb2; }
-.tag-blue      { --tag-fill: #e0f0fc; --tag-line: #0077cc; --tag-ink: #00507f; --tag-chip: #b3daf4; }
-.tag-lime      { --tag-fill: #eaf7a3; --tag-line: #86b81e; --tag-ink: #5c8215; --tag-chip: #dcf08a; }
+.tag-blue      { --tag-fill: #e8edfd; --tag-line: #3358e8; --tag-ink: #2440b8; --tag-chip: #c6d3fa; }
+.tag-lime      { --tag-fill: #ddf26b; --tag-line: #b4d43a; --tag-ink: #4d5c0a; --tag-chip: #cbe94f; }
 .tag-ink       { --tag-fill: #e8eaec; --tag-line: #3f4a52; --tag-ink: #1c252b; --tag-chip: #c6ccd1; }
 .tag-neutral   { --tag-fill: var(--cara-surface-2); --tag-line: var(--cara-rule-strong); --tag-ink: var(--cara-text-muted); --tag-chip: var(--cara-rule); }
 
@@ -915,7 +910,7 @@ h1, h2, h3 {
 .dark .tag-aqua      { --tag-fill: #0d3630; --tag-line: #2ac7ac; --tag-ink: #9cf0e0; --tag-chip: #145046; }
 .dark .tag-fushia    { --tag-fill: #3d1030; --tag-line: #f45cb5; --tag-ink: #f9b9dd; --tag-chip: #5c1949; }
 .dark .tag-tangerine { --tag-fill: #421611; --tag-line: #ff6a59; --tag-ink: #ffb5aa; --tag-chip: #61201a; }
-.dark .tag-blue      { --tag-fill: #0c2c45; --tag-line: #3da7f5; --tag-ink: #a8d6f6; --tag-chip: #164363; }
+.dark .tag-blue      { --tag-fill: #1d2547; --tag-line: #6b8af0; --tag-ink: #c6d3fa; --tag-chip: #2f3c78; }
 .dark .tag-lime      { --tag-fill: #2a3310; --tag-line: #a3d12f; --tag-ink: #dcf08a; --tag-chip: #3e4a19; }
 .dark .tag-ink       { --tag-fill: #1e272d; --tag-line: #7d8b95; --tag-ink: #cfd7dd; --tag-chip: #2c3740; }
 
@@ -933,4 +928,35 @@ h1, h2, h3 {
   font-size: 10px;
   font-weight: 600;
 }
-.enori .nav-count { background: #ff4632; }   /* Tangerine, from the tag palette */
+.enori .nav-count { background: #ddf26b; color: #2c3506; }   /* Tangerine, from the tag palette */
+
+/* ─── Top-bar buttons ────────────────────────────────────────────────────
+   The reference's tab control: a white pill that sits slightly proud of the
+   ground on a soft shadow, with the active one carrying the brand blue and the
+   rest staying quiet. Under enori every chip in the header takes it — the
+   theme and brand toggles, and the month and date on the dashboard. */
+.enori .cara-chip {
+  background: var(--cara-surface);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 8px 15px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cara-text-muted);
+  box-shadow: 0 1px 2px rgba(20, 22, 29, .06), 0 2px 8px rgba(20, 22, 29, .05);
+}
+.enori .cara-chip:hover {
+  border-color: transparent;
+  color: var(--cara-ink);
+  box-shadow: 0 2px 4px rgba(20, 22, 29, .08), 0 6px 16px rgba(20, 22, 29, .08);
+}
+/* Active: the blue does the talking, the pill stays white. A filled tab would
+   compete with the one filled thing on the page that matters — the primary
+   action — and the reference keeps that distinction. */
+.enori .cara-chip.on,
+.enori .cara-chip[aria-pressed="true"] {
+  background: var(--cara-surface);
+  border-color: transparent;
+  color: var(--enori-cobalt);
+  font-weight: 600;
+}
