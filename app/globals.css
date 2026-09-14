@@ -444,7 +444,7 @@ h1, h2, h3 {
   --cara-rule-soft:    #e8eef2;
 
   /* Ink — Dark blue, near-black with a blue cast, for all typography. */
-  --cara-ink:          #010c14;   /* Dark blue */
+  --cara-ink:          #0a1e2b;   /* Dark blue, lifted off black */
   --cara-ink-soft:     #22333f;
 
   /* Accent — Bright blue does the work. It clears 4.6:1 against white, so it
@@ -456,7 +456,7 @@ h1, h2, h3 {
 
   --enori-cobalt:      #0077cc;   /* Bright blue */
   --enori-light:       #3da7f5;   /* Light blue */
-  --enori-deep:        #001e33;   /* the dark end of the gradient */
+  --enori-deep:        #0b4a75;   /* the dark end of the gradient */
   --enori-sky:         #d6ecfa;
   --enori-indigo:      #00507f;
 
@@ -464,10 +464,10 @@ h1, h2, h3 {
   --cara-yellow-soft:  #d6ecfa;
   --cara-coral:        #3da7f5;
   --cara-coral-soft:   #e6f3fc;
-  --cara-dark:         #010c14;
-  --cara-dark-2:       #0d2030;
+  --cara-dark:         #0a1e2b;
+  --cara-dark-2:       #14303f;
 
-  --cara-text:         #010c14;
+  --cara-text:         #0a1e2b;
   --cara-text-muted:   #5b6b76;
   --cara-text-faint:   #8fa0ab;
 
@@ -530,14 +530,16 @@ h1, h2, h3 {
    the Deep Ink Slate root and need brand sign-off before they ship. The
    app has a working dark mode today, so the alternative was to break it. */
 .enori.dark {
-  --cara-page:         #010c14;   /* Dark blue */
-  --cara-surface:      #0c1a25;
-  --cara-surface-2:    #162735;
-  --cara-tint:         #0c1a25;
+  /* Lifted off the reference's #010C14 — as a full-page ground that read as
+     black rather than as the dark blue it is. */
+  --cara-page:         #071a27;
+  --cara-surface:      #102a3b;
+  --cara-surface-2:    #1a3a4e;
+  --cara-tint:         #102a3b;
 
-  --cara-rule:         #1e3243;
-  --cara-rule-strong:  #2c4557;
-  --cara-rule-soft:    #16252f;
+  --cara-rule:         #234559;
+  --cara-rule-strong:  #33596f;
+  --cara-rule-soft:    #1b3848;
 
   --cara-ink:          #f2f6f8;
   --cara-ink-soft:     #c3d0d9;
@@ -724,10 +726,10 @@ h1, h2, h3 {
 }
 .enori {
   --viz-bar:      #0077cc;   /* Bright blue */
-  --viz-bar-peak: #001e33;   /* the dark end marks the one bar worth naming —
+  --viz-bar-peak: #0b4a75;   /* the dark end marks the one bar worth naming —
                                 emphasis by depth, since hue is spoken for */
   --viz-grid:     var(--cara-rule);
-  --viz-seq-1:    #001e33;
+  --viz-seq-1:    #0b4a75;
   --viz-seq-2:    #00507f;
   --viz-seq-3:    #0077cc;
   --viz-seq-4:    #3da7f5;
@@ -800,14 +802,18 @@ h1, h2, h3 {
 }
 
 /* ─── The navbar ─────────────────────────────────────────────────────────
-   A single blue field with white type, per the reference. The gradient runs
-   Bright blue → the dark end, and it starts there rather than at the lighter
-   #1484C5 for a measurable reason: white on #0077CC is 4.66:1, which clears
-   AA for body text, while white on #1484C5 is 4.09:1, which does not. Every
-   step of this gradient is darker than its start, so the whole column is
-   legible rather than just the bottom of it. */
+   A single blue field with white type, per the reference.
+
+   It starts at Bright blue rather than the lighter #1484C5 for a measurable
+   reason: white on #0077CC is 4.66:1, which clears AA for body text, while
+   white on #1484C5 is 4.09:1, which does not.
+
+   It ENDS at #0B4A75 rather than the reference's #001E33, which read as
+   near-black rather than as blue. White still measures 9.3:1 against it, so
+   the column stays comfortably legible top to bottom while remaining a blue
+   the whole way down. */
 .enori .cara-sidebar {
-  background: linear-gradient(180deg, #0077cc 0%, #005089 45%, #001e33 100%);
+  background: linear-gradient(180deg, #0077cc 0%, #0a5e96 50%, #0b4a75 100%);
   border-right-color: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
@@ -840,49 +846,76 @@ h1, h2, h3 {
 }
 
 /* ─── Tags ───────────────────────────────────────────────────────────────
+   Built to the supplied reference: a pastel ground, a saturated outline and
+   matching ink, an icon in a tinted chip, and a hairline of the outline colour
+   under the pill so it sits slightly raised.
+
+   That construction does more than look better than a solid fill. It puts
+   THREE channels on every badge — fill, outline and glyph — so the state
+   survives greyscale, colour blindness and a printed page, none of which a
+   block of colour does. It is also why these can be vivid without shouting:
+   the saturation lives in a 1.5px line, not in the whole pill.
+
    Status badges are the one place in this interface that needs IDENTITY, and
-   identity is the one thing a single hue cannot supply. Measured: six
-   blue/violet hues put the worst adjacent pair at ΔE 5.6 for normal colour
-   vision, against a floor of 15 — two badges most people could not tell
-   apart. The reference palette clears it, at ΔE 15.2 normal and 15.3 for the
-   worst colour-blind pair.
+   identity is what a single hue cannot supply. Measured: six blue/violet hues
+   put the worst adjacent pair at ΔE 5.6 for normal colour vision, against a
+   floor of 15. The supplied tag palette clears it at 15.2 normal, 15.3 for
+   the worst colour-blind pair.
 
-   DEVIATION, deliberate and worth knowing: the Brand Guidelines (p.11) say
-   "Never introduce green or red status badges". Citric is a green and
-   Tangerine is a red. This palette was supplied for the tags specifically, so
-   it is used for them and nothing else — trends, deltas and charts stay on
-   the blue ladder, where the no-green/no-red rule still holds.
-
-   Text colour is chosen per fill for contrast, not by theme: white on the
-   saturated grounds, near-black on the light ones. */
+   DEVIATION, deliberate: the Brand Guidelines (p.11) say "Never introduce
+   green or red status badges". Citric is a green and Tangerine a red. That
+   palette was supplied for the tags specifically, so it is scoped to them —
+   charts and trends stay on the blue ladder where the rule still holds. */
 .tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  padding: 1px 9px 1px 2px;
+  border: 1.5px solid var(--tag-line, var(--cara-rule-strong));
   border-radius: var(--cara-pill);
-  padding: 2px 9px;
-  font-size: 12px;
+  background: var(--tag-fill, var(--cara-surface-2));
+  color: var(--tag-ink, var(--cara-text));
+  box-shadow: 0 1.5px 0 var(--tag-line, var(--cara-rule-strong));
+  font-size: 11.5px;
   font-weight: 600;
-  line-height: 18px;
-  letter-spacing: 0.01em;
+  line-height: 17px;
   white-space: nowrap;
+  vertical-align: middle;
 }
-.tag-klein     { background: #4100f5; color: #ffffff; }  /* Klein Blue */
-.tag-citric    { background: #cdf564; color: #191414; }  /* Citric */
-.tag-aqua      { background: #9bf0e1; color: #191414; }  /* Aquamarine */
-.tag-fushia    { background: #f037a5; color: #ffffff; }  /* Fushia */
-.tag-tangerine { background: #ff4632; color: #ffffff; }  /* Tangerine */
-.tag-ink       { background: #191414; color: #ffffff; }  /* Black */
+/* The icon chip. A glyph, not decoration: it is the channel that still works
+   when the colour does not. */
+.tag-icon {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  background: var(--tag-chip, var(--cara-surface));
+  font-size: 9px;
+  line-height: 1;
+}
+/* A tag with no glyph closes the gap the chip would have filled. */
+.tag:not(:has(.tag-icon)) { padding-left: 9px; }
 
-/* Under the CARA design these fills would be four hues that belong to no
-   palette at all, so there they stay on the old tinted treatment. */
-:root:not(.enori) .tag { background: transparent; color: inherit; }
-:root:not(.enori) .tag-klein     { background: rgba(124,58,237,.14); color: #6d28d9; }
-:root:not(.enori) .tag-citric    { background: rgba(245,158,11,.16);  color: #92630a; }
-:root:not(.enori) .tag-aqua      { background: rgba(20,184,166,.16);  color: #0f766e; }
-:root:not(.enori) .tag-fushia    { background: rgba(219,39,119,.14);  color: #be185d; }
-:root:not(.enori) .tag-tangerine { background: rgba(239,68,68,.15);   color: #b91c1c; }
-:root:not(.enori) .tag-ink       { background: rgba(30,41,59,.12);    color: #1e293b; }
+.tag-klein     { --tag-fill: #e7e1ff; --tag-line: #4100f5; --tag-ink: #2e00ad; --tag-chip: #c9bbff; }
+.tag-citric    { --tag-fill: #f1fcd6; --tag-line: #8ab81c; --tag-ink: #55730d; --tag-chip: #d8f49a; }
+.tag-aqua      { --tag-fill: #e2fbf5; --tag-line: #17b39a; --tag-ink: #0c7261; --tag-chip: #a9f0e2; }
+.tag-fushia    { --tag-fill: #fde3f1; --tag-line: #f037a5; --tag-ink: #ad1569; --tag-chip: #f9b9dd; }
+.tag-tangerine { --tag-fill: #ffe4e0; --tag-line: #ff4632; --tag-ink: #bf2716; --tag-chip: #ffbcb2; }
+.tag-blue      { --tag-fill: #e0f0fc; --tag-line: #0077cc; --tag-ink: #00507f; --tag-chip: #b3daf4; }
+.tag-ink       { --tag-fill: #e8eaec; --tag-line: #3f4a52; --tag-ink: #1c252b; --tag-chip: #c6ccd1; }
+.tag-neutral   { --tag-fill: var(--cara-surface-2); --tag-line: var(--cara-rule-strong); --tag-ink: var(--cara-text-muted); --tag-chip: var(--cara-rule); }
+
+/* On a dark ground the same three channels invert: the ground drops to a deep
+   tint of the hue, the outline and ink come up to the light end. */
+.dark .tag-klein     { --tag-fill: #241a52; --tag-line: #7c5cff; --tag-ink: #cdbcff; --tag-chip: #3a2a7a; }
+.dark .tag-citric    { --tag-fill: #26300f; --tag-line: #9ccb2a; --tag-ink: #d6f293; --tag-chip: #3b4a1a; }
+.dark .tag-aqua      { --tag-fill: #0d3630; --tag-line: #2ac7ac; --tag-ink: #9cf0e0; --tag-chip: #145046; }
+.dark .tag-fushia    { --tag-fill: #3d1030; --tag-line: #f45cb5; --tag-ink: #f9b9dd; --tag-chip: #5c1949; }
+.dark .tag-tangerine { --tag-fill: #421611; --tag-line: #ff6a59; --tag-ink: #ffb5aa; --tag-chip: #61201a; }
+.dark .tag-blue      { --tag-fill: #0c2c45; --tag-line: #3da7f5; --tag-ink: #a8d6f6; --tag-chip: #164363; }
+.dark .tag-ink       { --tag-fill: #1e272d; --tag-line: #7d8b95; --tag-ink: #cfd7dd; --tag-chip: #2c3740; }
 
 /* The unread-WhatsApp count in the nav. It was a green pill, which the brand
    rules bar outright and which disappears against the blue column anyway. */

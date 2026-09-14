@@ -102,11 +102,14 @@ const MUTED = "text-black/60 dark:text-white/60";
 /// own identity, and identity is what one hue cannot give. These come from the
 /// supplied tag palette, which measures at ΔE 15.2 between its closest pair
 /// where a blue-only set managed 5.6. See the note in globals.css.
+/// Fill, outline and GLYPH. The glyph is not decoration — it is the channel
+/// that still carries the state in greyscale, under colour blindness, and on a
+/// printed page, none of which a block of colour survives.
 const BADGE_TONES = {
-  duplicate: "tag tag-aqua",
-  stopped: "tag tag-tangerine",
-  held: "tag tag-citric",
-  human: "tag tag-klein",
+  duplicate: { cls: "tag tag-aqua", icon: "⧉" },
+  stopped: { cls: "tag tag-tangerine", icon: "⊘" },
+  held: { cls: "tag tag-citric", icon: "⏸" },
+  human: { cls: "tag tag-klein", icon: "☎" },
 } as const;
 
 function Badge({
@@ -118,8 +121,12 @@ function Badge({
   title?: string;
   children: ReactNode;
 }) {
+  const { cls, icon } = BADGE_TONES[tone];
   return (
-    <span title={title} className={`ml-2 ${BADGE_TONES[tone]}`}>
+    <span title={title} className={`ml-2 ${cls}`}>
+      <span className="tag-icon" aria-hidden>
+        {icon}
+      </span>
       {children}
     </span>
   );
@@ -277,9 +284,14 @@ export function LeadsTable({
             <span
               title={l.nextFollowUpTitle ?? undefined}
               className={
-                l.nextFollowUpOverdue ? "tone tone-critical" : MUTED
+                l.nextFollowUpOverdue ? "tag tag-tangerine" : MUTED
               }
             >
+              {l.nextFollowUpOverdue && (
+                <span className="tag-icon" aria-hidden>
+                  !
+                </span>
+              )}
               {l.nextFollowUp}
             </span>
           ) : (
@@ -334,6 +346,9 @@ export function LeadsTable({
                 l.cqs >= 75 ? "tag-aqua" : l.cqs >= 50 ? "tag-citric" : "tag-tangerine"
               }`}
             >
+              <span className="tag-icon" aria-hidden>
+                {l.cqs >= 75 ? "▲" : l.cqs >= 50 ? "■" : "▼"}
+              </span>
               {l.cqs}
             </span>
           ) : (
