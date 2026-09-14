@@ -413,3 +413,271 @@ h1, h2, h3 {
   border-radius: 999px;
 }
 .cara-scroll-x::-webkit-scrollbar-thumb:hover { background: var(--cara-text-faint); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ENORI BRAND LAYER — pilot (enori Brand Guidelines v2.0)
+   ───────────────────────────────────────────────────────────────────────
+   Opt-in via an `enori` class on <html>, set by the brand toggle + the
+   no-flash init script, exactly like `.dark`. Scoping it this way is what
+   makes the pilot a pilot: the business can flip between the two designs
+   on a live screen instead of judging a screenshot.
+
+   It overrides the SAME `--cara-*` tokens the app already consumes, so
+   every surface, border and control follows without touching a component.
+   What does NOT follow are the ~246 hard-coded Tailwind colour classes
+   (text-red-600 and friends) scattered across 39 files — those are the
+   real work, and the tone ladder further down is the proposed answer.
+
+   Declared after `.dark` so that on <html class="dark enori"> the enori
+   values win on source order, and `.enori.dark` (higher specificity) wins
+   over both.
+   ═══════════════════════════════════════════════════════════════════════ */
+.enori {
+  /* Surfaces — Clean Canvas is the 60% foundation. */
+  --cara-page:         #f8fafc;   /* Clean Canvas */
+  --cara-surface:      #ffffff;   /* Primary Metric Card */
+  --cara-surface-2:    #f1f5f9;
+  --cara-tint:         #f4f7fb;   /* sidebar */
+
+  /* Borders — the deck specifies 1px solid #E2E8F0 on metric cards. */
+  --cara-rule:         #e2e8f0;
+  --cara-rule-strong:  #cbd5e1;
+  --cara-rule-soft:    #eef2f7;
+
+  /* Ink — Deep Ink Slate, 25% of the palette weight, all typography. */
+  --cara-ink:          #1b1b2e;   /* Deep Ink Slate */
+  --cara-ink-soft:     #33334d;
+
+  /* Accent — Iris Violet is the 5%: primary CTAs and hero highlights only.
+     `--cara-beige` is the highlight FILL and `--cara-beige-deep` the readable
+     TEXT accent; the names are legacy, the roles are what matter. */
+  --cara-beige:        #7266dc;   /* Iris Violet — fill */
+  --cara-beige-deep:   #4338ca;   /* Deep Violet — readable on white */
+  --cara-accent-bg:    #eef2ff;   /* Ice Iris */
+
+  /* Cobalt Spark is the 10%: interactive controls, active tabs, live state. */
+  --enori-cobalt:      #496fe9;
+  --enori-iris:        #7266dc;
+  --enori-sky:         #dbeafe;   /* Soft Sky */
+  --enori-indigo:      #1e40af;   /* Royal Indigo */
+
+  /* The bento dashboard's highlight pair, re-pointed into the blue spectrum
+     so no green or red can leak in through it. */
+  --cara-yellow:       #496fe9;
+  --cara-yellow-soft:  #dbeafe;
+  --cara-coral:        #7266dc;
+  --cara-coral-soft:   #eef2ff;
+  --cara-dark:         #1b1b2e;
+  --cara-dark-2:       #26263f;
+
+  --cara-text:         #1b1b2e;
+  --cara-text-muted:   #64748b;
+  --cara-text-faint:   #94a3b8;
+
+  /* Semantic ramps, rebuilt without green or red. Depth and fill weight
+     carry the urgency that hue used to. */
+  --state-info-bg:      #dbeafe;
+  --state-info-bd:      #bfdbfe;
+  --state-info-tx:      #1e40af;
+
+  --state-success-bg:   #dbeafe;   /* was green — now Growth & Lift */
+  --state-success-bd:   #bfdbfe;
+  --state-success-tx:   #1e40af;
+
+  --state-warning-bg:   #eef2ff;   /* was amber — now Ice Iris */
+  --state-warning-bd:   #c7d2fe;
+  --state-warning-tx:   #4338ca;
+
+  --state-danger-bg:    #4338ca;   /* was red — now a SOLID deep violet */
+  --state-danger-bd:    #4338ca;
+  --state-danger-tx:    #ffffff;
+
+  --path-hair-bg:       #dbeafe;
+  --path-hair-accent:   #1e40af;
+  --path-skin-bg:       #eef2ff;
+  --path-skin-accent:   #4338ca;
+  --path-nsr-bg:        #ede9fe;
+  --path-nsr-accent:    #7266dc;
+
+  /* Softer, flatter shadows — the deck forbids heavy drops and outer glows. */
+  --cara-shadow:    0 1px 2px rgba(27,27,46,.04), 0 4px 16px rgba(27,27,46,.06);
+  --cara-shadow-lg: 0 10px 30px rgba(27,27,46,.10);
+
+  --background: var(--cara-page);
+  --foreground: var(--cara-ink);
+}
+
+/* Type system: Playfair Display for display headings (it shares the Didone
+   heritage the logotype is drawn from), Plus Jakarta Sans for the interface. */
+.enori body,
+.enori {
+  --font-sans:  var(--font-enori-sans);
+  --font-serif: var(--font-enori-display);
+}
+.enori body {
+  font-family: var(--font-enori-sans), "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Mandatory across every stat counter, call timer and financial figure, so
+   digits stop shifting width as they change. */
+.enori table,
+.enori .cara-stat,
+.enori [data-numeric] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Derived dark palette ───────────────────────────────────────────────
+   NOT IN THE DECK. The guidelines define no dark ramp — only "on dark
+   surfaces, switch 'ori' to white" — so these values are extrapolated from
+   the Deep Ink Slate root and need brand sign-off before they ship. The
+   app has a working dark mode today, so the alternative was to break it. */
+.enori.dark {
+  --cara-page:         #12121f;
+  --cara-surface:      #1b1b2e;   /* Deep Ink Slate as the card shell */
+  --cara-surface-2:    #26263f;
+  --cara-tint:         #1b1b2e;
+
+  --cara-rule:         #2e2e4a;
+  --cara-rule-strong:  #3f3f63;
+  --cara-rule-soft:    #24243c;
+
+  --cara-ink:          #f8fafc;
+  --cara-ink-soft:     #cbd5e1;
+  --cara-beige:        #8b80e6;
+  --cara-beige-deep:   #a89fee;
+  --cara-accent-bg:    #2a2749;
+
+  --enori-sky:         #1e3a8a;
+  --enori-indigo:      #bfdbfe;
+
+  --cara-yellow:       #6d8ff0;
+  --cara-yellow-soft:  #1e2a54;
+  --cara-coral:        #8b80e6;
+  --cara-coral-soft:   #2a2749;
+  --cara-dark:         #26263f;
+  --cara-dark-2:       #2f2f4d;
+
+  --cara-text:         #f1f5f9;
+  --cara-text-muted:   #9aa3b2;
+  --cara-text-faint:   #6b7280;
+
+  --state-info-bg:      #1e2a54;
+  --state-info-bd:      #2c3c73;
+  --state-info-tx:      #bfdbfe;
+  --state-success-bg:   #1e2a54;
+  --state-success-bd:   #2c3c73;
+  --state-success-tx:   #bfdbfe;
+  --state-warning-bg:   #2a2749;
+  --state-warning-bd:   #3b3668;
+  --state-warning-tx:   #c7d2fe;
+  --state-danger-bg:    #6d63e0;
+  --state-danger-bd:    #6d63e0;
+  --state-danger-tx:    #ffffff;
+}
+
+/* ─── The tone ladder ────────────────────────────────────────────────────
+   The Zero Green / Zero Red rule's real cost: status colour in this CRM is
+   not decoration. "Overdue", "call failed", "lost", "CQS 31" have to be
+   legible at a glance down a seventeen-column table.
+
+   Hue used to do that work. Without green or red, the ladder does it with
+   DEPTH and FILL WEIGHT instead: pale tint = for information, tinted with a
+   border = wants attention, SOLID = act on this. That ordering survives
+   greyscale and colour-blindness, which the old red/green pair did not.
+
+   Each class renders today's colours by default and the enori palette under
+   `.enori`, so the same markup shows either design and the swap is a CSS
+   concern rather than a JSX rewrite — which is how the remaining 38 files
+   would follow if the pilot is accepted. */
+.tone {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--cara-pill);
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.tone-neutral   { background: rgba(100,116,139,.12); color: var(--cara-text-muted); }
+.tone-info      { background: var(--state-info-bg);    color: var(--state-info-tx);    border-color: var(--state-info-bd); }
+.tone-positive  { background: var(--state-success-bg); color: var(--state-success-tx); border-color: var(--state-success-bd); }
+.tone-attention { background: var(--state-warning-bg); color: var(--state-warning-tx); border-color: var(--state-warning-bd); }
+.tone-critical  { background: var(--state-danger-bg);  color: var(--state-danger-tx);  border-color: var(--state-danger-bd); }
+
+/* Default (CARA) keeps critical as a red tint rather than a solid fill —
+   red already shouts, so it does not need the weight. Under enori it does. */
+:root:not(.enori) .tone-critical {
+  background: var(--state-danger-bg);
+  color: var(--state-danger-tx);
+}
+.enori .tone-critical { font-weight: 500; }
+
+/* Interactive text: Cobalt Spark drives links and active controls. */
+.enori .tone-link { color: var(--enori-cobalt); }
+.tone-link { color: #2563eb; }
+.dark .tone-link { color: #60a5fa; }
+.enori.dark .tone-link { color: #8fa9f4; }
+
+/* ─── Wordmark ───────────────────────────────────────────────────────────
+   Both marks are in the DOM and CSS picks one, so switching brand can never
+   desync server and client HTML. */
+.brand-enori { display: none; }
+.enori .brand-cara { display: none; }
+.enori .brand-enori { display: flex; }
+
+/* Minimum 28px in application top navigation (Brand Guidelines p.4). */
+.enori-wordmark {
+  font-family: var(--font-enori-display), "Playfair Display", Georgia, serif;
+  font-size: 28px;
+  line-height: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #1b1b2e;              /* Deep Ink Slate — the "ori" root */
+}
+.enori-wordmark-en { color: #7266dc; }   /* Iris Violet — the "en" prefix */
+/* On dark surfaces the root switches to white; the prefix holds its violet. */
+.enori.dark .enori-wordmark { color: #ffffff; }
+.enori.dark .enori-wordmark-en { color: #8b80e6; }
+
+/* The micro mark: lowercase "e" centred in an Iris Violet squircle. */
+.enori-squircle {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;         /* squircle, not a circle and not a box */
+  background: #7266dc;
+  color: #ffffff;
+  font-family: var(--font-enori-display), "Playfair Display", Georgia, serif;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1;
+  /* Clear space equal to the height of the lowercase "e" (p.4) is held by the
+     gap on the flex parent and the sidebar's own padding. */
+}
+
+/* Iris Violet is "reserved for primary calls-to-action" (p.6), so the primary
+   button leads with it rather than with Deep Ink Slate — which the deck assigns
+   to typography, not to action. This is the 5% of the 60-30-10 split, which is
+   why it stays on ONE button per screen. */
+.enori .cara-btn-primary,
+.enori.dark .cara-btn-primary {
+  background: var(--enori-iris);
+  border-color: var(--enori-iris);
+  color: #ffffff;
+}
+.enori .cara-btn-primary:hover,
+.enori.dark .cara-btn-primary:hover {
+  background: #6355d6;
+  border-color: #6355d6;
+}
+
+/* Cobalt Spark drives interactive controls and focus (p.6). */
+.enori .cara-input:focus,
+.enori .cara-textarea:focus,
+.enori .cara-select:focus {
+  border-color: var(--enori-cobalt);
+  box-shadow: 0 0 0 3px rgba(73, 111, 233, .18);
+}

@@ -91,11 +91,17 @@ type CellContext = {
 const MUTED = "text-black/60 dark:text-white/60";
 
 /// The small status pills on a lead's name — duplicate, opted out, held, handover.
+///
+/// These used to be four hues (amber / red / orange / purple). They are now four
+/// rungs of one ladder — `.tone-*` in globals.css — which renders as those hues
+/// under the CARA design and as depth-and-weight under enori, whose brand rules
+/// forbid green and red outright. The meaning moved from hue to emphasis:
+/// neutral < info < attention < critical, and critical is the only one filled.
 const BADGE_TONES = {
-  amber: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  red: "bg-red-500/15 text-red-700 dark:text-red-400",
-  orange: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
-  purple: "bg-purple-500/15 text-purple-700 dark:text-purple-400",
+  attention: "tone tone-attention",
+  critical: "tone tone-critical",
+  info: "tone tone-info",
+  neutral: "tone tone-neutral",
 } as const;
 
 function Badge({
@@ -108,7 +114,7 @@ function Badge({
   children: ReactNode;
 }) {
   return (
-    <span title={title} className={`ml-2 rounded-full px-2 py-0.5 text-xs ${BADGE_TONES[tone]}`}>
+    <span title={title} className={`ml-2 ${BADGE_TONES[tone]}`}>
       {children}
     </span>
   );
@@ -174,11 +180,11 @@ export function LeadsTable({
             <Link href={`/leads/${l.id}`} className="font-medium hover:underline" onClick={ctx.onOpenLead}>
               {l.name}
             </Link>
-            {l.duplicateOfId && <Badge tone="amber" title="Possible duplicate — no AI call">dup</Badge>}
-            {l.optedOut && <Badge tone="red" title="Opted out — all outreach suppressed">opted out</Badge>}
-            {l.heldForReview && <Badge tone="orange" title="Held for review — no AI call">review</Badge>}
+            {l.duplicateOfId && <Badge tone="info" title="Possible duplicate — no AI call">dup</Badge>}
+            {l.optedOut && <Badge tone="critical" title="Opted out — all outreach suppressed">opted out</Badge>}
+            {l.heldForReview && <Badge tone="attention" title="Held for review — no AI call">review</Badge>}
             {l.needsHandover && (
-              <Badge tone="purple" title={l.handoverReason ?? "Handover to sales"}>handover</Badge>
+              <Badge tone="attention" title={l.handoverReason ?? "Handover to sales"}>handover</Badge>
             )}
           </>
         ),
@@ -266,9 +272,7 @@ export function LeadsTable({
             <span
               title={l.nextFollowUpTitle ?? undefined}
               className={
-                l.nextFollowUpOverdue
-                  ? "rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-700 dark:text-red-400"
-                  : MUTED
+                l.nextFollowUpOverdue ? "tone tone-critical" : MUTED
               }
             >
               {l.nextFollowUp}
@@ -321,12 +325,8 @@ export function LeadsTable({
           typeof l.cqs === "number" ? (
             <span
               title="Conversation Quality Score (latest scored call)"
-              className={`rounded-full px-2 py-0.5 text-xs ${
-                l.cqs >= 75
-                  ? "bg-green-600/15 text-green-700 dark:text-green-400"
-                  : l.cqs >= 50
-                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                    : "bg-red-500/15 text-red-700 dark:text-red-400"
+              className={`tone ${
+                l.cqs >= 75 ? "tone-positive" : l.cqs >= 50 ? "tone-attention" : "tone-critical"
               }`}
             >
               {l.cqs}
@@ -577,7 +577,7 @@ export function LeadsTable({
               setTextFilters({});
               setDateFilters({});
             }}
-            className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+            className="tone-link text-sm hover:underline"
           >
             Clear all filters
           </button>
@@ -640,7 +640,7 @@ export function LeadsTable({
                         title="Filter"
                         className={`rounded px-1 text-xs ${
                           isFiltered(c.key)
-                            ? "text-blue-600 dark:text-blue-400"
+                            ? "tone-link"
                             : "text-black/40 hover:text-black/70 dark:text-white/40 dark:hover:text-white/70"
                         }`}
                       >
@@ -698,7 +698,7 @@ export function LeadsTable({
               <span className="text-xs font-medium">Filter {openCol.label}</span>
               <button
                 onClick={() => clearColumn(openCol.key)}
-                className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                className="tone-link text-xs hover:underline"
               >
                 Clear
               </button>
@@ -731,8 +731,8 @@ export function LeadsTable({
                         className={`rounded border px-2 py-0.5 text-xs ${
                           active
                             ? s === "overdue"
-                              ? "border-red-500 text-red-600 dark:text-red-400"
-                              : "border-blue-500 text-blue-600 dark:text-blue-400"
+                              ? "tone tone-critical border-transparent"
+                              : "tone-link border-current"
                             : "border-black/15 dark:border-white/20"
                         }`}
                       >

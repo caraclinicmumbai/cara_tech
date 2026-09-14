@@ -7,6 +7,7 @@ import { unreadTotal } from "@/lib/whatsappInbox";
 import { ensurePermissions } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { BrandToggle } from "@/components/BrandToggle";
 import { StatusSwitcher } from "@/components/StatusSwitcher";
 import { NotificationBell } from "@/components/NotificationBell";
 
@@ -38,7 +39,9 @@ export default async function DashboardLayout({
     <div className="flex min-h-screen bg-cara-page">
       <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r-[0.5px] border-cara-rule bg-cara-tint">
         <div className="border-b-[0.5px] border-cara-rule px-5 py-5">
-          <div className="flex items-center gap-2">
+          {/* Two wordmarks, swapped by CSS rather than by state, so the brand
+              toggle can't produce a hydration mismatch. */}
+          <div className="brand-cara flex items-center gap-2">
             <span className="grid h-8 w-8 place-items-center rounded-xl bg-cara-accent text-sm font-bold text-white">
               C
             </span>
@@ -48,6 +51,23 @@ export default async function DashboardLayout({
               </div>
               <div className="mt-0.5 text-[10px] uppercase tracking-[1.5px] text-cara-muted">
                 Clinic CRM
+              </div>
+            </div>
+          </div>
+          {/* enori is the CRM product; Cara Clinic is the practice using it —
+              hence the product mark over the tenant name. The wordmark is
+              strictly lowercase and never "Enori" (Brand Rules, p.11), and the
+              micro mark is the "e" in an Iris Violet squircle (p.4). */}
+          <div className="brand-enori items-center gap-2.5">
+            <span className="enori-squircle" aria-hidden>
+              e
+            </span>
+            <div>
+              <div className="enori-wordmark">
+                <span className="enori-wordmark-en">en</span>ori
+              </div>
+              <div className="mt-0.5 text-[10px] uppercase tracking-[1.5px] text-cara-muted">
+                Cara Clinic
               </div>
             </div>
           </div>
@@ -155,6 +175,8 @@ export default async function DashboardLayout({
           {rep && <StatusSwitcher initial={rep.availability} />}
           {/* §handover — a handover reaches its telecaller here, in the software. */}
           <NotificationBell />
+          {/* Pilot: lets the business A/B the enori brand on a live screen. */}
+          <BrandToggle />
           <ThemeToggle />
         </header>
         <main className="mx-auto w-full max-w-6xl px-8 py-8">{children}</main>
