@@ -36,7 +36,7 @@ export function DeltaPill({
   const arrow = flat ? "■" : up ? "▲" : "▼";
   // "Good" means the direction the clinic wants, which inverts for lost leads.
   const good = flat || up !== inverse;
-  const tone = flat ? "tag-neutral" : good ? "tag-green" : "tag-tangerine";
+  const tone = flat ? "tag-neutral" : good ? "tag-lime" : "tag-tangerine";
 
   return (
     <span

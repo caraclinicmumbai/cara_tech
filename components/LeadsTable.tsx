@@ -108,7 +108,7 @@ const MUTED = "text-black/60 dark:text-white/60";
 const BADGE_TONES = {
   duplicate: { cls: "tag tag-aqua", icon: "⧉" },
   stopped: { cls: "tag tag-tangerine", icon: "⊘" },
-  held: { cls: "tag tag-citric", icon: "⏸" },
+  held: { cls: "tag tag-fushia", icon: "⏸" },
   human: { cls: "tag tag-klein", icon: "☎" },
 } as const;
 
