@@ -7,8 +7,10 @@
 // so the band keeps its air, a 4px rounded top with a square foot on the
 // baseline, and a hairline grid that stays behind the data.
 //
-// Exactly one bar is labelled — the busiest day. A number over every column is
-// noise that stops being read; the hover tooltip carries the rest.
+// No direct labels at all: a number over every column is noise that stops
+// being read, and the one over the busiest day was in the way. The busiest day
+// is still marked — it carries the accent colour, and its date is set in the
+// ink colour below — and the readout under the chart names any day on hover.
 import { useState } from "react";
 
 export function LeadsColumns({
@@ -77,32 +79,6 @@ export function LeadsColumns({
             })}
           </div>
 
-          {/* The one direct label: the busiest day, named on the chart.
-              It normally floats above its bar — but the busiest day is often
-              also the tallest, and a label above a full-height bar lands
-              outside the card. Past 80% of the plot it flips inside the bar
-              instead, which is the only place left that is still on the chart. */}
-          {data[peak]?.value > 0 &&
-            (() => {
-              const share = data[peak].value / max;
-              const inside = share > 0.8;
-              return (
-                <div
-                  className={`pointer-events-none absolute -translate-x-1/2 ${
-                    inside ? "pt-1.5" : "-translate-y-full pb-1.5"
-                  }`}
-                  style={{
-                    left: `${((peak + 0.5) / data.length) * 100}%`,
-                    bottom: inside ? "auto" : `${share * 100}%`,
-                    top: inside ? `${(1 - share) * 100}%` : "auto",
-                  }}
-                >
-                  <span className="cara-chip whitespace-nowrap px-2 py-0.5 text-[11px] tabular-nums">
-                    {data[peak].value} leads
-                  </span>
-                </div>
-              );
-            })()}
         </div>
       </div>
 

@@ -8,7 +8,8 @@
 //
 // Colour here says whether the movement is the one the clinic wants, not which
 // way it went: the arrow already says that. Which is why the pill flips for
-// lost leads, where a rise is not an achievement.
+// lost leads, where a rise is green nowhere — 225% more lost leads reads
+// tangerine, and a fall in them would read green.
 import type { Delta } from "@/lib/dashboardMetrics";
 
 export function DeltaPill({
@@ -35,7 +36,7 @@ export function DeltaPill({
   const arrow = flat ? "■" : up ? "▲" : "▼";
   // "Good" means the direction the clinic wants, which inverts for lost leads.
   const good = flat || up !== inverse;
-  const tone = flat ? "tag-neutral" : good ? "tag-blue" : "tag-tangerine";
+  const tone = flat ? "tag-neutral" : good ? "tag-green" : "tag-tangerine";
 
   return (
     <span

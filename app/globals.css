@@ -726,8 +726,9 @@ h1, h2, h3 {
 }
 .enori {
   --viz-bar:      #0077cc;   /* Bright blue */
-  --viz-bar-peak: #0b4a75;   /* the dark end marks the one bar worth naming —
-                                emphasis by depth, since hue is spoken for */
+  --viz-bar-peak: #12a15f;   /* the busiest day, in the same green the upward
+                                deltas use — emphasis by hue now that the chart
+                                has one to spare */
   --viz-grid:     var(--cara-rule);
   --viz-seq-1:    #0b4a75;
   --viz-seq-2:    #00507f;
@@ -740,7 +741,7 @@ h1, h2, h3 {
    shifts up into the range that stays visible on it. */
 .enori.dark {
   --viz-bar:      #1e6ea8;
-  --viz-bar-peak: #9fd2fa;
+  --viz-bar-peak: #2bbd7a;
   --viz-seq-1:    #cfe8fb;
   --viz-seq-2:    #6fc0fa;
   --viz-seq-3:    #3da7f5;
@@ -904,6 +905,7 @@ h1, h2, h3 {
 .tag-fushia    { --tag-fill: #fde3f1; --tag-line: #f037a5; --tag-ink: #ad1569; --tag-chip: #f9b9dd; }
 .tag-tangerine { --tag-fill: #ffe4e0; --tag-line: #ff4632; --tag-ink: #bf2716; --tag-chip: #ffbcb2; }
 .tag-blue      { --tag-fill: #e0f0fc; --tag-line: #0077cc; --tag-ink: #00507f; --tag-chip: #b3daf4; }
+.tag-green     { --tag-fill: #dcf5e8; --tag-line: #12a15f; --tag-ink: #0a6b3f; --tag-chip: #a5e7c6; }
 .tag-ink       { --tag-fill: #e8eaec; --tag-line: #3f4a52; --tag-ink: #1c252b; --tag-chip: #c6ccd1; }
 .tag-neutral   { --tag-fill: var(--cara-surface-2); --tag-line: var(--cara-rule-strong); --tag-ink: var(--cara-text-muted); --tag-chip: var(--cara-rule); }
 
@@ -915,6 +917,7 @@ h1, h2, h3 {
 .dark .tag-fushia    { --tag-fill: #3d1030; --tag-line: #f45cb5; --tag-ink: #f9b9dd; --tag-chip: #5c1949; }
 .dark .tag-tangerine { --tag-fill: #421611; --tag-line: #ff6a59; --tag-ink: #ffb5aa; --tag-chip: #61201a; }
 .dark .tag-blue      { --tag-fill: #0c2c45; --tag-line: #3da7f5; --tag-ink: #a8d6f6; --tag-chip: #164363; }
+.dark .tag-green     { --tag-fill: #0d3324; --tag-line: #2bbd7a; --tag-ink: #96e9c1; --tag-chip: #164b34; }
 .dark .tag-ink       { --tag-fill: #1e272d; --tag-line: #7d8b95; --tag-ink: #cfd7dd; --tag-chip: #2c3740; }
 
 /* The unread-WhatsApp count in the nav. It was a green pill, which the brand
