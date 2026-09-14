@@ -958,3 +958,24 @@ h1, h2, h3 {
   color: var(--enori-cobalt);
   font-weight: 600;
 }
+
+/* ─── The brand block ────────────────────────────────────────────────────
+   The logo sits on white rather than on the blue field. On the blue the mark
+   had to be inverted to stay visible — squircle flipped to white, prefix
+   pushed to a pale tint — which is a compromised version of it. On white it
+   is simply itself: the blue squircle, the two-tone wordmark, the tenant name
+   in muted grey.
+
+   The colour change is the divider, so the rule underneath comes off. */
+.enori .cara-sidebar-brand {
+  background: var(--cara-surface);
+  border-bottom-color: transparent !important;
+}
+.enori .cara-sidebar .cara-sidebar-brand .enori-wordmark { color: var(--cara-ink); }
+.enori .cara-sidebar .cara-sidebar-brand .enori-wordmark-en { color: var(--enori-cobalt); }
+.enori .cara-sidebar .cara-sidebar-brand .enori-squircle {
+  background: var(--enori-cobalt);
+  color: #ffffff;
+}
+.enori .cara-sidebar .cara-sidebar-brand .text-cara-muted { color: var(--cara-text-muted); }
+.enori.dark .cara-sidebar-brand { background: var(--cara-surface); }

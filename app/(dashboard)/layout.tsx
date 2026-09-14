@@ -38,7 +38,7 @@ export default async function DashboardLayout({
   return (
     <div className="flex min-h-screen bg-cara-page">
       <aside className="cara-sidebar sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r-[0.5px] border-cara-rule bg-cara-tint">
-        <div className="border-b-[0.5px] border-cara-rule px-5 py-5">
+        <div className="cara-sidebar-brand border-b-[0.5px] border-cara-rule px-5 py-5">
           {/* Two wordmarks, swapped by CSS rather than by state, so the brand
               toggle can't produce a hydration mismatch. */}
           <div className="brand-cara flex items-center gap-2">
