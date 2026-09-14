@@ -841,78 +841,77 @@ h1, h2, h3 {
 }
 
 /* ─── Tags ───────────────────────────────────────────────────────────────
-   Built to the supplied reference: a pastel ground, a saturated outline and
-   matching ink, an icon in a tinted chip, and a hairline of the outline colour
-   under the pill so it sits slightly raised.
+   Built to the sticker reference: a candy-pastel ground with a gloss falling
+   off the top edge, a thin saturated outline, a line-art glyph and lowercase
+   label both set in the same saturated hue, on a soft drop shadow. Rounded
+   rectangles rather than capsules — the reference's corners are generous but
+   its ends are not circular.
 
-   That construction does more than look better than a solid fill. It puts
-   THREE channels on every badge — fill, outline and glyph — so the state
-   survives greyscale, colour blindness and a printed page, none of which a
-   block of colour does. It is also why these can be vivid without shouting:
-   the saturation lives in a 1.5px line, not in the whole pill.
+   ONE deliberate departure. In the reference the label is the same colour as
+   the outline, which works because those stickers are enormous: at that size
+   3:1 is a legal contrast ratio. Ours are twelve pixels tall, where the
+   threshold is 4.5:1, and the reference's own pairing measures 2.96:1. So the
+   ink takes one step darker than the outline — same hue, same family, enough
+   contrast to be read at the size it is actually used.
 
-   Status badges are the one place in this interface that needs IDENTITY, and
-   identity is what a single hue cannot supply. Measured: six blue/violet hues
-   put the worst adjacent pair at ΔE 5.6 for normal colour vision, against a
-   floor of 15. The supplied tag palette clears it at 15.2 normal, 15.3 for
-   the worst colour-blind pair.
+   The construction still puts THREE channels on every badge — fill, outline
+   and glyph — so a state survives greyscale, colour blindness and print, none
+   of which a block of colour does.
 
    DEVIATION, deliberate: the Brand Guidelines (p.11) say "Never introduce
-   green or red status badges". Citric is a green and Tangerine a red. That
-   palette was supplied for the tags specifically, so it is scoped to them —
-   charts and trends stay on the blue ladder where the rule still holds. */
+   green or red status badges". This palette has both. It was supplied for the
+   tags specifically, so it is scoped to them — charts and trends stay on the
+   blue ladder where the rule still holds. */
 .tag {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 1px 9px 1px 2px;
+  padding: 1px 9px;
   border: 1px solid var(--tag-line, var(--cara-rule-strong));
-  border-radius: var(--cara-pill);
-  background: var(--tag-fill, var(--cara-surface-2));
+  border-radius: 8px;
+  background-color: var(--tag-fill, var(--cara-surface-2));
+  /* The gloss: white falling off the top edge, as the reference has it. */
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 60%);
   color: var(--tag-ink, var(--cara-text));
-  box-shadow: 0 1px 0 var(--tag-line, var(--cara-rule-strong));
-  font-size: 11.5px;
+  box-shadow: 0 1px 2px rgba(20, 22, 29, .10);
+  font-size: 12px;
   font-weight: 600;
   line-height: 17px;
+  text-transform: lowercase;
   white-space: nowrap;
   vertical-align: middle;
 }
-/* The icon chip. A glyph, not decoration: it is the channel that still works
-   when the colour does not. */
+/* The glyph rides bare in the label's colour — no chip behind it. */
 .tag-icon {
-  display: grid;
+  display: inline-grid;
   place-items: center;
-  width: 15px;
-  height: 15px;
   flex-shrink: 0;
-  border-radius: 5px;
-  background: var(--tag-chip, var(--cara-surface));
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1;
+  opacity: .85;
 }
-/* A tag with no glyph closes the gap the chip would have filled. */
-.tag:not(:has(.tag-icon)) { padding-left: 9px; }
 
-.tag-klein     { --tag-fill: #eeeaff; --tag-line: #a596f4; --tag-ink: #3f2bb5; --tag-chip: #dbd2ff; }
-.tag-citric    { --tag-fill: #f4fce0; --tag-line: #c2da85; --tag-ink: #5c7a10; --tag-chip: #e3f6b6; }
-.tag-aqua      { --tag-fill: #e9fbf7; --tag-line: #82dbcc; --tag-ink: #0f7b69; --tag-chip: #c2f2e8; }
-.tag-fushia    { --tag-fill: #fdebf5; --tag-line: #f49ecf; --tag-ink: #b02572; --tag-chip: #fbd4e9; }
-.tag-tangerine { --tag-fill: #ffece9; --tag-line: #ffa396; --tag-ink: #c2301f; --tag-chip: #ffd5cf; }
-.tag-blue      { --tag-fill: #eef2fe; --tag-line: #9cb0f5; --tag-ink: #2b48c2; --tag-chip: #d6dffc; }
-.tag-lime      { --tag-fill: #eef8b9; --tag-line: #d2e494; --tag-ink: #55660c; --tag-chip: #e2f39a; }
-.tag-ink       { --tag-fill: #edeff1; --tag-line: #a3adb4; --tag-ink: #2b343a; --tag-chip: #d8dde1; }
-.tag-neutral   { --tag-fill: var(--cara-surface-2); --tag-line: var(--cara-rule-strong); --tag-ink: var(--cara-text-muted); --tag-chip: var(--cara-rule); }
+.tag-blue      { --tag-fill: #cfe3fb; --tag-line: #3b82f6; --tag-ink: #1d4fbf; }
+.tag-lime      { --tag-fill: #e4f59b; --tag-line: #8fbe1f; --tag-ink: #4e680d; }
+.tag-aqua      { --tag-fill: #b9edd4; --tag-line: #22a96f; --tag-ink: #14714c; }
+.tag-citric    { --tag-fill: #fbdfb0; --tag-line: #e2761b; --tag-ink: #9a4c08; }
+.tag-klein     { --tag-fill: #e8d4fa; --tag-line: #a855f7; --tag-ink: #7028b8; }
+.tag-fushia    { --tag-fill: #fbd5e8; --tag-line: #ec4899; --tag-ink: #a61e63; }
+.tag-tangerine { --tag-fill: #fcdad3; --tag-line: #ef5b3c; --tag-ink: #a93317; }
+.tag-ink       { --tag-fill: #e6e9ec; --tag-line: #97a3ab; --tag-ink: #46525a; }
+.tag-neutral   { --tag-fill: var(--cara-surface-2); --tag-line: var(--cara-rule-strong); --tag-ink: var(--cara-text-muted); }
 
-/* On a dark ground the same three channels invert: the ground drops to a deep
-   tint of the hue, the outline and ink come up to the light end. */
-.dark .tag-klein     { --tag-fill: #251d4e; --tag-line: #6b57c9; --tag-ink: #cdbcff; --tag-chip: #362a6e; }
-.dark .tag-citric    { --tag-fill: #262f13; --tag-line: #7e9c34; --tag-ink: #d6f293; --tag-chip: #37461c; }
-.dark .tag-aqua      { --tag-fill: #103330; --tag-line: #2d9b88; --tag-ink: #9cf0e0; --tag-chip: #174a43; }
-.dark .tag-fushia    { --tag-fill: #3a1630; --tag-line: #bf5694; --tag-ink: #f9b9dd; --tag-chip: #541c45; }
-.dark .tag-tangerine { --tag-fill: #3e1b16; --tag-line: #c05b4d; --tag-ink: #ffb5aa; --tag-chip: #5a241d; }
-.dark .tag-blue      { --tag-fill: #1d2547; --tag-line: #5468b8; --tag-ink: #c6d3fa; --tag-chip: #2b3568; }
-.dark .tag-lime      { --tag-fill: #2a3314; --tag-line: #8aa53b; --tag-ink: #dcf08a; --tag-chip: #3a4620; }
-.dark .tag-ink       { --tag-fill: #1f272c; --tag-line: #6e7a83; --tag-ink: #cfd7dd; --tag-chip: #2c353b; }
+/* On a dark ground the gloss would read as haze, so it comes off and the
+   three channels invert: a deep tint of the hue, a mid outline, light ink. */
+.dark .tag { background-image: none; box-shadow: none; }
+.dark .tag-blue      { --tag-fill: #16264a; --tag-line: #4571cf; --tag-ink: #b9d0f8; }
+.dark .tag-lime      { --tag-fill: #29330f; --tag-line: #86a52c; --tag-ink: #dcf08a; }
+.dark .tag-aqua      { --tag-fill: #0f3325; --tag-line: #2a9b6c; --tag-ink: #9ae9c4; }
+.dark .tag-citric    { --tag-fill: #3a2408; --tag-line: #c1701f; --tag-ink: #f6cf95; }
+.dark .tag-klein     { --tag-fill: #2b1a45; --tag-line: #8b57cf; --tag-ink: #ddc2fa; }
+.dark .tag-fushia    { --tag-fill: #3b1229; --tag-line: #c44a84; --tag-ink: #f7bcdb; }
+.dark .tag-tangerine { --tag-fill: #3d1a12; --tag-line: #c25340; --tag-ink: #ffbcae; }
+.dark .tag-ink       { --tag-fill: #1f272c; --tag-line: #6e7a83; --tag-ink: #cfd7dd; }
 
 /* The unread-WhatsApp count in the nav. It was a green pill, which the brand
    rules bar outright and which disappears against the blue column anyway. */
