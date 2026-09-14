@@ -725,9 +725,13 @@ h1, h2, h3 {
   --viz-seq-5:    #5f4a1c;
 }
 .enori {
-  --viz-bar:      #3358e8;   /* royal blue */
-  --viz-bar-peak: #2440b8;   /* the busiest day, a deeper step of the same blue.
-                                Emphasis by depth — the chart stays one hue. */
+  /* The bars sit back and the busiest day comes forward, rather than the whole
+     series arriving at full saturation. Eight columns of solid royal blue is a
+     lot of ink for a card this size; softening the many and keeping the one is
+     also the better emphasis — the bar that matters is now the strongest thing
+     in the chart instead of the second strongest. */
+  --viz-bar:      #97aef2;   /* the quiet many */
+  --viz-bar-peak: #3358e8;   /* the busiest day, at full strength */
   --viz-grid:     var(--cara-rule);
   --viz-seq-1:    #2440b8;
   --viz-seq-2:    #3358e8;
@@ -739,8 +743,8 @@ h1, h2, h3 {
    violets disappear against a Deep Ink Slate ground, so the whole sequence
    shifts up into the range that stays visible on it. */
 .enori.dark {
-  --viz-bar:      #4260cf;
-  --viz-bar-peak: #a5b9f7;
+  --viz-bar:      #3a4a86;
+  --viz-bar-peak: #8ba5f5;
   --viz-seq-1:    #d8e1fc;
   --viz-seq-2:    #a5b9f7;
   --viz-seq-3:    #6b8af0;
