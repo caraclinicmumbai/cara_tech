@@ -37,7 +37,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-cara-page">
-      <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r-[0.5px] border-cara-rule bg-cara-tint">
+      <aside className="cara-sidebar sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r-[0.5px] border-cara-rule bg-cara-tint">
         <div className="border-b-[0.5px] border-cara-rule px-5 py-5">
           {/* Two wordmarks, swapped by CSS rather than by state, so the brand
               toggle can't produce a hydration mismatch. */}
@@ -88,7 +88,7 @@ export default async function DashboardLayout({
             <Link href="/whatsapp" className={`${navLink} flex items-center justify-between`}>
               <span>WhatsApp</span>
               {waUnread > 0 && (
-                <span className="grid h-4 min-w-4 place-items-center rounded-full bg-green-600 px-1 text-[10px] font-semibold text-white">
+                <span className="nav-count">
                   {waUnread > 9 ? "9+" : waUnread}
                 </span>
               )}

@@ -97,11 +97,16 @@ const MUTED = "text-black/60 dark:text-white/60";
 /// under the CARA design and as depth-and-weight under enori, whose brand rules
 /// forbid green and red outright. The meaning moved from hue to emphasis:
 /// neutral < info < attention < critical, and critical is the only one filled.
+/// Each badge answers a different question — is this a duplicate, has this
+/// person opted out, is this held, is a counsellor needed — so each needs its
+/// own identity, and identity is what one hue cannot give. These come from the
+/// supplied tag palette, which measures at ΔE 15.2 between its closest pair
+/// where a blue-only set managed 5.6. See the note in globals.css.
 const BADGE_TONES = {
-  attention: "tone tone-attention",
-  critical: "tone tone-critical",
-  info: "tone tone-info",
-  neutral: "tone tone-neutral",
+  duplicate: "tag tag-aqua",
+  stopped: "tag tag-tangerine",
+  held: "tag tag-citric",
+  human: "tag tag-klein",
 } as const;
 
 function Badge({
@@ -180,11 +185,11 @@ export function LeadsTable({
             <Link href={`/leads/${l.id}`} className="font-medium hover:underline" onClick={ctx.onOpenLead}>
               {l.name}
             </Link>
-            {l.duplicateOfId && <Badge tone="info" title="Possible duplicate — no AI call">dup</Badge>}
-            {l.optedOut && <Badge tone="critical" title="Opted out — all outreach suppressed">opted out</Badge>}
-            {l.heldForReview && <Badge tone="attention" title="Held for review — no AI call">review</Badge>}
+            {l.duplicateOfId && <Badge tone="duplicate" title="Possible duplicate — no AI call">dup</Badge>}
+            {l.optedOut && <Badge tone="stopped" title="Opted out — all outreach suppressed">opted out</Badge>}
+            {l.heldForReview && <Badge tone="held" title="Held for review — no AI call">review</Badge>}
             {l.needsHandover && (
-              <Badge tone="attention" title={l.handoverReason ?? "Handover to sales"}>handover</Badge>
+              <Badge tone="human" title={l.handoverReason ?? "Handover to sales"}>handover</Badge>
             )}
           </>
         ),
@@ -325,8 +330,8 @@ export function LeadsTable({
           typeof l.cqs === "number" ? (
             <span
               title="Conversation Quality Score (latest scored call)"
-              className={`tone ${
-                l.cqs >= 75 ? "tone-positive" : l.cqs >= 50 ? "tone-attention" : "tone-critical"
+              className={`tag ${
+                l.cqs >= 75 ? "tag-aqua" : l.cqs >= 50 ? "tag-citric" : "tag-tangerine"
               }`}
             >
               {l.cqs}

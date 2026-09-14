@@ -433,87 +433,77 @@ h1, h2, h3 {
    over both.
    ═══════════════════════════════════════════════════════════════════════ */
 .enori {
-  /* Surfaces — Clean Canvas is the 60% foundation. */
-  --cara-page:         #f8fafc;   /* Clean Canvas */
-  --cara-surface:      #ffffff;   /* Primary Metric Card */
-  --cara-surface-2:    #f1f5f9;
-  --cara-tint:         #f4f7fb;   /* sidebar */
+  /* Surfaces — Light grey is the canvas, white the cards. */
+  --cara-page:         #f2f6f8;   /* Light grey */
+  --cara-surface:      #ffffff;
+  --cara-surface-2:    #e9eff3;
+  --cara-tint:         #e0e7eb;   /* Dark grey */
 
-  /* Borders — the deck specifies 1px solid #E2E8F0 on metric cards. */
-  --cara-rule:         #e2e8f0;
-  --cara-rule-strong:  #cbd5e1;
-  --cara-rule-soft:    #eef2f7;
+  --cara-rule:         #dbe4ea;
+  --cara-rule-strong:  #c3d0d9;
+  --cara-rule-soft:    #e8eef2;
 
-  /* Ink — Deep Ink Slate, 25% of the palette weight, all typography. */
-  --cara-ink:          #1b1b2e;   /* Deep Ink Slate */
-  --cara-ink-soft:     #33334d;
+  /* Ink — Dark blue, near-black with a blue cast, for all typography. */
+  --cara-ink:          #010c14;   /* Dark blue */
+  --cara-ink-soft:     #22333f;
 
-  /* Accent — Cobalt Spark carries the interface. The deck assigns Iris Violet
-     to primary CTAs, but the clinic asked for the blues instead, so violet is
-     now held back for the logotype alone and Cobalt does the work.
-     `--cara-beige` is the highlight FILL and `--cara-beige-deep` the readable
-     TEXT accent; the names are legacy, the roles are what matter. */
-  --cara-beige:        #496fe9;   /* Cobalt Spark — fill */
-  --cara-beige-deep:   #1d4ed8;   /* deep blue — readable on white */
-  --cara-accent-bg:    #eff6ff;   /* the faintest blue wash */
+  /* Accent — Bright blue does the work. It clears 4.6:1 against white, so it
+     can carry text as well as fills, which is why it is both roles here.
+     Light blue is the softer partner for hovers and secondary marks. */
+  --cara-beige:        #0077cc;   /* Bright blue — fill */
+  --cara-beige-deep:   #0069b4;   /* readable on white */
+  --cara-accent-bg:    #e6f3fc;
 
-  /* Cobalt Spark is the interactive blue; Iris Violet survives in the
-     logotype, which the Brand Guidelines specify by name. */
-  --enori-cobalt:      #496fe9;
-  --enori-iris:        #7266dc;   /* logotype only */
-  --enori-sky:         #dbeafe;   /* Soft Sky */
-  --enori-indigo:      #1e40af;   /* Royal Indigo */
+  --enori-cobalt:      #0077cc;   /* Bright blue */
+  --enori-light:       #3da7f5;   /* Light blue */
+  --enori-deep:        #001e33;   /* the dark end of the gradient */
+  --enori-sky:         #d6ecfa;
+  --enori-indigo:      #00507f;
 
-  /* The bento dashboard's highlight pair, re-pointed into the blue spectrum
-     so no green or red can leak in through it. */
-  --cara-yellow:       #496fe9;
-  --cara-yellow-soft:  #dbeafe;
-  --cara-coral:        #1d4ed8;
-  --cara-coral-soft:   #eff6ff;
-  --cara-dark:         #1b1b2e;
-  --cara-dark-2:       #26263f;
+  --cara-yellow:       #0077cc;
+  --cara-yellow-soft:  #d6ecfa;
+  --cara-coral:        #3da7f5;
+  --cara-coral-soft:   #e6f3fc;
+  --cara-dark:         #010c14;
+  --cara-dark-2:       #0d2030;
 
-  --cara-text:         #1b1b2e;
-  --cara-text-muted:   #64748b;
-  --cara-text-faint:   #94a3b8;
+  --cara-text:         #010c14;
+  --cara-text-muted:   #5b6b76;
+  --cara-text-faint:   #8fa0ab;
 
-  /* Semantic ramps, rebuilt without green or red — and entirely in PASTEL.
-     No rung is a solid vibrant fill: saturation stays low throughout, and the
-     hierarchy is carried by tint DEPTH, border presence and text weight
-     instead. Solid violet is reserved for the two places the deck actually
-     asks for it: the logo squircle and the single primary CTA. */
-  --state-info-bg:      #dbeafe;   /* Soft Sky — the deck's Growth & Lift */
-  --state-info-bd:      #bfdbfe;
-  --state-info-tx:      #1e40af;   /* Royal Indigo */
+  /* Semantic ramps, still without green or red: depth, border and ink weight
+     carry the urgency. Identity, where a badge needs it, is handled by the tag
+     palette further down instead — this ladder is for quiet states and trends. */
+  --state-info-bg:      #d6ecfa;
+  --state-info-bd:      #b3daf4;
+  --state-info-tx:      #00507f;
 
-  --state-success-bg:   #dbeafe;   /* was green — now Growth & Lift */
-  --state-success-bd:   #bfdbfe;
-  --state-success-tx:   #1e40af;
+  --state-success-bg:   #d6ecfa;
+  --state-success-bd:   #b3daf4;
+  --state-success-tx:   #00507f;
 
-  --state-warning-bg:   #eff6ff;   /* was amber — the faintest blue */
-  --state-warning-bd:   #dbeafe;
-  --state-warning-tx:   #1d4ed8;
+  --state-warning-bg:   #eff7fd;
+  --state-warning-bd:   #dceaf5;
+  --state-warning-tx:   #0069b4;
 
-  --state-danger-bg:    #bfdbfe;   /* was red — pastel blue, the deepest tint
-                                      in the set but still a tint */
-  --state-danger-bd:    #7fb0f5;   /* a border it alone carries */
-  --state-danger-tx:    #1e3a8a;   /* deep navy ink, for the contrast the fill
-                                      no longer provides */
+  --state-danger-bg:    #b9dcf6;
+  --state-danger-bd:    #6fb4e6;
+  --state-danger-tx:    #00395e;
 
-  --path-hair-bg:       #dbeafe;
-  --path-hair-accent:   #1e40af;
-  --path-skin-bg:       #eef2ff;
-  --path-skin-accent:   #4338ca;
-  --path-nsr-bg:        #ede9fe;
-  --path-nsr-accent:    #7266dc;
+  --path-hair-bg:       #d6ecfa;
+  --path-hair-accent:   #00507f;
+  --path-skin-bg:       #eff7fd;
+  --path-skin-accent:   #0069b4;
+  --path-nsr-bg:        #e6f3fc;
+  --path-nsr-accent:    #3da7f5;
 
-  /* Softer, flatter shadows — the deck forbids heavy drops and outer glows. */
-  --cara-shadow:    0 1px 2px rgba(27,27,46,.04), 0 4px 16px rgba(27,27,46,.06);
-  --cara-shadow-lg: 0 10px 30px rgba(27,27,46,.10);
+  --cara-shadow:    0 1px 2px rgba(1,12,20,.04), 0 4px 16px rgba(1,12,20,.06);
+  --cara-shadow-lg: 0 10px 30px rgba(1,12,20,.10);
 
   --background: var(--cara-page);
   --foreground: var(--cara-ink);
 }
+
 
 /* Type system: Playfair Display for display headings (it shares the Didone
    heritage the logotype is drawn from), Plus Jakarta Sans for the interface. */
@@ -540,50 +530,49 @@ h1, h2, h3 {
    the Deep Ink Slate root and need brand sign-off before they ship. The
    app has a working dark mode today, so the alternative was to break it. */
 .enori.dark {
-  --cara-page:         #12121f;
-  --cara-surface:      #1b1b2e;   /* Deep Ink Slate as the card shell */
-  --cara-surface-2:    #26263f;
-  --cara-tint:         #1b1b2e;
+  --cara-page:         #010c14;   /* Dark blue */
+  --cara-surface:      #0c1a25;
+  --cara-surface-2:    #162735;
+  --cara-tint:         #0c1a25;
 
-  --cara-rule:         #2e2e4a;
-  --cara-rule-strong:  #3f3f63;
-  --cara-rule-soft:    #24243c;
+  --cara-rule:         #1e3243;
+  --cara-rule-strong:  #2c4557;
+  --cara-rule-soft:    #16252f;
 
-  --cara-ink:          #f8fafc;
-  --cara-ink-soft:     #cbd5e1;
-  --cara-beige:        #6d8ff0;
-  --cara-beige-deep:   #93c5fd;
-  --cara-accent-bg:    #17233f;
+  --cara-ink:          #f2f6f8;
+  --cara-ink-soft:     #c3d0d9;
+  --cara-beige:        #3da7f5;   /* Light blue carries on dark */
+  --cara-beige-deep:   #6fc0fa;
+  --cara-accent-bg:    #0c2740;
 
-  --enori-sky:         #1e3a8a;
-  --enori-indigo:      #bfdbfe;
+  --enori-sky:         #0c2740;
+  --enori-indigo:      #b3daf4;
 
-  --cara-yellow:       #6d8ff0;
-  --cara-yellow-soft:  #1e2a54;
-  --cara-coral:        #8b80e6;
-  --cara-coral-soft:   #2a2749;
-  --cara-dark:         #26263f;
-  --cara-dark-2:       #2f2f4d;
+  --cara-yellow:       #3da7f5;
+  --cara-yellow-soft:  #0c2740;
+  --cara-coral:        #6fc0fa;
+  --cara-coral-soft:   #0c2740;
+  --cara-dark:         #162735;
+  --cara-dark-2:       #1e3243;
 
-  --cara-text:         #f1f5f9;
-  --cara-text-muted:   #9aa3b2;
-  --cara-text-faint:   #6b7280;
+  --cara-text:         #eef4f8;
+  --cara-text-muted:   #93a6b3;
+  --cara-text-faint:   #64798a;
 
-  /* The same pastel ladder inverted: on a dark ground "pastel" means a muted
-     violet surface carrying light violet ink, rather than a bright fill. */
-  --state-info-bg:      #1e2a54;
-  --state-info-bd:      #2c3c73;
-  --state-info-tx:      #bfdbfe;
-  --state-success-bg:   #1e2a54;
-  --state-success-bd:   #2c3c73;
-  --state-success-tx:   #bfdbfe;
-  --state-warning-bg:   #1a2540;
-  --state-warning-bd:   #26355c;
-  --state-warning-tx:   #bcd3fb;
-  --state-danger-bg:    #274375;
-  --state-danger-bd:    #4272bd;
-  --state-danger-tx:    #dbeafe;
+  --state-info-bg:      #0c2740;
+  --state-info-bd:      #164a75;
+  --state-info-tx:      #a8d6f6;
+  --state-success-bg:   #0c2740;
+  --state-success-bd:   #164a75;
+  --state-success-tx:   #a8d6f6;
+  --state-warning-bg:   #0b1f2e;
+  --state-warning-bd:   #143348;
+  --state-warning-tx:   #8cc5ee;
+  --state-danger-bg:    #17537f;
+  --state-danger-bd:    #2f7fb8;
+  --state-danger-tx:    #d6ecfa;
 }
+
 
 /* ─── The tone ladder ────────────────────────────────────────────────────
    The Zero Green / Zero Red rule's real cost: status colour in this CRM is
@@ -594,9 +583,9 @@ h1, h2, h3 {
    nothing shouts with a saturated fill — three quieter cues carry it instead,
    and they stack:
 
-     • tint depth   #eff6ff → #bfdbfe, faintest to deepest
+     • tint depth   #eff7fd → #b9dcf6, faintest to deepest
      • border       only the critical rung carries a visible one
-     • ink + weight #1d4ed8 regular → #1e3a8a semibold
+     • ink + weight #0069b4 regular → #00395e semibold
 
    One of those alone would be too soft to catch a telecaller scanning forty
    rows; together they read as a clear step up without raising the volume.
@@ -691,8 +680,8 @@ h1, h2, h3 {
 }
 .enori .cara-btn-primary:hover,
 .enori.dark .cara-btn-primary:hover {
-  background: #3a5fd4;
-  border-color: #3a5fd4;
+  background: #0066b0;
+  border-color: #0066b0;
 }
 
 /* Cobalt Spark drives interactive controls and focus (p.6). */
@@ -734,27 +723,27 @@ h1, h2, h3 {
   --viz-seq-5:    #5f4a1c;
 }
 .enori {
-  --viz-bar:      #496fe9;   /* Cobalt Spark — the deck's interactive blue */
-  --viz-bar-peak: #1e3a8a;   /* deep navy marks the one bar worth naming —
+  --viz-bar:      #0077cc;   /* Bright blue */
+  --viz-bar-peak: #001e33;   /* the dark end marks the one bar worth naming —
                                 emphasis by depth, since hue is spoken for */
   --viz-grid:     var(--cara-rule);
-  --viz-seq-1:    #1e3a8a;
-  --viz-seq-2:    #1d4ed8;
-  --viz-seq-3:    #3b82f6;
-  --viz-seq-4:    #60a5fa;
-  --viz-seq-5:    #93c5fd;
+  --viz-seq-1:    #001e33;
+  --viz-seq-2:    #00507f;
+  --viz-seq-3:    #0077cc;
+  --viz-seq-4:    #3da7f5;
+  --viz-seq-5:    #9fd2fa;
 }
 /* Dark gets its OWN steps off the same ramp — not an inversion. The darkest
    violets disappear against a Deep Ink Slate ground, so the whole sequence
    shifts up into the range that stays visible on it. */
 .enori.dark {
-  --viz-bar:      #4d76d8;
-  --viz-bar-peak: #bfdbfe;
-  --viz-seq-1:    #dbeafe;
-  --viz-seq-2:    #93c5fd;
-  --viz-seq-3:    #60a5fa;
-  --viz-seq-4:    #3b82f6;
-  --viz-seq-5:    #2563eb;
+  --viz-bar:      #1e6ea8;
+  --viz-bar-peak: #9fd2fa;
+  --viz-seq-1:    #cfe8fb;
+  --viz-seq-2:    #6fc0fa;
+  --viz-seq-3:    #3da7f5;
+  --viz-seq-4:    #0077cc;
+  --viz-seq-5:    #00507f;
 }
 
 /* ─── Dashboard tiles ────────────────────────────────────────────────────
@@ -783,7 +772,7 @@ h1, h2, h3 {
 .cara-tile-featured { border-color: var(--cara-rule-strong); }
 .enori .cara-tile-featured {
   background: linear-gradient(180deg, var(--cara-accent-bg), var(--cara-surface) 70%);
-  border-color: #bfdbfe;
+  border-color: #b3daf4;
 }
 .enori .cara-tile-featured .cara-tile-arrow {
   background: var(--enori-cobalt);
@@ -792,7 +781,7 @@ h1, h2, h3 {
 }
 .enori.dark .cara-tile-featured {
   background: linear-gradient(180deg, var(--cara-accent-bg), var(--cara-surface) 70%);
-  border-color: #26355c;
+  border-color: #164a75;
 }
 
 .cara-queue-icon {
@@ -810,191 +799,103 @@ h1, h2, h3 {
   border-color: transparent;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   ENORI — PASTEL VIOLET VARIANT
-   ───────────────────────────────────────────────────────────────────────
-   A second sample to hold against the blue, applied as `enori-violet`
-   ALONGSIDE `enori`: structure, type and wordmark are shared, only the
-   palette changes, so the two are compared on equal terms.
-
-   Pastel only. Nothing here is a saturated fill — the deepest value used
-   as a background is #ddd6fe, and the accent that was Iris Violet #7266dc
-   has been softened out of the interface entirely.
-
-   The one exception is INK. Text and iconography keep deep violet
-   (#4c1d95 / #5b21b6), because a pastel letterform on a white ground
-   fails contrast and stops being readable — "no vibrant colour" is a rule
-   about fills, or it is a rule against legibility.
-   ═══════════════════════════════════════════════════════════════════════ */
-.enori-violet {
-  --cara-page:         #faf8ff;   /* a canvas with the faintest violet cast */
-  --cara-surface:      #ffffff;
-  --cara-surface-2:    #f5f3ff;
-  --cara-tint:         #f7f5fe;
-
-  --cara-rule:         #e9e5f8;
-  --cara-rule-strong:  #d6cef2;
-  --cara-rule-soft:    #f1eefb;
-
-  --cara-ink:          #241e3d;   /* violet-cast near-black for typography */
-  --cara-ink-soft:     #453c6b;
-
-  --cara-beige:        #c4b5fd;   /* pastel fill */
-  --cara-beige-deep:   #5b21b6;   /* ink accent — readable, not a fill */
-  --cara-accent-bg:    #f1edfe;
-
-  --enori-cobalt:      #8b7de8;   /* interactive, softened */
-  --enori-sky:         #ede9fe;
-  --enori-indigo:      #5b21b6;
-
-  --cara-yellow:       #c4b5fd;
-  --cara-yellow-soft:  #ede9fe;
-  --cara-coral:        #a78bfa;
-  --cara-coral-soft:   #f1edfe;
-  --cara-dark:         #241e3d;
-  --cara-dark-2:       #322a52;
-
-  --cara-text:         #241e3d;
-  --cara-text-muted:   #6b6389;
-  --cara-text-faint:   #9d95b8;
-
-  /* The same ladder, in pastel violet: depth, border and ink weight. */
-  --state-info-bg:      #ede9fe;
-  --state-info-bd:      #ddd6fe;
-  --state-info-tx:      #5b21b6;
-
-  --state-success-bg:   #ede9fe;
-  --state-success-bd:   #ddd6fe;
-  --state-success-tx:   #5b21b6;
-
-  --state-warning-bg:   #f7f5ff;
-  --state-warning-bd:   #ece7fd;
-  --state-warning-tx:   #6d28d9;
-
-  --state-danger-bg:    #ddd6fe;
-  --state-danger-bd:    #bfaef9;
-  --state-danger-tx:    #4c1d95;
-
-  --path-hair-bg:       #ede9fe;
-  --path-hair-accent:   #5b21b6;
-  --path-skin-bg:       #f7f5ff;
-  --path-skin-accent:   #6d28d9;
-  --path-nsr-bg:        #f1edfe;
-  --path-nsr-accent:    #7c6bd8;
-
-  --cara-shadow:    0 1px 2px rgba(36,30,61,.04), 0 4px 16px rgba(36,30,61,.06);
-  --cara-shadow-lg: 0 10px 30px rgba(36,30,61,.10);
-
-  --background: var(--cara-page);
-  --foreground: var(--cara-ink);
+/* ─── The navbar ─────────────────────────────────────────────────────────
+   A single blue field with white type, per the reference. The gradient runs
+   Bright blue → the dark end, and it starts there rather than at the lighter
+   #1484C5 for a measurable reason: white on #0077CC is 4.66:1, which clears
+   AA for body text, while white on #1484C5 is 4.09:1, which does not. Every
+   step of this gradient is darker than its start, so the whole column is
+   legible rather than just the bottom of it. */
+.enori .cara-sidebar {
+  background: linear-gradient(180deg, #0077cc 0%, #005089 45%, #001e33 100%);
+  border-right-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+.enori .cara-sidebar .text-cara-ink,
+.enori .cara-sidebar .text-cara-muted,
+.enori .cara-sidebar .text-cara-faint { color: #ffffff; }
+.enori .cara-sidebar a,
+.enori .cara-sidebar button { color: rgba(255, 255, 255, 0.86); }
+.enori .cara-sidebar a:hover,
+.enori .cara-sidebar button:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+/* The dividers above and below the nav were drawn in the page's rule colour,
+   which is invisible on blue. */
+.enori .cara-sidebar [class*="border-cara-rule"] { border-color: rgba(255, 255, 255, 0.16) !important; }
+.enori .cara-sidebar .cara-badge {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+/* On this ground the logotype inverts: the root goes white, as the Brand
+   Guidelines direct for dark surfaces, and the squircle flips to a white chip
+   carrying the blue — the mark stays readable instead of vanishing into it. */
+.enori .cara-sidebar .enori-wordmark { color: #ffffff; }
+.enori .cara-sidebar .enori-wordmark-en { color: #9fd2fa; }
+.enori .cara-sidebar .enori-squircle {
+  background: #ffffff;
+  color: #0077cc;
 }
 
-/* Charts. Pastel-only compresses the ramp — five steps have to live between
-   #9c8cf5 and #ede9fe, where the blue version had navy to sky to work with —
-   so the two palest segments sit closer together than is ideal. The legend
-   carries name, count and share in text, which is what keeps the ring readable
-   when the colours alone no longer separate cleanly. */
-.enori-violet {
-  --viz-bar:      #c4b5fd;
-  --viz-bar-peak: #9c8cf5;   /* emphasis by depth — there is no louder option */
-  --viz-grid:     var(--cara-rule);
-  --viz-seq-1:    #9c8cf5;
-  --viz-seq-2:    #b0a2f8;
-  --viz-seq-3:    #c4b5fd;
-  --viz-seq-4:    #d8cffe;
-  --viz-seq-5:    #ede9fe;
-}
+/* ─── Tags ───────────────────────────────────────────────────────────────
+   Status badges are the one place in this interface that needs IDENTITY, and
+   identity is the one thing a single hue cannot supply. Measured: six
+   blue/violet hues put the worst adjacent pair at ΔE 5.6 for normal colour
+   vision, against a floor of 15 — two badges most people could not tell
+   apart. The reference palette clears it, at ΔE 15.2 normal and 15.3 for the
+   worst colour-blind pair.
 
-/* A pastel fill cannot carry a button on its own — it reads as disabled. So
-   the primary keeps a pastel ground and earns its affordance from a defined
-   border and deep violet ink instead of from saturation. */
-.enori-violet .cara-btn-primary,
-.enori-violet.dark .cara-btn-primary {
-  background: #ddd6fe;
-  border-color: #bfaef9;
-  color: #3b2a73;
+   DEVIATION, deliberate and worth knowing: the Brand Guidelines (p.11) say
+   "Never introduce green or red status badges". Citric is a green and
+   Tangerine is a red. This palette was supplied for the tags specifically, so
+   it is used for them and nothing else — trends, deltas and charts stay on
+   the blue ladder, where the no-green/no-red rule still holds.
+
+   Text colour is chosen per fill for contrast, not by theme: white on the
+   saturated grounds, near-black on the light ones. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--cara-pill);
+  padding: 2px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.tag-klein     { background: #4100f5; color: #ffffff; }  /* Klein Blue */
+.tag-citric    { background: #cdf564; color: #191414; }  /* Citric */
+.tag-aqua      { background: #9bf0e1; color: #191414; }  /* Aquamarine */
+.tag-fushia    { background: #f037a5; color: #ffffff; }  /* Fushia */
+.tag-tangerine { background: #ff4632; color: #ffffff; }  /* Tangerine */
+.tag-ink       { background: #191414; color: #ffffff; }  /* Black */
+
+/* Under the CARA design these fills would be four hues that belong to no
+   palette at all, so there they stay on the old tinted treatment. */
+:root:not(.enori) .tag { background: transparent; color: inherit; }
+:root:not(.enori) .tag-klein     { background: rgba(124,58,237,.14); color: #6d28d9; }
+:root:not(.enori) .tag-citric    { background: rgba(245,158,11,.16);  color: #92630a; }
+:root:not(.enori) .tag-aqua      { background: rgba(20,184,166,.16);  color: #0f766e; }
+:root:not(.enori) .tag-fushia    { background: rgba(219,39,119,.14);  color: #be185d; }
+:root:not(.enori) .tag-tangerine { background: rgba(239,68,68,.15);   color: #b91c1c; }
+:root:not(.enori) .tag-ink       { background: rgba(30,41,59,.12);    color: #1e293b; }
+
+/* The unread-WhatsApp count in the nav. It was a green pill, which the brand
+   rules bar outright and which disappears against the blue column anyway. */
+.nav-count {
+  display: grid;
+  place-items: center;
+  height: 16px;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: var(--cara-pill);
+  background: #16a34a;
+  color: #ffffff;
+  font-size: 10px;
   font-weight: 600;
 }
-.enori-violet .cara-btn-primary:hover,
-.enori-violet.dark .cara-btn-primary:hover {
-  background: #cec3fd;
-  border-color: #a992f6;
-}
-.enori-violet .cara-input:focus,
-.enori-violet .cara-textarea:focus,
-.enori-violet .cara-select:focus {
-  border-color: #a992f6;
-  box-shadow: 0 0 0 3px rgba(169, 146, 246, .22);
-}
-
-/* The logotype softens with everything else: the prefix drops from Iris Violet
-   to a pastel, and the squircle carries deep ink rather than white. */
-.enori-violet .enori-wordmark-en { color: #a78bfa; }
-.enori-violet .enori-squircle {
-  background: #c4b5fd;
-  color: #3b2a73;
-}
-.enori-violet .cara-tile-featured {
-  background: linear-gradient(180deg, var(--cara-accent-bg), var(--cara-surface) 70%);
-  border-color: #ddd6fe;
-}
-.enori-violet .cara-tile-featured .cara-tile-arrow {
-  background: #ddd6fe;
-  border-color: #bfaef9;
-  color: #3b2a73;
-}
-.enori-violet .cara-tile-arrow:hover {
-  background: #ddd6fe;
-  border-color: #bfaef9;
-  color: #3b2a73;
-}
-.enori-violet .cara-queue-icon {
-  background: var(--cara-accent-bg);
-  border-color: transparent;
-}
-.enori-violet .tone-link { color: #6d28d9; }
-
-/* Dark: the same restraint, inverted. Muted violet grounds, pastel ink. */
-.enori-violet.dark {
-  --cara-page:         #16121f;
-  --cara-surface:      #201a2e;
-  --cara-surface-2:    #2b2440;
-  --cara-tint:         #201a2e;
-
-  --cara-rule:         #332a4a;
-  --cara-rule-strong:  #443861;
-  --cara-rule-soft:    #291f3b;
-
-  --cara-ink:          #f5f3ff;
-  --cara-ink-soft:     #d6cef2;
-  --cara-beige:        #a396e8;
-  --cara-beige-deep:   #c4b5fd;
-  --cara-accent-bg:    #2c2447;
-
-  --cara-text:         #f1eefb;
-  --cara-text-muted:   #a49bc0;
-  --cara-text-faint:   #746b91;
-
-  --state-info-bg:      #2c2447;
-  --state-info-bd:      #3c3161;
-  --state-info-tx:      #d8cffe;
-  --state-success-bg:   #2c2447;
-  --state-success-bd:   #3c3161;
-  --state-success-tx:   #d8cffe;
-  --state-warning-bg:   #261f3c;
-  --state-warning-bd:   #332a50;
-  --state-warning-tx:   #c4b5fd;
-  --state-danger-bg:    #443a70;
-  --state-danger-bd:    #6a5da8;
-  --state-danger-tx:    #ede9fe;
-
-  --viz-bar:      #7a6cc4;
-  --viz-bar-peak: #c4b5fd;
-  --viz-seq-1:    #ede9fe;
-  --viz-seq-2:    #d8cffe;
-  --viz-seq-3:    #c4b5fd;
-  --viz-seq-4:    #a396e8;
-  --viz-seq-5:    #7f72c6;
-}
-.enori-violet.dark .enori-wordmark { color: #ffffff; }
-.enori-violet.dark .enori-wordmark-en { color: #c4b5fd; }
+.enori .nav-count { background: #ff4632; }   /* Tangerine, from the tag palette */
