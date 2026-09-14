@@ -809,3 +809,192 @@ h1, h2, h3 {
   background: var(--cara-accent-bg);
   border-color: transparent;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ENORI — PASTEL VIOLET VARIANT
+   ───────────────────────────────────────────────────────────────────────
+   A second sample to hold against the blue, applied as `enori-violet`
+   ALONGSIDE `enori`: structure, type and wordmark are shared, only the
+   palette changes, so the two are compared on equal terms.
+
+   Pastel only. Nothing here is a saturated fill — the deepest value used
+   as a background is #ddd6fe, and the accent that was Iris Violet #7266dc
+   has been softened out of the interface entirely.
+
+   The one exception is INK. Text and iconography keep deep violet
+   (#4c1d95 / #5b21b6), because a pastel letterform on a white ground
+   fails contrast and stops being readable — "no vibrant colour" is a rule
+   about fills, or it is a rule against legibility.
+   ═══════════════════════════════════════════════════════════════════════ */
+.enori-violet {
+  --cara-page:         #faf8ff;   /* a canvas with the faintest violet cast */
+  --cara-surface:      #ffffff;
+  --cara-surface-2:    #f5f3ff;
+  --cara-tint:         #f7f5fe;
+
+  --cara-rule:         #e9e5f8;
+  --cara-rule-strong:  #d6cef2;
+  --cara-rule-soft:    #f1eefb;
+
+  --cara-ink:          #241e3d;   /* violet-cast near-black for typography */
+  --cara-ink-soft:     #453c6b;
+
+  --cara-beige:        #c4b5fd;   /* pastel fill */
+  --cara-beige-deep:   #5b21b6;   /* ink accent — readable, not a fill */
+  --cara-accent-bg:    #f1edfe;
+
+  --enori-cobalt:      #8b7de8;   /* interactive, softened */
+  --enori-sky:         #ede9fe;
+  --enori-indigo:      #5b21b6;
+
+  --cara-yellow:       #c4b5fd;
+  --cara-yellow-soft:  #ede9fe;
+  --cara-coral:        #a78bfa;
+  --cara-coral-soft:   #f1edfe;
+  --cara-dark:         #241e3d;
+  --cara-dark-2:       #322a52;
+
+  --cara-text:         #241e3d;
+  --cara-text-muted:   #6b6389;
+  --cara-text-faint:   #9d95b8;
+
+  /* The same ladder, in pastel violet: depth, border and ink weight. */
+  --state-info-bg:      #ede9fe;
+  --state-info-bd:      #ddd6fe;
+  --state-info-tx:      #5b21b6;
+
+  --state-success-bg:   #ede9fe;
+  --state-success-bd:   #ddd6fe;
+  --state-success-tx:   #5b21b6;
+
+  --state-warning-bg:   #f7f5ff;
+  --state-warning-bd:   #ece7fd;
+  --state-warning-tx:   #6d28d9;
+
+  --state-danger-bg:    #ddd6fe;
+  --state-danger-bd:    #bfaef9;
+  --state-danger-tx:    #4c1d95;
+
+  --path-hair-bg:       #ede9fe;
+  --path-hair-accent:   #5b21b6;
+  --path-skin-bg:       #f7f5ff;
+  --path-skin-accent:   #6d28d9;
+  --path-nsr-bg:        #f1edfe;
+  --path-nsr-accent:    #7c6bd8;
+
+  --cara-shadow:    0 1px 2px rgba(36,30,61,.04), 0 4px 16px rgba(36,30,61,.06);
+  --cara-shadow-lg: 0 10px 30px rgba(36,30,61,.10);
+
+  --background: var(--cara-page);
+  --foreground: var(--cara-ink);
+}
+
+/* Charts. Pastel-only compresses the ramp — five steps have to live between
+   #9c8cf5 and #ede9fe, where the blue version had navy to sky to work with —
+   so the two palest segments sit closer together than is ideal. The legend
+   carries name, count and share in text, which is what keeps the ring readable
+   when the colours alone no longer separate cleanly. */
+.enori-violet {
+  --viz-bar:      #c4b5fd;
+  --viz-bar-peak: #9c8cf5;   /* emphasis by depth — there is no louder option */
+  --viz-grid:     var(--cara-rule);
+  --viz-seq-1:    #9c8cf5;
+  --viz-seq-2:    #b0a2f8;
+  --viz-seq-3:    #c4b5fd;
+  --viz-seq-4:    #d8cffe;
+  --viz-seq-5:    #ede9fe;
+}
+
+/* A pastel fill cannot carry a button on its own — it reads as disabled. So
+   the primary keeps a pastel ground and earns its affordance from a defined
+   border and deep violet ink instead of from saturation. */
+.enori-violet .cara-btn-primary,
+.enori-violet.dark .cara-btn-primary {
+  background: #ddd6fe;
+  border-color: #bfaef9;
+  color: #3b2a73;
+  font-weight: 600;
+}
+.enori-violet .cara-btn-primary:hover,
+.enori-violet.dark .cara-btn-primary:hover {
+  background: #cec3fd;
+  border-color: #a992f6;
+}
+.enori-violet .cara-input:focus,
+.enori-violet .cara-textarea:focus,
+.enori-violet .cara-select:focus {
+  border-color: #a992f6;
+  box-shadow: 0 0 0 3px rgba(169, 146, 246, .22);
+}
+
+/* The logotype softens with everything else: the prefix drops from Iris Violet
+   to a pastel, and the squircle carries deep ink rather than white. */
+.enori-violet .enori-wordmark-en { color: #a78bfa; }
+.enori-violet .enori-squircle {
+  background: #c4b5fd;
+  color: #3b2a73;
+}
+.enori-violet .cara-tile-featured {
+  background: linear-gradient(180deg, var(--cara-accent-bg), var(--cara-surface) 70%);
+  border-color: #ddd6fe;
+}
+.enori-violet .cara-tile-featured .cara-tile-arrow {
+  background: #ddd6fe;
+  border-color: #bfaef9;
+  color: #3b2a73;
+}
+.enori-violet .cara-tile-arrow:hover {
+  background: #ddd6fe;
+  border-color: #bfaef9;
+  color: #3b2a73;
+}
+.enori-violet .cara-queue-icon {
+  background: var(--cara-accent-bg);
+  border-color: transparent;
+}
+.enori-violet .tone-link { color: #6d28d9; }
+
+/* Dark: the same restraint, inverted. Muted violet grounds, pastel ink. */
+.enori-violet.dark {
+  --cara-page:         #16121f;
+  --cara-surface:      #201a2e;
+  --cara-surface-2:    #2b2440;
+  --cara-tint:         #201a2e;
+
+  --cara-rule:         #332a4a;
+  --cara-rule-strong:  #443861;
+  --cara-rule-soft:    #291f3b;
+
+  --cara-ink:          #f5f3ff;
+  --cara-ink-soft:     #d6cef2;
+  --cara-beige:        #a396e8;
+  --cara-beige-deep:   #c4b5fd;
+  --cara-accent-bg:    #2c2447;
+
+  --cara-text:         #f1eefb;
+  --cara-text-muted:   #a49bc0;
+  --cara-text-faint:   #746b91;
+
+  --state-info-bg:      #2c2447;
+  --state-info-bd:      #3c3161;
+  --state-info-tx:      #d8cffe;
+  --state-success-bg:   #2c2447;
+  --state-success-bd:   #3c3161;
+  --state-success-tx:   #d8cffe;
+  --state-warning-bg:   #261f3c;
+  --state-warning-bd:   #332a50;
+  --state-warning-tx:   #c4b5fd;
+  --state-danger-bg:    #443a70;
+  --state-danger-bd:    #6a5da8;
+  --state-danger-tx:    #ede9fe;
+
+  --viz-bar:      #7a6cc4;
+  --viz-bar-peak: #c4b5fd;
+  --viz-seq-1:    #ede9fe;
+  --viz-seq-2:    #d8cffe;
+  --viz-seq-3:    #c4b5fd;
+  --viz-seq-4:    #a396e8;
+  --viz-seq-5:    #7f72c6;
+}
+.enori-violet.dark .enori-wordmark { color: #ffffff; }
+.enori-violet.dark .enori-wordmark-en { color: #c4b5fd; }

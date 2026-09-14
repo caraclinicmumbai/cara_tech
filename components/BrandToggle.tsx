@@ -1,39 +1,53 @@
 "use client";
 
-// Brand toggle — flips the enori design layer on and off (pilot).
+// Brand toggle — cycles the design layer (pilot).
 //
-// The point of it is comparison. A reskin argued from screenshots is argued in
-// the abstract; this lets the business sit on the leads list they actually work
-// all day and switch between the two designs under their own hands, with their
-// own data in the rows. It is also how the Zero Green / Zero Red question gets
-// answered honestly — does "overdue" still catch the eye when it is violet.
+// Three samples on one button: the current CARA design, enori in blue, and
+// enori in pastel violet. The point of it is comparison. A reskin argued from
+// screenshots is argued in the abstract; this lets the business sit on the
+// screen they actually work all day, with their own data in the rows, and flip
+// between the options under their own hands.
 //
-// Mirrors ThemeToggle exactly: the class is applied before hydration by the
-// inline script in the root layout, and read here through useSyncExternalStore
-// so the server snapshot (CARA) matches the first client render.
+// Mirrors ThemeToggle: the classes are applied before hydration by the inline
+// script in the root layout, and read here through useSyncExternalStore so the
+// server snapshot (CARA) matches the first client render.
 import { useSyncExternalStore } from "react";
 
 const BRAND_EVENT = "cara-brand-change";
+
+/// The cycle, in order. `classes` is what goes on <html>; the violet variant
+/// layers over the blue one, so only its palette differs.
+const BRANDS = [
+  { key: "cara", label: "CARA", glyph: "◇", classes: [] as string[] },
+  { key: "enori", label: "enori · blue", glyph: "◆", classes: ["enori"] },
+  { key: "enori-violet", label: "enori · violet", glyph: "◆", classes: ["enori", "enori-violet"] },
+] as const;
 
 function subscribe(onChange: () => void) {
   window.addEventListener(BRAND_EVENT, onChange);
   return () => window.removeEventListener(BRAND_EVENT, onChange);
 }
 function getSnapshot() {
-  return document.documentElement.classList.contains("enori");
+  const el = document.documentElement.classList;
+  if (el.contains("enori-violet")) return 2;
+  if (el.contains("enori")) return 1;
+  return 0;
 }
 function getServerSnapshot() {
-  return false; // SSR renders CARA; the init script adds `enori` before paint
+  return 0; // SSR renders CARA; the init script applies the saved choice pre-paint
 }
 
 export function BrandToggle() {
-  const enori = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const index = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const current = BRANDS[index];
 
-  function toggle() {
-    const next = !enori;
-    document.documentElement.classList.toggle("enori", next);
+  function cycle() {
+    const next = BRANDS[(index + 1) % BRANDS.length];
+    const el = document.documentElement.classList;
+    el.remove("enori", "enori-violet");
+    for (const c of next.classes) el.add(c);
     try {
-      localStorage.setItem("cara-brand", next ? "enori" : "cara");
+      localStorage.setItem("cara-brand", next.key);
     } catch {
       // localStorage unavailable (private mode etc.) — the choice still holds
       // for this session, which is all a demo needs.
@@ -44,17 +58,16 @@ export function BrandToggle() {
   return (
     <button
       type="button"
-      onClick={toggle}
-      aria-label={enori ? "Switch to the CARA design" : "Switch to the enori design"}
-      aria-pressed={enori}
+      onClick={cycle}
+      aria-label={`Design: ${current.label}. Switch to ${BRANDS[(index + 1) % BRANDS.length].label}`}
       className="cara-chip gap-2"
-      title="Pilot: switch between the current CARA design and the enori brand"
+      title="Pilot: cycle between the CARA design and the two enori samples"
       suppressHydrationWarning
     >
       <span aria-hidden suppressHydrationWarning>
-        {enori ? "◆" : "◇"}
+        {current.glyph}
       </span>
-      <span suppressHydrationWarning>{enori ? "enori" : "CARA"}</span>
+      <span suppressHydrationWarning>{current.label}</span>
     </button>
   );
 }

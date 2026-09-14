@@ -52,7 +52,7 @@ export default function RootLayout({
             to avoid a flash of the other design. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('cara-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}if(localStorage.getItem('cara-brand')==='enori'){document.documentElement.classList.add('enori');}}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('cara-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}var b=localStorage.getItem('cara-brand');if(b==='enori'||b==='enori-violet'){document.documentElement.classList.add('enori');}if(b==='enori-violet'){document.documentElement.classList.add('enori-violet');}}catch(e){}})();`,
           }}
         />
       </head>
