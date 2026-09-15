@@ -118,8 +118,8 @@
   --radius-cara:    var(--cara-r);
   --radius-cara-lg: var(--cara-r-lg);
 
-  --font-sans:  var(--font-sans), "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: var(--font-serif), "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --font-sans:  var(--font-sans), "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-serif), "Playfair Display", Georgia, "Times New Roman", serif;
 }
 
 /* Dark mode is opt-in via a `.dark` class on <html> (set by the theme toggle +
@@ -170,7 +170,7 @@ html.dark { color-scheme: dark; }
 body {
   background: var(--cara-page);
   color: var(--cara-text);
-  font-family: var(--font-sans), "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-sans), "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
@@ -179,7 +179,7 @@ body {
 
 /* Modern-sans headings to match the bento SaaS inspiration. */
 h1, h2, h3 {
-  font-family: var(--font-sans), "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-sans), "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.01em;
@@ -506,17 +506,6 @@ h1, h2, h3 {
 
 
 
-/* Type system: Playfair Display for display headings (it shares the Didone
-   heritage the logotype is drawn from), Plus Jakarta Sans for the interface. */
-.enori body,
-.enori {
-  --font-sans:  var(--font-enori-sans);
-  --font-serif: var(--font-enori-display);
-}
-.enori body {
-  font-family: var(--font-enori-sans), "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
-}
-
 /* Mandatory across every stat counter, call timer and financial figure, so
    digits stop shifting width as they change. */
 .enori table,
@@ -639,7 +628,7 @@ h1, h2, h3 {
 
 /* Minimum 28px in application top navigation (Brand Guidelines p.4). */
 .enori-wordmark {
-  font-family: var(--font-enori-display), "Playfair Display", Georgia, serif;
+  font-family: var(--font-serif), "Playfair Display", Georgia, serif;
   font-size: 28px;
   line-height: 28px;
   font-weight: 700;
@@ -660,7 +649,7 @@ h1, h2, h3 {
   border-radius: 10px;         /* squircle, not a circle and not a box */
   background: #7266dc;
   color: #ffffff;
-  font-family: var(--font-enori-display), "Playfair Display", Georgia, serif;
+  font-family: var(--font-serif), "Playfair Display", Georgia, serif;
   font-size: 19px;
   font-weight: 700;
   line-height: 1;
@@ -793,12 +782,12 @@ h1, h2, h3 {
 .cara-queue-icon {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: var(--cara-beige-deep);
   background: var(--cara-surface-2);
   border: 1px solid var(--cara-rule);
-  font-size: 17px;
 }
 .enori .cara-queue-icon {
   background: var(--cara-accent-bg);
@@ -812,36 +801,7 @@ h1, h2, h3 {
    5.65:1 against #3358E8, which clears AA for body text, so the column is
    legible top to bottom without needing to darken as it descends. */
 .enori .cara-sidebar {
-  background: #3358e8;
-  border-right-color: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-}
-.enori .cara-sidebar .text-cara-ink,
-.enori .cara-sidebar .text-cara-muted,
-.enori .cara-sidebar .text-cara-faint { color: #ffffff; }
-.enori .cara-sidebar a,
-.enori .cara-sidebar button { color: rgba(255, 255, 255, 0.86); }
-.enori .cara-sidebar a:hover,
-.enori .cara-sidebar button:hover {
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
-}
-/* The dividers above and below the nav were drawn in the page's rule colour,
-   which is invisible on blue. */
-.enori .cara-sidebar [class*="border-cara-rule"] { border-color: rgba(255, 255, 255, 0.16) !important; }
-.enori .cara-sidebar .cara-badge {
-  background: rgba(255, 255, 255, 0.16);
-  border-color: rgba(255, 255, 255, 0.28);
-  color: #ffffff;
-}
-/* On this ground the logotype inverts: the root goes white, as the Brand
-   Guidelines direct for dark surfaces, and the squircle flips to a white chip
-   carrying the blue — the mark stays readable instead of vanishing into it. */
-.enori .cara-sidebar .enori-wordmark { color: #ffffff; }
-.enori .cara-sidebar .enori-wordmark-en { color: #c6d3fa; }
-.enori .cara-sidebar .enori-squircle {
-  background: #ffffff;
-  color: #3358e8;
+  border-right-color: var(--cara-rule);
 }
 
 /* ─── Tags ───────────────────────────────────────────────────────────────
@@ -884,14 +844,12 @@ h1, h2, h3 {
   white-space: nowrap;
   vertical-align: middle;
 }
-/* The glyph rides bare in the label's colour — no chip behind it. */
+/* The glyph rides bare in the label's colour — no chip behind it. It is drawn
+   rather than typed: emoji and dingbats are rendered by the operating system,
+   so the same character is a different picture on every machine. */
 .tag-icon {
-  display: inline-grid;
-  place-items: center;
   flex-shrink: 0;
-  font-size: 11px;
-  line-height: 1;
-  opacity: .85;
+  opacity: .9;
 }
 
 .tag-blue      { --tag-fill: #cfe3fb; --tag-line: #3b82f6; --tag-ink: #1d4fbf; }
@@ -1017,3 +975,84 @@ h1, h2, h3 {
   border-color: var(--cara-rule-strong);
 }
 .enori .cara-btn { box-shadow: none; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DENSITY PASS
+   ───────────────────────────────────────────────────────────────────────
+   The display end of the scale comes down by roughly a third and the
+   space it was holding open comes back as rows on screen.
+
+   ONE exception, stated because it is a deliberate miss: BODY text goes
+   14px → 13px, not 14 → 9.8. A third off the reading size is below any
+   defensible minimum — the tables here are read all day by people on
+   laptop screens, and 10px copy is not a denser product, it is an
+   unusable one. Density is bought from the headline sizes and the
+   padding, which is where the slack actually was.
+   ═══════════════════════════════════════════════════════════════════════ */
+.enori body { font-size: 13px; line-height: 1.5; }
+
+.enori h1 { font-size: 19px; }          /* was 26 */
+.enori h2 { font-size: 15px; }
+.enori h3 { font-size: 14px; }
+.enori .cara-title { font-size: 16px; } /* was 22 */
+.enori .cara-eyebrow { font-size: 10px; letter-spacing: 1.2px; }
+.enori .cara-note { font-size: 12px; }
+.enori .cara-sec-hd { margin-bottom: 16px; padding-bottom: 10px; }
+
+/* Controls: the same reduction, so inputs sit beside the text rather than
+   towering over it. */
+.enori .cara-input,
+.enori .cara-textarea,
+.enori .cara-select { padding: 7px 10px; font-size: 13px; }
+.enori .cara-btn { padding: 7px 14px; font-size: 12.5px; }
+.enori .cara-chip { padding: 6px 12px; font-size: 12px; }
+.enori .cara-table th { font-size: 10px; letter-spacing: .06em; }
+.enori .cara-table td { font-size: 12.5px; }
+.enori .cara-table th,
+.enori .cara-table td { padding-top: 7px; padding-bottom: 7px; }
+
+/* Dashboard figures. A 32px stat on a card this size was set for a poster;
+   22px still reads as the headline of its tile and gives back a row. */
+.enori .cara-stat-value { font-size: 22px; }
+.enori .cara-stat-hero { font-size: 27px; }
+
+/* ─── Sidebar ────────────────────────────────────────────────────────────
+   Light, narrow, and sectioned. The solid blue slab was a lot of chrome for
+   something a person navigates past rather than looks at, and it made every
+   item equally loud — so nothing indicated where you were. The field is now
+   the page's own surface and the ACTIVE item is the only coloured thing in
+   the column, which is the job colour should be doing here. */
+.enori .cara-sidebar {
+  background: var(--cara-surface);
+  border-right-color: var(--cara-rule);
+  color: var(--cara-text);
+}
+.enori .cara-sidebar-brand { background: transparent; }
+.enori .cara-sidebar .cara-sidebar-brand .enori-wordmark { font-size: 22px; line-height: 22px; }
+.enori .enori-squircle { width: 26px; height: 26px; font-size: 15px; border-radius: 8px; }
+
+.cara-nav-heading {
+  padding: 0 8px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--cara-text-faint);
+}
+.cara-nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: var(--cara-text-muted);
+  transition: background .12s, color .12s;
+}
+.cara-nav-link:hover { background: var(--cara-surface-2); color: var(--cara-ink); }
+.cara-nav-link.is-active {
+  background: var(--cara-accent-bg);
+  color: var(--enori-cobalt);
+  font-weight: 600;
+}

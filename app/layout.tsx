@@ -1,32 +1,20 @@
 import type { Metadata } from "next";
-import { Cormorant_Garamond, Inter, Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
+import { Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
-// CARA editorial type system: Cormorant Garamond (serif headings) + Inter (sans body).
-const inter = Inter({
-  variable: "--font-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-});
-
-const cormorant = Cormorant_Garamond({
-  variable: "--font-serif",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-});
-
-// enori type system (pilot): Plus Jakarta Sans for the interface, Playfair
-// Display for display headings — the deck pairs it with the Didone heritage of
-// the logotype. Loaded alongside the CARA faces rather than replacing them, so
-// the brand toggle can switch between the two without a reload.
+// TWO families, and only two. Plus Jakarta Sans carries the entire interface;
+// Playfair Display is reserved for the logotype and display headings, where its
+// Didone heritage pairs with the mark. Inter and Cormorant Garamond were dropped
+// — four families on one screen is three too many, and every extra face is
+// another render-blocking request for no gain a reader could name.
 const jakarta = Plus_Jakarta_Sans({
-  variable: "--font-enori-sans",
+  variable: "--font-sans",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
 
 const playfair = Playfair_Display({
-  variable: "--font-enori-display",
+  variable: "--font-serif",
   subsets: ["latin"],
   weight: ["500", "600", "700"],
 });
@@ -45,7 +33,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${inter.variable} ${cormorant.variable} ${jakarta.variable} ${playfair.variable} h-full antialiased`}
+      className={`${jakarta.variable} ${playfair.variable} h-full antialiased`}
     >
       <head>
         {/* Apply the saved (or system) theme, and the saved brand, before paint

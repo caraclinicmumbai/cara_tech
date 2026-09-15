@@ -9,9 +9,9 @@ import type { StatFigure } from "@/lib/dashboardMetrics";
 
 export function StatTile({ stat, featured = false }: { stat: StatFigure; featured?: boolean }) {
   return (
-    <div className={`cara-card cara-card-hover relative p-4 ${featured ? "cara-tile-featured" : ""}`}>
+    <div className={`cara-card cara-card-hover relative p-3.5 ${featured ? "cara-tile-featured" : ""}`}>
       <div className="flex items-start justify-between gap-2">
-        <div className="text-[11px] uppercase tracking-[1.2px] text-cara-muted">{stat.label}</div>
+        <div className="text-[10px] uppercase tracking-[1.1px] text-cara-muted">{stat.label}</div>
         <Link
           href={stat.href}
           aria-label={`Open ${stat.label}`}
@@ -22,14 +22,14 @@ export function StatTile({ stat, featured = false }: { stat: StatFigure; feature
         </Link>
       </div>
 
-      <div className="mt-3 flex items-baseline gap-2">
-        <span className="text-[32px] font-semibold leading-none tabular-nums text-cara-ink">
+      <div className="mt-2 flex items-baseline gap-1.5">
+        <span className="cara-stat-value font-semibold leading-none tabular-nums text-cara-ink">
           {stat.value}
         </span>
         <DeltaPill delta={stat.delta} inverse={stat.inverse} />
       </div>
 
-      <div className="mt-2 text-[11px] text-cara-faint">This month vs last</div>
+      <div className="mt-1.5 text-[10px] text-cara-faint">This month vs last</div>
     </div>
   );
 }

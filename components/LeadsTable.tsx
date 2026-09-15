@@ -7,6 +7,16 @@ import { StageSelect } from "@/components/StageSelect";
 import { TagField } from "@/components/TagField";
 import { LeadDeleteButton } from "@/components/LeadDeleteButton";
 import { RemarkField } from "@/components/RemarkField";
+import {
+  IconDuplicate,
+  IconStopped,
+  IconHeld,
+  IconPhone,
+  IconOverdue,
+  IconUp,
+  IconDown,
+  IconFlat,
+} from "@/components/Icon";
 
 export type LeadRow = {
   id: string;
@@ -106,10 +116,10 @@ const MUTED = "text-black/60 dark:text-white/60";
 /// that still carries the state in greyscale, under colour blindness, and on a
 /// printed page, none of which a block of colour survives.
 const BADGE_TONES = {
-  duplicate: { cls: "tag tag-aqua", icon: "⧉" },
-  stopped: { cls: "tag tag-tangerine", icon: "⊘" },
-  held: { cls: "tag tag-fushia", icon: "⏸" },
-  human: { cls: "tag tag-klein", icon: "☎" },
+  duplicate: { cls: "tag tag-aqua", Icon: IconDuplicate },
+  stopped: { cls: "tag tag-tangerine", Icon: IconStopped },
+  held: { cls: "tag tag-fushia", Icon: IconHeld },
+  human: { cls: "tag tag-klein", Icon: IconPhone },
 } as const;
 
 function Badge({
@@ -121,12 +131,10 @@ function Badge({
   title?: string;
   children: ReactNode;
 }) {
-  const { cls, icon } = BADGE_TONES[tone];
+  const { cls, Icon } = BADGE_TONES[tone];
   return (
     <span title={title} className={`ml-2 ${cls}`}>
-      <span className="tag-icon" aria-hidden>
-        {icon}
-      </span>
+      <Icon size={11} className="tag-icon" />
       {children}
     </span>
   );
@@ -287,11 +295,7 @@ export function LeadsTable({
                 l.nextFollowUpOverdue ? "tag tag-tangerine" : MUTED
               }
             >
-              {l.nextFollowUpOverdue && (
-                <span className="tag-icon" aria-hidden>
-                  !
-                </span>
-              )}
+              {l.nextFollowUpOverdue && <IconOverdue size={11} className="tag-icon" />}
               {l.nextFollowUp}
             </span>
           ) : (
@@ -346,9 +350,13 @@ export function LeadsTable({
                 l.cqs >= 75 ? "tag-aqua" : l.cqs >= 50 ? "tag-citric" : "tag-tangerine"
               }`}
             >
-              <span className="tag-icon" aria-hidden>
-                {l.cqs >= 75 ? "▲" : l.cqs >= 50 ? "■" : "▼"}
-              </span>
+              {l.cqs >= 75 ? (
+                <IconUp size={11} className="tag-icon" />
+              ) : l.cqs >= 50 ? (
+                <IconFlat size={11} className="tag-icon" />
+              ) : (
+                <IconDown size={11} className="tag-icon" />
+              )}
               {l.cqs}
             </span>
           ) : (

@@ -11,6 +11,7 @@
 // lost leads, where a rise is green nowhere — 225% more lost leads reads
 // tangerine, and a fall in them would read green.
 import type { Delta } from "@/lib/dashboardMetrics";
+import { IconUp, IconDown, IconFlat } from "@/components/Icon";
 
 export function DeltaPill({
   delta,
@@ -23,9 +24,7 @@ export function DeltaPill({
   if (delta.pct === null) {
     return (
       <span className="tag tag-neutral" title="Nothing in the comparison period">
-        <span className="tag-icon" aria-hidden>
-          ·
-        </span>
+        <IconFlat size={11} className="tag-icon" />
         new
       </span>
     );
@@ -33,7 +32,6 @@ export function DeltaPill({
 
   const up = delta.direction === "up";
   const flat = delta.direction === "flat";
-  const arrow = flat ? "■" : up ? "▲" : "▼";
   // "Good" means the direction the clinic wants, which inverts for lost leads.
   const good = flat || up !== inverse;
   const tone = flat ? "tag-neutral" : good ? "tag-lime" : "tag-tangerine";
@@ -43,9 +41,7 @@ export function DeltaPill({
       className={`tag ${tone} tabular-nums`}
       title={`${up ? "Up" : "Down"} ${Math.abs(delta.pct).toFixed(1)}% versus the same point last month`}
     >
-      <span className="tag-icon" aria-hidden>
-        {arrow}
-      </span>
+      {flat ? <IconFlat size={11} className="tag-icon" /> : up ? <IconUp size={11} className="tag-icon" /> : <IconDown size={11} className="tag-icon" />}
       {Math.abs(delta.pct).toFixed(1)}%
     </span>
   );

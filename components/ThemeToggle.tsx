@@ -6,6 +6,7 @@
 // (light) during hydration so there's no mismatch, then reconciles to the real
 // value — and flips + persists the choice on click.
 import { useSyncExternalStore } from "react";
+import { IconSun, IconMoon } from "@/components/Icon";
 
 const THEME_EVENT = "cara-theme-change";
 
@@ -43,7 +44,7 @@ export function ThemeToggle() {
       className="cara-chip gap-2"
       suppressHydrationWarning
     >
-      <span aria-hidden suppressHydrationWarning>{dark ? "☀︎" : "☾"}</span>
+      <span suppressHydrationWarning>{dark ? <IconSun size={13} /> : <IconMoon size={13} />}</span>
       <span suppressHydrationWarning>{dark ? "Light" : "Dark"}</span>
     </button>
   );
