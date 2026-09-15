@@ -999,3 +999,21 @@ h1, h2, h3 {
 .enori .cara-chip { border-radius: 10px; }
 .enori .cara-queue-icon { border-radius: 10px; }
 .enori .enori-squircle { border-radius: 9px; }
+
+/* ─── Flat surfaces ──────────────────────────────────────────────────────
+   No shadow on the cards. With the page at #F5F6F8 and the cards at white,
+   the surfaces already separate on tone; the 1px rule does the edge. A shadow
+   on top of both was a third statement of the same boundary.
+
+   The hover lift goes with it — a card that rises with nothing beneath it to
+   cast onto reads as a glitch — and the border does the acknowledging
+   instead. The top-bar buttons and the tag stickers keep theirs: those are
+   objects meant to sit ON the surface, which is a different claim from a panel
+   that IS the surface. */
+.enori .cara-card { box-shadow: none; }
+.enori .cara-card-hover:hover {
+  box-shadow: none;
+  transform: none;
+  border-color: var(--cara-rule-strong);
+}
+.enori .cara-btn { box-shadow: none; }
