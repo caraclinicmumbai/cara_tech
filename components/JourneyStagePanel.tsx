@@ -170,7 +170,7 @@ export function JourneyStagePanel({
                   canManage && !current ? "hover:border-cara-accent" : "cursor-default"
                 } disabled:cursor-not-allowed`}
               >
-                {done && "✓ "}
+                
                 {JOURNEY_STAGE_LABELS[s]}
               </button>
             </li>

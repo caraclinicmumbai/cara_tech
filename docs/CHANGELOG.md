@@ -7,6 +7,62 @@ Format: newest first.
 
 ---
 
+## 2026-09-16 — enori: the CRM gets its own brand, and the CARA design is retired
+
+Flow doc added: **[flows/14-design-system.md](flows/14-design-system.md)** — the
+tokens, the tag palette, the type scale, and the two documented deviations.
+Files: `app/globals.css` (rewritten), `app/layout.tsx`,
+`app/(dashboard)/layout.tsx`, `components/{Icon,SidebarNav}.tsx` (new),
+`components/dashboard/*` (new), `lib/dashboardMetrics.ts` (new),
+`scripts/seedDemoData.ts` (new), and 27 screens converted. `components/BrandToggle.tsx`
+deleted. New dev dependency: none. No schema change.
+
+The CRM is now branded **enori** — a product a clinic buys, rather than Cara
+Clinic's in-house tool. Cara Clinic is a tenant of it, named in the account block
+where it reads as "whose data am I looking at" rather than as a masthead. That
+distinction is the point: this is sold to clinics that compete with each other.
+
+- **One design, not two.** The enori palette was piloted behind a header toggle for a
+  fortnight, then accepted; the CARA palette and the toggle have been retired. The
+  tokens were *promoted* into `:root` and `.dark` rather than layered on top, so
+  nothing dead is left in the file. That transform caught a bug on the way through —
+  the old chart tokens sat after the promoted ones in source order and would have
+  rendered every chart gold.
+- **A tag system with real identity.** Status badges needed to answer four different
+  questions, and one hue cannot. Measured: six blue/violet hues put the closest pair
+  at ΔE 5.6 for *normal* colour vision against a floor of 15. The supplied palette
+  clears it at 15.2. Every badge now carries fill, ink and a drawn glyph, so the
+  state survives greyscale, colour blindness and print.
+- **27 screens converted, 230 hard-coded colours removed.** Each became a token —
+  `.txt-bad`, `.cara-notice`, `.tag-*`, `.bar-*` — so the next palette change is a
+  handful of values rather than another sweep.
+- **Density.** The display scale came down by about a third and the space came back
+  as rows; the dashboard ends around 1050px where it ran past 1280. Body went 14→13
+  rather than 14→9.8 — a third off the *reading* size is unusable for tables read
+  all day, and the slack was in the headlines and padding anyway.
+- **Sidebar**: narrower, light, and grouped into Desk / Analysis / Automation /
+  Administration, with the active item the only coloured thing in the column.
+  Nineteen undifferentiated links was a list, not a structure.
+- **Two font families** (Plus Jakarta Sans + Playfair Display), down from four.
+- **No emoji in the UI.** They are drawn by the operating system, so 👋 and 🤝 are a
+  different picture on every platform — and several dingbats switch to emoji
+  presentation on their own, which was making the theme toggle resize as it was
+  pressed. All replaced with inline SVG. Slack alerts keep theirs.
+- **A dashboard worth opening**: month-on-month figures, an eight-day intake chart, a
+  source ring, and the two queues someone can act on this minute. Its month
+  comparison was fixed to measure like for like — it had been reporting a collapse
+  every month until the 28th by comparing a part-month against a whole one.
+- **`npm run seed:demo`** fills a development database with 45 days of plausible
+  traffic so any of this can be looked at with something in it. Local-only by
+  refusal, and removable with `-- --clear`.
+
+⚠️ **Two deviations, both deliberate and recorded next to the values they affect:**
+the tag palette contains a green and a red, which the Brand Guidelines (p.11) forbid
+— it was supplied for the tags specifically, so it is scoped to them; and the dark
+palette is extrapolated, because the guidelines define no dark ramp.
+
+---
+
 ## 2026-09-09 — Daily, weekly and monthly database backups
 
 Flow doc added: **[flows/13-backups.md](flows/13-backups.md)**. Also updated:

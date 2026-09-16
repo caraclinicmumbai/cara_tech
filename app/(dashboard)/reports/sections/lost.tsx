@@ -107,7 +107,7 @@ export async function LostLeadSection({ range }: { range: DateRange }) {
   );
 }
 
-// ── 8. Lost Quote Analysis 💰 ────────────────────────────────────────
+// ── 8. Lost Quote Analysis ────────────────────────────────────────
 
 export async function LostQuoteSection({ range }: { range: DateRange }) {
   const r = await lostQuoteAnalysis(range);

@@ -7,6 +7,17 @@ import { StageSelect } from "@/components/StageSelect";
 import { TagField } from "@/components/TagField";
 import { LeadDeleteButton } from "@/components/LeadDeleteButton";
 import { RemarkField } from "@/components/RemarkField";
+import {
+  IconDuplicate,
+  IconStopped,
+  IconHeld,
+  IconPhone,
+  IconOverdue,
+  IconUp,
+  IconDown,
+  IconFlat,
+  IconSearch,
+} from "@/components/Icon";
 
 export type LeadRow = {
   id: string;
@@ -91,11 +102,25 @@ type CellContext = {
 const MUTED = "text-black/60 dark:text-white/60";
 
 /// The small status pills on a lead's name — duplicate, opted out, held, handover.
+///
+/// These used to be four hues (amber / red / orange / purple). They are now four
+/// rungs of one ladder — `.tone-*` in globals.css — which renders as those hues
+/// under the CARA design and as depth-and-weight under enori, whose brand rules
+/// forbid green and red outright. The meaning moved from hue to emphasis:
+/// neutral < info < attention < critical, and critical is the only one filled.
+/// Each badge answers a different question — is this a duplicate, has this
+/// person opted out, is this held, is a counsellor needed — so each needs its
+/// own identity, and identity is what one hue cannot give. These come from the
+/// supplied tag palette, which measures at ΔE 15.2 between its closest pair
+/// where a blue-only set managed 5.6. See the note in globals.css.
+/// Fill, outline and GLYPH. The glyph is not decoration — it is the channel
+/// that still carries the state in greyscale, under colour blindness, and on a
+/// printed page, none of which a block of colour survives.
 const BADGE_TONES = {
-  amber: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  red: "bg-red-500/15 text-red-700 dark:text-red-400",
-  orange: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
-  purple: "bg-purple-500/15 text-purple-700 dark:text-purple-400",
+  duplicate: { cls: "tag tag-aqua", Icon: IconDuplicate },
+  stopped: { cls: "tag tag-tangerine", Icon: IconStopped },
+  held: { cls: "tag tag-fushia", Icon: IconHeld },
+  human: { cls: "tag tag-klein", Icon: IconPhone },
 } as const;
 
 function Badge({
@@ -107,8 +132,10 @@ function Badge({
   title?: string;
   children: ReactNode;
 }) {
+  const { cls, Icon } = BADGE_TONES[tone];
   return (
-    <span title={title} className={`ml-2 rounded-full px-2 py-0.5 text-xs ${BADGE_TONES[tone]}`}>
+    <span title={title} className={`ml-2 ${cls}`}>
+      <Icon size={11} className="tag-icon" />
       {children}
     </span>
   );
@@ -174,11 +201,11 @@ export function LeadsTable({
             <Link href={`/leads/${l.id}`} className="font-medium hover:underline" onClick={ctx.onOpenLead}>
               {l.name}
             </Link>
-            {l.duplicateOfId && <Badge tone="amber" title="Possible duplicate — no AI call">dup</Badge>}
-            {l.optedOut && <Badge tone="red" title="Opted out — all outreach suppressed">opted out</Badge>}
-            {l.heldForReview && <Badge tone="orange" title="Held for review — no AI call">review</Badge>}
+            {l.duplicateOfId && <Badge tone="duplicate" title="Possible duplicate — no AI call">dup</Badge>}
+            {l.optedOut && <Badge tone="stopped" title="Opted out — all outreach suppressed">opted out</Badge>}
+            {l.heldForReview && <Badge tone="held" title="Held for review — no AI call">review</Badge>}
             {l.needsHandover && (
-              <Badge tone="purple" title={l.handoverReason ?? "Handover to sales"}>handover</Badge>
+              <Badge tone="human" title={l.handoverReason ?? "Handover to sales"}>handover</Badge>
             )}
           </>
         ),
@@ -266,11 +293,10 @@ export function LeadsTable({
             <span
               title={l.nextFollowUpTitle ?? undefined}
               className={
-                l.nextFollowUpOverdue
-                  ? "rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-700 dark:text-red-400"
-                  : MUTED
+                l.nextFollowUpOverdue ? "tag tag-tangerine" : MUTED
               }
             >
+              {l.nextFollowUpOverdue && <IconOverdue size={11} className="tag-icon" />}
               {l.nextFollowUp}
             </span>
           ) : (
@@ -321,14 +347,17 @@ export function LeadsTable({
           typeof l.cqs === "number" ? (
             <span
               title="Conversation Quality Score (latest scored call)"
-              className={`rounded-full px-2 py-0.5 text-xs ${
-                l.cqs >= 75
-                  ? "bg-green-600/15 text-green-700 dark:text-green-400"
-                  : l.cqs >= 50
-                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                    : "bg-red-500/15 text-red-700 dark:text-red-400"
+              className={`tag ${
+                l.cqs >= 75 ? "tag-aqua" : l.cqs >= 50 ? "tag-citric" : "tag-tangerine"
               }`}
             >
+              {l.cqs >= 75 ? (
+                <IconUp size={11} className="tag-icon" />
+              ) : l.cqs >= 50 ? (
+                <IconFlat size={11} className="tag-icon" />
+              ) : (
+                <IconDown size={11} className="tag-icon" />
+              )}
               {l.cqs}
             </span>
           ) : (
@@ -546,7 +575,7 @@ export function LeadsTable({
             aria-hidden
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base leading-none text-cara-muted"
           >
-            🔍
+            <IconSearch size={13} />
           </span>
           <input
             value={search}
@@ -577,7 +606,7 @@ export function LeadsTable({
               setTextFilters({});
               setDateFilters({});
             }}
-            className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+            className="tone-link text-sm hover:underline"
           >
             Clear all filters
           </button>
@@ -640,7 +669,7 @@ export function LeadsTable({
                         title="Filter"
                         className={`rounded px-1 text-xs ${
                           isFiltered(c.key)
-                            ? "text-blue-600 dark:text-blue-400"
+                            ? "tone-link"
                             : "text-black/40 hover:text-black/70 dark:text-white/40 dark:hover:text-white/70"
                         }`}
                       >
@@ -698,7 +727,7 @@ export function LeadsTable({
               <span className="text-xs font-medium">Filter {openCol.label}</span>
               <button
                 onClick={() => clearColumn(openCol.key)}
-                className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                className="tone-link text-xs hover:underline"
               >
                 Clear
               </button>
@@ -731,8 +760,8 @@ export function LeadsTable({
                         className={`rounded border px-2 py-0.5 text-xs ${
                           active
                             ? s === "overdue"
-                              ? "border-red-500 text-red-600 dark:text-red-400"
-                              : "border-blue-500 text-blue-600 dark:text-blue-400"
+                              ? "tone tone-critical border-transparent"
+                              : "tone-link border-current"
                             : "border-black/15 dark:border-white/20"
                         }`}
                       >

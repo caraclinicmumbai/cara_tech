@@ -21,12 +21,12 @@ export function AuditVerifyButton() {
       </button>
       {res && (
         res.ok ? (
-          <span className="rounded bg-green-600/15 px-2 py-1 text-sm text-green-700 dark:text-green-400">
-            ✓ Intact — {res.checked} entries chained &amp; unaltered
+          <span className="tag tag-aqua">
+            Intact — {res.checked} entries chained &amp; unaltered
           </span>
         ) : (
-          <span className="rounded bg-red-500/15 px-2 py-1 text-sm text-red-700 dark:text-red-400">
-            ✗ TAMPERED — broke at {res.brokenAt?.action} ({res.brokenAt?.reason}). An alert has been sent.
+          <span className="tag tag-tangerine">
+            TAMPERED — broke at {res.brokenAt?.action} ({res.brokenAt?.reason}). An alert has been sent.
           </span>
         )
       )}

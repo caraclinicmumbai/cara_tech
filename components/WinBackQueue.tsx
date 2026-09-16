@@ -70,7 +70,7 @@ export function WinBackQueue({
   return (
     <div className="space-y-4">
       {!campaignsEnabled && (
-        <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+        <div className="cara-notice is-warn">
           Follow-up campaigns are turned off (<code>CAMPAIGNS_ENABLED</code> is not set). You can review the
           queue, but approvals won&apos;t enrol until the engine is enabled.
         </div>
@@ -124,7 +124,7 @@ export function WinBackQueue({
                   </td>
                   <td className="whitespace-nowrap px-4 py-2">
                     <Link href={`/leads/${r.id}`} className="font-medium hover:underline">{r.name}</Link>
-                    {r.inCampaign && <span className="ml-2 rounded-full bg-blue-500/15 px-2 py-0.5 text-xs text-blue-700 dark:text-blue-400">in campaign</span>}
+                    {r.inCampaign && <span className="ml-2 tag tag-blue">in campaign</span>}
                   </td>
                   <td className="whitespace-nowrap px-4 py-2">{r.phone}</td>
                   <td className="whitespace-nowrap px-4 py-2">{fmt(r.lostAt)}</td>
@@ -134,7 +134,7 @@ export function WinBackQueue({
                   <td className="whitespace-nowrap px-4 py-2 text-right">
                     <button
                       disabled={pending || r.inCampaign}
-                      className="text-xs text-blue-600 hover:underline disabled:opacity-40 dark:text-blue-400"
+                      className="tone-link text-xs hover:underline disabled:opacity-40"
                       onClick={() => approve([r.id])}
                     >
                       Approve

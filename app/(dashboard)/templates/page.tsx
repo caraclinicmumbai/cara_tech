@@ -7,11 +7,11 @@ function StatusBadge({ status }: { status: string }) {
   const s = status.toUpperCase();
   const cls =
     s === "APPROVED"
-      ? "bg-green-600/15 text-green-700 dark:text-green-400"
+      ? "tag tag-aqua"
       : s === "PENDING"
-        ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+        ? "tag tag-citric"
         : s === "REJECTED"
-          ? "bg-red-500/15 text-red-700 dark:text-red-400"
+          ? "tag tag-tangerine"
           : "bg-black/5 text-black/50 dark:bg-white/10 dark:text-white/50";
   return <span className={`rounded-full px-2 py-0.5 text-xs ${cls}`}>{s}</span>;
 }

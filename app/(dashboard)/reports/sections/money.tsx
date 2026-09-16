@@ -6,7 +6,7 @@ import { days, inr, inrShort, pct } from "@/lib/reports/shared";
 import { formatIstDate } from "@/lib/datetime";
 import { Bars, Caveat, Empty, LeadLink, Num, Panel, Table, Tile } from "@/components/ReportUI";
 
-// ── 7. Treatment Mix 💰 ──────────────────────────────────────────────
+// ── 7. Treatment Mix ──────────────────────────────────────────────
 
 export async function TreatmentMixSection({ range }: { range: DateRange }) {
   const r = await treatmentMix(range);
@@ -100,7 +100,7 @@ export async function TreatmentMixSection({ range }: { range: DateRange }) {
   );
 }
 
-// ── 9. Multi-Quote Report 💰 ─────────────────────────────────────────
+// ── 9. Multi-Quote Report ─────────────────────────────────────────
 
 export async function MultiQuoteSection({ range }: { range: DateRange }) {
   const r = await multiQuoteReport(range);
@@ -188,7 +188,7 @@ export async function MultiQuoteSection({ range }: { range: DateRange }) {
   );
 }
 
-// ── 10. Repeat Treatment Report 💰 ───────────────────────────────────
+// ── 10. Repeat Treatment Report ───────────────────────────────────
 
 export async function RepeatSection({ range }: { range: DateRange }) {
   const r = await repeatTreatment(range);

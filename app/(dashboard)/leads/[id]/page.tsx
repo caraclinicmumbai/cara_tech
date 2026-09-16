@@ -87,7 +87,6 @@ function Field({
 function HandedOverPage({ notice }: { notice: HandedOverNotice }) {
   return (
     <div className="mx-auto max-w-lg space-y-4 py-16 text-center">
-      <div className="text-4xl">🔁</div>
       <h1 className="text-xl font-semibold">
         {notice.leadName} is now with {notice.toRepName}
       </h1>
@@ -292,16 +291,16 @@ export default async function LeadDetailPage({
         </div>
 
         {lead.optedOut && (
-          <div className="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm">
-            🚫 <span className="font-medium">Opted out — all outreach suppressed.</span>
+          <div className="cara-notice is-bad">
+            <span className="font-medium">Opted out — all outreach suppressed.</span>
             {lead.optedOutReason ? ` ${lead.optedOutReason}.` : ""}
             {lead.optedOutAt ? ` (${formatIst(lead.optedOutAt)})` : ""}
           </div>
         )}
 
         {lead.needsHandover && (
-          <div className="rounded border border-purple-500/50 bg-purple-500/10 px-3 py-2 text-sm">
-            🤝 <span className="font-medium">Handover to sales.</span>
+          <div className="cara-notice is-violet">
+            <span className="font-medium">Handover to sales.</span>
             {lead.handoverReason ? ` ${lead.handoverReason}.` : ""}
             {lead.assignedRep ? ` Assigned to ${lead.assignedRep.name}.` : ""}
             {lead.handoverAt ? ` (${formatIst(lead.handoverAt)})` : ""}
@@ -324,8 +323,8 @@ export default async function LeadDetailPage({
         )}
 
         {lead.stage === "lost" && (
-          <div className="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm">
-            ❌ <span className="font-medium">Marked lost.</span>
+          <div className="cara-notice is-bad">
+            <span className="font-medium">Marked lost.</span>
             {lead.lostTag ? ` Reason: ${lead.lostTag}.` : ""}
             {lead.lostReason ? ` Review: ${lead.lostReason}.` : ""}
             {lead.lostAt ? ` (${formatIst(lead.lostAt)})` : ""}
@@ -333,17 +332,17 @@ export default async function LeadDetailPage({
         )}
 
         {lead.heldForReview && (
-          <div className="rounded border border-orange-500/50 bg-orange-500/10 px-3 py-2 text-sm">
-            🛑 <span className="font-medium">Held for review</span> — no AI call was placed.
+          <div className="cara-notice is-warn">
+            <span className="font-medium">Held for review</span> — no AI call was placed.
             {lead.heldReason ? ` ${lead.heldReason}.` : ""}
             {lead.heldAt ? ` (${formatIst(lead.heldAt)})` : ""} Vet this lead before contacting.
           </div>
         )}
 
         {lead.duplicateOf && (
-          <div className="space-y-2 rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm">
+          <div className="cara-notice is-warn space-y-2">
             <div>
-              ⚠️ <span className="font-medium">Possible duplicate</span> of an existing lead —{" "}
+              <span className="font-medium">Possible duplicate</span> of an existing lead —{" "}
               <Link href={`/leads/${lead.duplicateOf.id}`} className="font-medium underline">
                 {lead.duplicateOf.name} ({lead.duplicateOf.phone})
               </Link>
@@ -380,8 +379,8 @@ export default async function LeadDetailPage({
         )}
 
         {lead.callbackAt && (
-          <div className="rounded border border-blue-500/40 bg-blue-500/5 px-3 py-2 text-sm">
-            📞 <span className="font-medium">Follow-up requested</span> for{" "}
+          <div className="cara-notice is-info">
+            <span className="font-medium">Follow-up requested</span> for{" "}
             {formatIst(lead.callbackAt)} — auto-retries cancelled, a call is scheduled for this time.
           </div>
         )}
@@ -413,7 +412,7 @@ export default async function LeadDetailPage({
                 ) : nextFollowUp?.dueAt ? (
                   <span
                     className={
-                      nextFollowUp.visual === "missed" ? "text-red-600 dark:text-red-400" : ""
+                      nextFollowUp.visual === "missed" ? "txt-bad" : ""
                     }
                     title={nextFollowUp.title}
                   >
@@ -528,7 +527,7 @@ export default async function LeadDetailPage({
           <span
             className={`rounded-full px-2 py-0.5 text-xs ${
               windowOpen
-                ? "bg-green-600/15 text-green-700 dark:text-green-400"
+                ? "tag tag-aqua"
                 : "bg-black/5 text-black/50 dark:bg-white/10 dark:text-white/50"
             }`}
           >
@@ -615,8 +614,8 @@ export default async function LeadDetailPage({
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                   <span className="font-medium">{call.callType}</span>
                   {call.callType === "human_handover" && (
-                    <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-xs text-blue-700 dark:text-blue-400">
-                      👤 Handled by {call.handledBy?.name ?? "—"}
+                    <span className="tag tag-blue">
+                      Handled by {call.handledBy?.name ?? "—"}
                     </span>
                   )}
                   <span>Outcome: {call.outcome ?? "—"}</span>
@@ -627,10 +626,10 @@ export default async function LeadDetailPage({
                       title="Conversation Quality Score"
                       className={`rounded-full px-2 py-0.5 text-xs ${
                         call.cqs >= 75
-                          ? "bg-green-600/15 text-green-700 dark:text-green-400"
+                          ? "tag tag-aqua"
                           : call.cqs >= 50
-                            ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                            : "bg-red-500/15 text-red-700 dark:text-red-400"
+                            ? "tag tag-citric"
+                            : "tag tag-tangerine"
                       }`}
                     >
                       CQS {call.cqs}

@@ -188,7 +188,7 @@ export default async function PostSalesBoardPage({
                           </div>
 
                           <div className="flex flex-wrap gap-1">
-                            {c.flagged && <span className="cara-badge cara-badge-danger">⚠ safety flag</span>}
+                            {c.flagged && <span className="cara-badge cara-badge-danger">safety flag</span>}
                             {c.blockedCheckIns > 0 && (
                               <span className="cara-badge cara-badge-warning">
                                 {c.blockedCheckIns} check-in{c.blockedCheckIns === 1 ? "" : "s"} need a person

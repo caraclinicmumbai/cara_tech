@@ -29,10 +29,10 @@ export function CallButton({ leadId }: { leadId: string }) {
         disabled={pending}
         className="rounded bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
       >
-        {pending ? "Starting…" : "📞 Call & record"}
+        {pending ? "Starting…" : "Call & record"}
       </button>
       {msg && (
-        <span className={`text-xs ${msg.ok ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+        <span className={`text-xs ${msg.ok ? "txt-good" : "txt-bad"}`}>
           {msg.text}
         </span>
       )}

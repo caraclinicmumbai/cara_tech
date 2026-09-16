@@ -63,7 +63,7 @@ export function WalkInForm() {
       </div>
 
       {/* Consent — mandatory before the record is created (§3.1.13). */}
-      <fieldset className="rounded border border-amber-500/40 bg-amber-500/5 p-4 space-y-3">
+      <fieldset className="cara-notice is-warn space-y-3 p-4">
         <legend className="px-1 text-sm font-medium">Consent (required)</legend>
         <div className="flex items-center gap-3 text-sm">
           <span className="text-black/60 dark:text-white/60">Consent collected via:</span>
@@ -113,9 +113,9 @@ export function WalkInForm() {
         </span>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="txt-bad text-sm">{error}</p>}
       {done && (
-        <p className="text-sm text-green-600">
+        <p className="txt-good text-sm">
           Walk-in lead saved to the manual follow-up queue. No automated call was triggered.
         </p>
       )}

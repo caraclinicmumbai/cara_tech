@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { auth, signOut } from "@/auth";
 import { can, isRole, ROLE_LABELS } from "@/lib/rbac";
@@ -9,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { StatusSwitcher } from "@/components/StatusSwitcher";
 import { NotificationBell } from "@/components/NotificationBell";
+import { SidebarNav, type NavItem, type NavSection } from "@/components/SidebarNav";
 
 export default async function DashboardLayout({
   children,
@@ -31,106 +31,85 @@ export default async function DashboardLayout({
   const viewer = session?.user as SessionUser | undefined;
   const waUnread = viewer && can(role, "leads.whatsapp") ? await unreadTotal(viewer) : 0;
 
-  const navLink =
-    "mx-1 rounded-xl px-3 py-2 text-[13px] text-cara-muted transition-colors hover:bg-cara-surface hover:text-cara-ink";
+  // Capabilities are resolved HERE, on the server, and only the permitted links
+  // are handed to the client component. The grouping is by what someone is
+  // doing when they reach for it, not by how the features were built.
+  const sections: NavSection[] = [
+    {
+      label: "Desk",
+      items: [
+        can(role, "analytics.view") && { href: "/dashboard", label: "Dashboard" },
+        can(role, "leads.view") && { href: "/leads", label: "Leads" },
+        can(role, "leads.walkin") && { href: "/leads/walk-in", label: "Walk-in" },
+        can(role, "leads.whatsapp") && { href: "/whatsapp", label: "WhatsApp", badge: waUnread },
+        can(role, "quotes.view") && { href: "/quotes", label: "Open Quotes" },
+        can(role, "postsales.view") && { href: "/post-sales", label: "Post-Sales" },
+      ].filter(Boolean) as NavItem[],
+    },
+    {
+      label: "Analysis",
+      items: [
+        can(role, "calls.view") && { href: "/calls", label: "Calls" },
+        can(role, "analytics.view") && { href: "/cqs", label: "Call quality" },
+        can(role, "reports.view") && { href: "/reports", label: "Reports" },
+      ].filter(Boolean) as NavItem[],
+    },
+    {
+      label: "Automation",
+      items: [
+        can(role, "campaigns.manage") && { href: "/campaigns", label: "Campaigns" },
+        can(role, "campaigns.winback") && { href: "/win-back", label: "Win-Back" },
+        can(role, "templates.manage") && { href: "/templates", label: "Templates" },
+        can(role, "chatbot.manage") && { href: "/chatbot", label: "Chatbot" },
+      ].filter(Boolean) as NavItem[],
+    },
+    {
+      label: "Administration",
+      items: [
+        can(role, "users.manage") && { href: "/users", label: "Users" },
+        can(role, "branches.manage") && { href: "/branches", label: "Branches" },
+        can(role, "hierarchy.manage") && { href: "/hierarchy", label: "Hierarchy" },
+        can(role, "audit.view") && { href: "/audit", label: "Audit log" },
+        can(role, "leads.restore") && { href: "/leads/deleted", label: "Deleted" },
+        can(role, "settings.manage") && { href: "/settings", label: "Settings" },
+      ].filter(Boolean) as NavItem[],
+    },
+  ];
 
   return (
     <div className="flex min-h-screen bg-cara-page">
-      <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r-[0.5px] border-cara-rule bg-cara-tint">
-        <div className="border-b-[0.5px] border-cara-rule px-5 py-5">
+      <aside className="cara-sidebar sticky top-0 flex h-screen w-46 shrink-0 flex-col border-r border-cara-rule">
+        <div className="cara-sidebar-brand px-4 py-4">
+          {/* The product mark stands ALONE. The clinic's name used to sit under
+              it, which read as a lockup — and this is sold to clinics that
+              compete with each other, so another practice's name on the
+              masthead is the one thing the separate brand exists to prevent.
+              Tenant context now lives in the account block at the foot, beside
+              the person it belongs to. */}
           <div className="flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-xl bg-cara-accent text-sm font-bold text-white">
-              C
+            <span className="enori-squircle" aria-hidden>
+              e
             </span>
-            <div>
-              <div className="text-lg font-bold leading-none tracking-tight text-cara-ink">
-                CARA
-              </div>
-              <div className="mt-0.5 text-[10px] uppercase tracking-[1.5px] text-cara-muted">
-                Clinic CRM
-              </div>
+            <div className="enori-wordmark">
+              <span className="enori-wordmark-en">en</span>ori
             </div>
           </div>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-3">
-          {can(role, "analytics.view") && (
-            <Link href="/dashboard" className={navLink}>Dashboard</Link>
-          )}
-          {can(role, "leads.view") && (
-            <Link href="/leads" className={navLink}>Leads</Link>
-          )}
-          {can(role, "leads.walkin") && (
-            <Link href="/leads/walk-in" className={navLink}>Walk-in</Link>
-          )}
-          {/* §whatsapp inbox — patient replies land here; the badge is what's unread. */}
-          {can(role, "leads.whatsapp") && (
-            <Link href="/whatsapp" className={`${navLink} flex items-center justify-between`}>
-              <span>WhatsApp</span>
-              {waUnread > 0 && (
-                <span className="grid h-4 min-w-4 place-items-center rounded-full bg-green-600 px-1 text-[10px] font-semibold text-white">
-                  {waUnread > 9 ? "9+" : waUnread}
-                </span>
-              )}
-            </Link>
-          )}
-          {/* Every quote still in play — the money side of the pipeline (§multi-quote). */}
-          {can(role, "quotes.view") && (
-            <Link href="/quotes" className={navLink}>Open Quotes</Link>
-          )}
-          {/* Post-Sales ERP (§post-sales) — for the clinical roles this is the whole app. */}
-          {can(role, "postsales.view") && (
-            <Link href="/post-sales" className={navLink}>Post-Sales</Link>
-          )}
-          {can(role, "calls.view") && (
-            <Link href="/calls" className={navLink}>Calls</Link>
-          )}
-          {can(role, "analytics.view") && (
-            <Link href="/cqs" className={navLink}>CQS</Link>
-          )}
-          {/* §reports — the management read-outs. The money tabs inside are gated
-              separately on `reports.revenue`. */}
-          {can(role, "reports.view") && (
-            <Link href="/reports" className={navLink}>Reports</Link>
-          )}
-          {can(role, "templates.manage") && (
-            <Link href="/templates" className={navLink}>Templates</Link>
-          )}
-          {can(role, "chatbot.manage") && (
-            <Link href="/chatbot" className={navLink}>Chatbot</Link>
-          )}
-          {can(role, "leads.restore") && (
-            <Link href="/leads/deleted" className={navLink}>Deleted</Link>
-          )}
-          {can(role, "campaigns.manage") && (
-            <Link href="/campaigns" className={navLink}>Campaigns</Link>
-          )}
-          {can(role, "campaigns.winback") && (
-            <Link href="/win-back" className={navLink}>Win-Back</Link>
-          )}
-          {can(role, "users.manage") && (
-            <Link href="/users" className={navLink}>Users</Link>
-          )}
-          {can(role, "audit.view") && (
-            <Link href="/audit" className={navLink}>Audit Log</Link>
-          )}
-          {can(role, "branches.manage") && (
-            <Link href="/branches" className={navLink}>Branches</Link>
-          )}
-          {can(role, "hierarchy.manage") && (
-            <Link href="/hierarchy" className={navLink}>Hierarchy</Link>
-          )}
-          {can(role, "settings.manage") && (
-            <Link href="/settings" className={navLink}>Settings</Link>
-          )}
-        </nav>
+        <SidebarNav sections={sections} />
 
-        <div className="space-y-2 border-t-[0.5px] border-cara-rule px-4 py-4 text-sm">
+        <div className="space-y-1.5 border-t border-cara-rule px-4 py-3 text-[12px]">
+          {/* Which clinic this account belongs to — tenant context, not
+              branding. On a single-clinic install it is constant; it is here so
+              that on a multi-clinic one it answers "whose data am I looking
+              at?" without anybody mistaking it for the product's name. */}
+          <div className="cara-nav-heading">Clinic</div>
+          <div className="truncate font-medium text-cara-ink">Cara Clinic</div>
           {session?.user?.email && (
             <div className="text-cara-muted">
               <div className="truncate">{session.user.email}</div>
               {isRole(role) && (
-                <span className="cara-badge mt-2">{ROLE_LABELS[role]}</span>
+                <span className="cara-badge mt-1.5">{ROLE_LABELS[role]}</span>
               )}
             </div>
           )}
@@ -151,13 +130,13 @@ export default async function DashboardLayout({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex items-center justify-end gap-3 border-b-[0.5px] border-cara-rule bg-cara-page/90 px-8 py-3 backdrop-blur">
+        <header className="sticky top-0 z-10 flex items-center justify-end gap-2 border-b border-cara-rule bg-cara-page/90 px-6 py-2.5 backdrop-blur">
           {rep && <StatusSwitcher initial={rep.availability} />}
           {/* §handover — a handover reaches its telecaller here, in the software. */}
           <NotificationBell />
           <ThemeToggle />
         </header>
-        <main className="mx-auto w-full max-w-6xl px-8 py-8">{children}</main>
+        <main className="mx-auto w-full max-w-6xl px-6 py-6">{children}</main>
       </div>
     </div>
   );

@@ -96,11 +96,11 @@ export function LeadOwnershipPanel({
 
   const historyLine = (t: Timeline) => {
     if (t.action === "lead.handover")
-      return { icon: "🔁", text: `Handover — ${t.oldValue ?? "?"} → ${t.newValue ?? "?"}` };
+      return { icon: "", text: `Handover — ${t.oldValue ?? "?"} → ${t.newValue ?? "?"}` };
     if (t.action === "lead.access.grant")
-      return { icon: "🔓", text: `Access granted to ${t.newValue ?? "?"}` };
+      return { icon: "", text: `Access granted to ${t.newValue ?? "?"}` };
     if (t.action === "lead.access.revoke")
-      return { icon: "🔒", text: `Access revoked for ${t.oldValue ?? "?"}` };
+      return { icon: "", text: `Access revoked for ${t.oldValue ?? "?"}` };
     return { icon: "•", text: t.action };
   };
 
@@ -111,7 +111,6 @@ export function LeadOwnershipPanel({
   if (handedTo) {
     return (
       <div className="space-y-3 rounded border border-black/10 p-4 text-center dark:border-white/15">
-        <div className="text-3xl">🔁</div>
         <p className="text-sm font-medium">This lead is now with {handedTo}</p>
         <p className="text-sm text-black/55 dark:text-white/55">
           They&apos;ve been notified. It has left your list, so you can no longer open it —
@@ -170,7 +169,7 @@ export function LeadOwnershipPanel({
             </button>
           </div>
           {crossBranch && (
-            <p className="text-xs text-amber-700 dark:text-amber-400">Cross-branch handover — a written reason is required.</p>
+            <p className="txt-warn text-xs">Cross-branch handover — a written reason is required.</p>
           )}
         </div>
       )}
@@ -214,7 +213,7 @@ export function LeadOwnershipPanel({
                   {g.reason ? ` · ${g.reason}` : ""}
                 </span>
                 {canGrant && (
-                  <button disabled={pending} className="text-xs text-red-600 hover:underline dark:text-red-400"
+                  <button disabled={pending} className="txt-bad text-xs hover:underline"
                     onClick={() => run(() => revokeLeadAccessAction({ grantId: g.id, leadId }))}>
                     Revoke
                   </button>

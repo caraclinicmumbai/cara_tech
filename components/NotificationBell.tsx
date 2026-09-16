@@ -112,7 +112,7 @@ export function NotificationBell() {
           <path d="M8 15a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
         </svg>
         {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-semibold text-white">
+          <span className="absolute -right-0.5 -top-0.5 nav-count">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -139,7 +139,7 @@ export function NotificationBell() {
                 const inner = (
                   <>
                     <div className="flex items-start gap-2">
-                      {!item.read && <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-600" />}
+                      {!item.read && <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bar-bad" />}
                       <div className="min-w-0">
                         <div className={`truncate text-sm ${item.read ? "text-cara-muted" : "font-medium text-cara-ink"}`}>
                           {item.title}

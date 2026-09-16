@@ -41,7 +41,7 @@ export function LeadEditForm({
   if (!open) {
     return (
       <button onClick={() => setOpen(true)}
-        className="text-xs text-blue-600 hover:underline dark:text-blue-400">
+        className="tone-link text-xs hover:underline">
         Edit details
       </button>
     );
@@ -69,7 +69,7 @@ export function LeadEditForm({
           onClick={() => { setF({ name, phone, email: email ?? "", interest: interest ?? "", reason: "" }); setOpen(false); }}>
           Cancel
         </button>
-        {phoneChanged && <span className="text-xs text-amber-700 dark:text-amber-400">Phone change requires a reason.</span>}
+        {phoneChanged && <span className="txt-warn text-xs">Phone change requires a reason.</span>}
       </div>
     </div>
   );

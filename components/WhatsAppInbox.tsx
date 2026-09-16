@@ -132,7 +132,7 @@ export function WhatsAppInbox({
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold">Chats</h2>
           {totalUnread > 0 && (
-            <span className="rounded-full bg-green-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+            <span className="tag tag-aqua">
               {totalUnread} new
             </span>
           )}
@@ -161,7 +161,7 @@ export function WhatsAppInbox({
                   active ? "bg-cara-surface" : "hover:bg-cara-surface/60"
                 }`}
               >
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-green-600/15 text-xs font-semibold text-green-800 dark:text-green-300">
+                <span className="cara-avatar">
                   {initials(r.name)}
                 </span>
                 <span className="min-w-0 flex-1">
@@ -171,7 +171,7 @@ export function WhatsAppInbox({
                     </span>
                     <span
                       suppressHydrationWarning
-                      className={`shrink-0 text-[10px] ${r.unread > 0 ? "text-green-700 dark:text-green-400" : "text-cara-muted"}`}
+                      className={`shrink-0 text-[10px] ${r.unread > 0 ? "txt-good" : "text-cara-muted"}`}
                     >
                       {stamp(r.lastAt)}
                     </span>
@@ -182,16 +182,16 @@ export function WhatsAppInbox({
                       {r.lastMessage}
                     </span>
                     {r.unread > 0 && (
-                      <span className="grid h-4 min-w-4 shrink-0 place-items-center rounded-full bg-green-600 px-1 text-[10px] font-semibold text-white">
+                      <span className="nav-count shrink-0">
                         {r.unread > 9 ? "9+" : r.unread}
                       </span>
                     )}
                   </span>
                   <span className="mt-1 flex items-center gap-1.5 text-[10px] text-cara-muted">
                     {r.optedOut ? (
-                      <span className="text-red-600 dark:text-red-400">opted out</span>
+                      <span className="txt-bad">opted out</span>
                     ) : r.windowOpen ? (
-                      <span className="text-green-700 dark:text-green-400">24h window open</span>
+                      <span className="txt-good">24h window open</span>
                     ) : (
                       <span>window closed</span>
                     )}
