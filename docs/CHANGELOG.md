@@ -7,6 +7,30 @@ Format: newest first.
 
 ---
 
+## 2026-09-17 — The Next-lead button stops vanishing under the cursor
+
+Files: `components/LeadQueueNav.tsx`, `components/Icon.tsx`. No flow doc change.
+
+Reported as a colour problem; it was two utilities fighting. The base class string
+carried `hover:bg-cara-surface-2` and the Next variant added `hover:bg-cara-ink-soft`
+— two rules for the same property, where the winner is decided by the order Tailwind
+emits them rather than the order they appear in the string. When the light one won,
+the button's near-white text landed on a light grey ground and the control all but
+disappeared at the moment a hand was on it.
+
+Both buttons now use `.cara-btn` / `.cara-btn-primary`, so the hover state is defined
+once and cannot be overridden by whatever else is in the string — and Next picks up
+the accent blue every other primary action uses instead of the near-black it
+inherited from the retired design. It measures `#3358E8` at rest and `#2A46C4` on
+hover, white throughout: it darkens under the cursor rather than washing out, at
+7.6:1.
+
+**Worth knowing generally:** composing a base string of Tailwind utilities with an
+override for the same property is not reliable. Where a component needs a variant,
+use the component classes in `globals.css`.
+
+---
+
 ## 2026-09-16 — enori: the CRM gets its own brand, and the CARA design is retired
 
 Flow doc added: **[flows/14-design-system.md](flows/14-design-system.md)** — the
