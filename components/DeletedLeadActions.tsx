@@ -28,7 +28,7 @@ export function DeletedLeadActions({
             else window.alert(res.error ?? "Restore failed");
           })
         }
-        className="rounded px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-600/10 disabled:opacity-50 dark:text-green-400"
+        className="txt-good rounded px-2 py-1 text-xs font-medium disabled:opacity-50"
       >
         ↩ Restore
       </button>
@@ -48,7 +48,7 @@ export function DeletedLeadActions({
             else window.alert(res.error ?? "Delete failed");
           });
         }}
-        className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400"
+        className="txt-bad rounded px-2 py-1 text-xs font-medium disabled:opacity-50"
       >
         Delete permanently
       </button>

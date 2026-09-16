@@ -113,3 +113,11 @@ export const IconMoon = (p: IconProps) => (
     <path d="M13.2 9.6A5.8 5.8 0 0 1 6.4 2.8a5.8 5.8 0 1 0 6.8 6.8Z" />
   </Svg>
 );
+
+/// A magnifier for the leads search box.
+export const IconSearch = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="7.2" cy="7.2" r="4.4" />
+    <path d="m10.5 10.5 3 3" />
+  </Svg>
+);

@@ -204,7 +204,7 @@ export function WhatsAppChat({
                   className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
                     inbound
                       ? "bg-black/5 dark:bg-white/10"
-                      : "bg-green-600/15 dark:bg-green-500/15"
+                      : "cara-bubble-out"
                   }`}
                 >
                   <div className="mb-0.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-black/40 dark:text-white/40">
@@ -237,7 +237,7 @@ export function WhatsAppChat({
                       rel="noreferrer"
                       className="underline"
                     >
-                      📎 {m.body ?? `[${m.type}]`}
+                      {m.body ?? `[${m.type}]`}
                     </a>
                   ) : m.templateName && m.body === `[template] ${m.templateName}` ? (
                     // A template sent before we logged its text, whose template is
@@ -265,8 +265,8 @@ export function WhatsAppChat({
 
       <div className="shrink-0 border-t border-black/10 p-3 dark:border-white/15">
         {optedOut ? (
-          <p className="text-sm text-red-600 dark:text-red-400">
-            🚫 This lead opted out — messaging is disabled.
+          <p className="txt-bad text-sm">
+            This lead opted out — messaging is disabled.
           </p>
         ) : !isWindowOpen ? (
           <TemplatePicker leadId={leadId} leadContext={leadContext} />
@@ -292,7 +292,7 @@ export function WhatsAppChat({
                 {pending ? "Sending…" : "Send"}
               </button>
             </div>
-            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+            {error && <p className="txt-bad text-sm">{error}</p>}
           </div>
         )}
         <p className="mt-2 text-[11px] text-black/35 dark:text-white/35">
@@ -451,7 +451,7 @@ function TemplatePicker({
                 );
               })}
               {missing && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
+                <p className="txt-warn text-xs">
                   Fill every variable — WhatsApp rejects a template with an empty one.
                 </p>
               )}
@@ -488,7 +488,7 @@ function TemplatePicker({
           </button>
         </p>
       )}
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="txt-bad text-sm">{error}</p>}
     </div>
   );
 }

@@ -74,7 +74,7 @@ export function LeadComments({
               {pending ? "Saving…" : "Add comment"}
             </button>
             <span className="text-xs text-black/40 dark:text-white/40">⌘/Ctrl + Enter</span>
-            {error && <span className="text-xs text-red-600 dark:text-red-400">{error}</span>}
+            {error && <span className="txt-bad text-xs">{error}</span>}
           </div>
         </div>
       )}
@@ -98,7 +98,7 @@ export function LeadComments({
                     type="button"
                     onClick={() => remove(c.id)}
                     disabled={pending}
-                    className="ml-auto text-black/40 hover:text-red-600 disabled:opacity-40 dark:text-white/40 dark:hover:text-red-400"
+                    className="ml-auto text-cara-faint hover:txt-bad disabled:opacity-40"
                   >
                     Delete
                   </button>

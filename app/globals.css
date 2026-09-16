@@ -1056,3 +1056,72 @@ h1, h2, h3 {
   color: var(--enori-cobalt);
   font-weight: 600;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SEMANTIC UTILITIES
+   ───────────────────────────────────────────────────────────────────────
+   What the rest of the app used raw Tailwind colours for. Each one is a
+   token now, so the palette can move again without another sweep through
+   twenty-seven files — which is the whole reason the first sweep was
+   needed.
+
+   The hues match the tag palette deliberately: a failed call in a
+   sentence and a failed call in a badge should not be two different reds.
+   ═══════════════════════════════════════════════════════════════════════ */
+.txt-bad  { color: #a93317; }
+.txt-good { color: #14714c; }
+.txt-warn { color: #9a4c08; }
+.dark .txt-bad  { color: #ffbcae; }
+.dark .txt-good { color: #9ae9c4; }
+.dark .txt-warn { color: #f6cf95; }
+
+/* The inline notice boxes — "this lead is a duplicate", "marked lost". */
+.cara-notice {
+  border: 1px solid var(--n-line, var(--cara-rule));
+  background: var(--n-fill, var(--cara-surface-2));
+  color: var(--n-ink, var(--cara-text));
+  border-radius: var(--cara-r-sm);
+  padding: 8px 12px;
+  font-size: 12.5px;
+}
+.cara-notice.is-bad    { --n-fill: #fcdad3; --n-line: #f3a695; --n-ink: #a93317; }
+.cara-notice.is-warn   { --n-fill: #fbdfb0; --n-line: #e8b878; --n-ink: #9a4c08; }
+.cara-notice.is-good   { --n-fill: #b9edd4; --n-line: #7ed4ae; --n-ink: #14714c; }
+.cara-notice.is-info   { --n-fill: #cfe3fb; --n-line: #9cc0f5; --n-ink: #1d4fbf; }
+.cara-notice.is-violet { --n-fill: #e8d4fa; --n-line: #c49cf3; --n-ink: #7028b8; }
+.dark .cara-notice.is-bad    { --n-fill: #3d1a12; --n-line: #7a3327; --n-ink: #ffbcae; }
+.dark .cara-notice.is-warn   { --n-fill: #3a2408; --n-line: #6d4415; --n-ink: #f6cf95; }
+.dark .cara-notice.is-good   { --n-fill: #0f3325; --n-line: #1e6349; --n-ink: #9ae9c4; }
+.dark .cara-notice.is-info   { --n-fill: #16264a; --n-line: #2c4784; --n-ink: #b9d0f8; }
+.dark .cara-notice.is-violet { --n-fill: #2b1a45; --n-line: #543583; --n-ink: #ddc2fa; }
+
+/* A destructive action that is a button rather than a link. */
+.cara-btn-danger {
+  background: #c8412a;
+  border-color: #c8412a;
+  color: #ffffff;
+}
+.cara-btn-danger:hover { background: #ad3522; border-color: #ad3522; }
+
+/* Meter fills — the little proportion bars on the CQS and report screens. */
+.bar-bad  { background: #ef5b3c; }
+.bar-good { background: #22a96f; }
+.bar-warn { background: #e2761b; }
+.bar-info { background: var(--enori-cobalt); }
+
+/* The WhatsApp inbox avatar and the outbound bubble — the last two places
+   still reaching for a raw colour, both of them green because WhatsApp is. */
+.cara-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--cara-pill);
+  background: var(--cara-accent-bg);
+  color: var(--cara-beige-deep);
+  font-size: 11px;
+  font-weight: 600;
+}
+.cara-bubble-out { background: var(--cara-accent-bg); }
+.dark .cara-bubble-out { background: var(--cara-accent-bg); }

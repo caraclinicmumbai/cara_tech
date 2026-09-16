@@ -26,7 +26,7 @@ export default async function CampaignsPage() {
       </div>
 
       {!enabled && (
-        <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+        <div className="cara-notice is-warn">
           Follow-up campaigns are turned off (<code>CAMPAIGNS_ENABLED</code> is not set). Existing enrollments are
           shown, but nothing new enrolls and no messages send until the engine is enabled.
         </div>
@@ -45,7 +45,7 @@ export default async function CampaignsPage() {
                 {g.count}
               </span>
               {g.routing && (
-                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-normal text-emerald-700 dark:text-emerald-400">
+                <span className="tag tag-aqua font-normal">
                   routing
                 </span>
               )}

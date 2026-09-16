@@ -41,9 +41,9 @@ const inputCls =
 
 function priorityTone(p: string): string {
   return p === "high"
-    ? "bg-blue-500/15 text-blue-700 dark:text-blue-400"
+    ? "tag tag-blue"
     : p === "medium"
-      ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+      ? "tag tag-citric"
       : "bg-black/10 text-black/60 dark:bg-white/10 dark:text-white/60";
 }
 
@@ -206,13 +206,13 @@ export function ChatbotList({ flows }: { flows: FlowRow[] }) {
                     title={f.active ? "Active — click to turn off" : "Inactive — click to turn on"}
                     className={`mr-3 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                       f.active
-                        ? "bg-green-600/15 text-green-700 dark:text-green-400"
+                        ? "tag tag-aqua"
                         : "bg-black/10 text-black/50 dark:bg-white/10 dark:text-white/50"
                     }`}
                   >
                     {f.active ? "On" : "Off"}
                   </button>
-                  <Link href={`/chatbot/${f.id}`} className="mr-2 text-xs text-blue-600 hover:underline dark:text-blue-400">
+                  <Link href={`/chatbot/${f.id}`} className="tone-link mr-2 text-xs hover:underline">
                     Edit
                   </Link>
                   <button
@@ -224,7 +224,7 @@ export function ChatbotList({ flows }: { flows: FlowRow[] }) {
                   </button>
                   <button
                     disabled={pending}
-                    className="text-xs text-red-600 hover:underline dark:text-red-400"
+                    className="txt-bad text-xs hover:underline"
                     onClick={() => {
                       if (window.confirm(`Delete flow "${f.name}"? This can't be undone.`)) run(() => deleteFlow(f.id));
                     }}

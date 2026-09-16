@@ -170,7 +170,7 @@ export function FlowBuilder({ flowId, name, triggerLabel, initialNodes, initialE
           Cards: {nodes.length}/{MAX_CARDS}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          {dirty && <span className="text-xs text-amber-600 dark:text-amber-400">Unsaved changes</span>}
+          {dirty && <span className="txt-warn text-xs">Unsaved changes</span>}
           <button
             onClick={save}
             disabled={saving || !dirty}
@@ -266,7 +266,7 @@ function ConfigPanel({
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">{spec.label}</h3>
         {onDelete && (
-          <button onClick={onDelete} className="text-xs text-red-600 hover:underline dark:text-red-400">Delete</button>
+          <button onClick={onDelete} className="txt-bad text-xs hover:underline">Delete</button>
         )}
       </div>
 

@@ -105,7 +105,7 @@ export function StageSelect({
                 className="w-full rounded border border-black/15 bg-background px-2 py-1.5 text-sm dark:border-white/20"
               />
             </div>
-            {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+            {error && <p className="txt-bad text-xs">{error}</p>}
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setLostOpen(false)}
@@ -116,7 +116,7 @@ export function StageSelect({
               <button
                 onClick={confirmLost}
                 disabled={pending}
-                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                className="cara-btn cara-btn-danger"
               >
                 Mark Lost
               </button>

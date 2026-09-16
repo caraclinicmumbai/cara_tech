@@ -72,7 +72,6 @@ export default async function WhatsAppPage({
           {!visible ? (
             <div className="grid flex-1 place-items-center px-6 text-center">
               <div className="space-y-2">
-                <div className="text-4xl">💬</div>
                 <p className="text-sm font-medium">Select a chat</p>
                 <p className="max-w-xs text-xs text-cara-muted">
                   Every WhatsApp conversation with a patient lands here. Pick one on the left to
@@ -89,7 +88,7 @@ export default async function WhatsAppPage({
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] ${
                         windowOpen
-                          ? "bg-green-600/15 text-green-700 dark:text-green-400"
+                          ? "tag tag-aqua"
                           : "bg-black/5 text-black/50 dark:bg-white/10 dark:text-white/50"
                       }`}
                     >

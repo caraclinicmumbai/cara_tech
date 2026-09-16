@@ -45,8 +45,8 @@ export default async function CallsPage() {
                 <td>{call.callType}</td>
                 <td>
                   {call.callType === "human_handover"
-                    ? `👤 ${call.handledBy?.name ?? "—"}`
-                    : "🤖 AI"}
+                    ? (call.handledBy?.name ?? "—")
+                    : "AI"}
                 </td>
                 <td>{call.outcome ?? "—"}</td>
                 <td>{call.sentiment ?? "—"}</td>

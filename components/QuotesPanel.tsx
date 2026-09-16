@@ -113,10 +113,10 @@ function inr(price: number | null, currency: string): string {
 
 function statusTone(status: string): string {
   if (["converted", "in_treatment", "completed"].includes(status))
-    return "bg-green-600/15 text-green-700 dark:text-green-400";
+    return "tag tag-aqua";
   if (["rejected", "expired", "withdrawn", "replaced"].includes(status))
-    return "bg-red-500/15 text-red-700 dark:text-red-400";
-  return "bg-amber-500/15 text-amber-700 dark:text-amber-400";
+    return "tag tag-tangerine";
+  return "tag tag-citric";
 }
 
 export function QuotesPanel({
@@ -234,7 +234,7 @@ export function QuotesPanel({
                   </span>
                   {locked && (
                     <span title="Converted — read-only" className="text-xs text-black/40 dark:text-white/40">
-                      🔒 locked
+                      locked
                     </span>
                   )}
                   <span className="ml-auto font-semibold">{inr(q.totalPayable ?? q.price, q.currency)}</span>
@@ -269,9 +269,9 @@ export function QuotesPanel({
                     href={`/api/quotes/${q.id}/pdf`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline dark:text-blue-400"
+                    className="tone-link hover:underline"
                   >
-                    📄 PDF
+                    PDF
                   </a>
                   {/* Internal history summary — converted quotes only, and only for
                       staff who can see calls (it carries transcripts). */}
@@ -281,9 +281,9 @@ export function QuotesPanel({
                       target="_blank"
                       rel="noopener noreferrer"
                       title="Internal history summary: ownership, quotation, every conversation and contact. Not for the patient."
-                      className="text-purple-700 hover:underline dark:text-purple-400"
+                      className="tone-link hover:underline"
                     >
-                      🗂 History PDF
+                      History PDF
                     </a>
                   )}
                   {canManage && (
@@ -300,7 +300,7 @@ export function QuotesPanel({
                         if (!window.confirm("Send this quote PDF to the lead on WhatsApp?")) return;
                         run(() => sendLeadQuoteWhatsApp({ quoteId: q.id, leadId }));
                       }}
-                      className="text-green-700 hover:underline disabled:cursor-not-allowed disabled:text-black/30 disabled:no-underline dark:text-green-400 dark:disabled:text-white/30"
+                      className="txt-good hover:underline disabled:cursor-not-allowed disabled:opacity-40 disabled:no-underline"
                     >
                       Send on WhatsApp
                     </button>
@@ -318,10 +318,10 @@ export function QuotesPanel({
                     branch on it is the branch that earns the credit. Shown as fact,
                     never as an editable field. */}
                 {q.invoices.length > 0 && (
-                  <div className="mt-2 space-y-0.5 rounded bg-green-600/10 px-2 py-1.5 text-xs">
+                  <div className="cara-notice is-good mt-2 space-y-0.5 text-xs">
                     {q.invoices.map((iv) => (
                       <div key={iv.id}>
-                        🧾 Invoice <span className="font-medium">{iv.number}</span> ·{" "}
+                        Invoice <span className="font-medium">{iv.number}</span> ·{" "}
                         {iv.currency === "INR" ? "₹" : `${iv.currency} `}
                         {iv.amount.toLocaleString("en-IN")} · billed by{" "}
                         <span className="font-medium">{iv.branchName}</span> ·{" "}
@@ -329,7 +329,7 @@ export function QuotesPanel({
                         {iv.source === "manual_admin" && (
                           <span
                             title={iv.overrideReason ?? undefined}
-                            className="ml-1 rounded bg-amber-500/20 px-1 py-px text-[10px] text-amber-800 dark:text-amber-300"
+                            className="ml-1 tag tag-citric"
                           >
                             recorded by hand
                           </span>
@@ -350,9 +350,9 @@ export function QuotesPanel({
                       <span
                         className={`ml-2 rounded px-1.5 py-px text-[10px] ${
                           credit[q.id].dispute!.status === "open"
-                            ? "bg-amber-500/20 text-amber-800 dark:text-amber-300"
+                            ? "tag tag-citric"
                             : credit[q.id].dispute!.status === "upheld"
-                              ? "bg-green-600/20 text-green-800 dark:text-green-300"
+                              ? "tag tag-aqua"
                               : "bg-black/10 text-black/60 dark:bg-white/15 dark:text-white/60"
                         }`}
                         title={credit[q.id].dispute!.decisionNote ?? credit[q.id].dispute!.reason}
@@ -366,7 +366,7 @@ export function QuotesPanel({
                     ) : credit[q.id].disputable && canDisputeCredit ? (
                       <button
                         onClick={() => { setDisputeFor(disputeFor === q.id ? null : q.id); setDisputeText(""); }}
-                        className="ml-2 text-blue-600 hover:underline dark:text-blue-400"
+                        className="tone-link ml-2 hover:underline"
                         title={`Disputes close ${credit[q.id].windowEndsAt ? formatIstDate(credit[q.id].windowEndsAt!) : ""}`}
                       >
                         {disputeFor === q.id ? "Cancel" : "Dispute this credit"}
@@ -376,7 +376,7 @@ export function QuotesPanel({
                 )}
 
                 {canDisputeCredit && disputeFor === q.id && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-blue-500/40 bg-blue-500/5 p-2">
+                  <div className="cara-notice is-info mt-2 flex flex-wrap items-center gap-2">
                     <input
                       className={`${inputCls} min-w-64 flex-1`}
                       placeholder="Why is this credit your branch's? (final decision is the Sales Head's)"
@@ -399,7 +399,7 @@ export function QuotesPanel({
                 )}
 
                 {canDecideDispute && credit[q.id]?.dispute?.status === "open" && (
-                  <div className="mt-2 space-y-2 rounded border border-amber-500/40 bg-amber-500/5 p-2 text-xs">
+                  <div className="cara-notice is-warn mt-2 space-y-2 text-xs">
                     <div>
                       <span className="font-medium">{credit[q.id].dispute!.claimantBranchName}</span> claims this
                       credit from <span className="font-medium">{credit[q.id].dispute!.creditedBranchName}</span>:
@@ -414,7 +414,7 @@ export function QuotesPanel({
                       />
                       <button
                         disabled={pending || !decideText.trim()}
-                        className="rounded bg-green-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                        className="cara-btn cara-btn-primary text-xs disabled:opacity-50"
                         onClick={() =>
                           run(
                             () => decideCreditDisputeAction({ disputeId: credit[q.id].dispute!.id, leadId, uphold: true, note: decideText }),
@@ -448,7 +448,7 @@ export function QuotesPanel({
                     {canRecordInvoice && (
                       <button
                         onClick={() => setInvoiceFor(invoiceFor === q.id ? null : q.id)}
-                        className="ml-2 text-blue-600 hover:underline dark:text-blue-400"
+                        className="tone-link ml-2 hover:underline"
                       >
                         {invoiceFor === q.id ? "Cancel" : "Record it by hand"}
                       </button>
@@ -457,7 +457,7 @@ export function QuotesPanel({
                 )}
 
                 {canRecordInvoice && invoiceFor === q.id && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-amber-500/40 bg-amber-500/5 p-2">
+                  <div className="cara-notice is-warn mt-2 flex flex-wrap items-center gap-2">
                     <input
                       className={inputCls}
                       placeholder="Invoice number"
@@ -536,7 +536,7 @@ export function QuotesPanel({
 
                     <button
                       disabled={pending}
-                      className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                      className="tone-link text-xs hover:underline"
                       onClick={() => {
                         const p = window.prompt("New price (whole rupees):", q.price?.toString() ?? "");
                         if (p == null || p === "") return;

@@ -218,27 +218,27 @@ export function BranchesAdmin({
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               <span className="rounded bg-black/5 px-2 py-0.5 font-mono text-xs dark:bg-white/10">{b.code}</span>
               <span className="font-medium">{b.name}</span>
-              {b.isDefault && <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-xs text-blue-700 dark:text-blue-400">default</span>}
-              {!b.active && <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-700 dark:text-red-400">inactive</span>}
+              {b.isDefault && <span className="tag tag-blue">default</span>}
+              {!b.active && <span className="tag tag-tangerine">inactive</span>}
               {b.city && <span className="text-black/50 dark:text-white/50">{b.city}</span>}
               {b.gstin && <span className="text-xs text-black/40 dark:text-white/40">GSTIN {b.gstin}</span>}
               <span className="text-xs text-black/40 dark:text-white/40">{b.hasQr ? "QR set" : "no QR"}</span>
               {b.managerName && <span className="text-xs text-black/40 dark:text-white/40">Mgr: {b.managerName}</span>}
               <div className="ml-auto flex flex-wrap items-center gap-2">
-                <button disabled={pending} className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                <button disabled={pending} className="tone-link text-xs hover:underline"
                   onClick={() => (editingId === b.id ? setEditingId(null) : startEdit(b))}>
                   {editingId === b.id ? "Close" : "Edit"}
                 </button>
                 <button disabled={pending}
-                  className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                  className="tone-link text-xs hover:underline"
                   onClick={() => { setQrForId(b.id); qrInputRef.current?.click(); }}>
                   {b.hasQr ? "Replace QR" : "Upload QR"}
                 </button>
                 {!b.isDefault && b.active && (
-                  <button disabled={pending} className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                  <button disabled={pending} className="tone-link text-xs hover:underline"
                     onClick={() => run(() => setDefaultBranch(b.id))}>Set default</button>
                 )}
-                <button disabled={pending} className={`text-xs hover:underline ${b.active ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}
+                <button disabled={pending} className={`text-xs hover:underline ${b.active ? "txt-bad" : "txt-good"}`}
                   onClick={() => run(() => setBranchActive(b.id, !b.active))}>
                   {b.active ? "Deactivate" : "Activate"}
                 </button>

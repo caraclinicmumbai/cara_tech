@@ -56,7 +56,7 @@ export function MergeLeadButton({
           });
         }}
         disabled={pending}
-        className="rounded bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+        className="cara-btn cara-btn-danger"
       >
         {pending ? "Merging…" : `Merge into ${originalName}`}
       </button>
@@ -71,7 +71,7 @@ export function MergeLeadButton({
           Neither record has a counsellor — assign one after merging.
         </span>
       )}
-      {error && <span className="text-xs text-red-600 dark:text-red-400">{error}</span>}
+      {error && <span className="txt-bad text-xs">{error}</span>}
     </span>
   );
 }

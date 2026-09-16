@@ -181,7 +181,7 @@ export function TemplateBuilder() {
         <div className="space-y-1">
           <div className="flex items-center justify-between">
             <label className="text-xs font-medium text-black/60 dark:text-white/60">Body</label>
-            <button type="button" onClick={addVariable} className="rounded bg-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-500/30 dark:text-amber-300">
+            <button type="button" onClick={addVariable} className="tag tag-citric">
               + Add variable
             </button>
           </div>
@@ -224,7 +224,7 @@ export function TemplateBuilder() {
               {b.type === "PHONE_NUMBER" && (
                 <input className={`${input} flex-1`} placeholder="+91…" value={b.phone_number ?? ""} onChange={(e) => updateButton(i, { phone_number: e.target.value })} />
               )}
-              <button type="button" onClick={() => removeButton(i)} className="rounded bg-red-500/15 px-2 py-1 text-xs text-red-600 hover:bg-red-500/25 dark:text-red-400">✕</button>
+              <button type="button" onClick={() => removeButton(i)} className="tag tag-tangerine">✕</button>
             </div>
           ))}
         </div>
@@ -236,8 +236,8 @@ export function TemplateBuilder() {
         <p className="text-[11px] text-black/40 dark:text-white/40">Submitted templates can&apos;t be edited — you&apos;d create a new one. Approval is usually a few hours.</p>
 
         {result && (
-          <p className={`text-sm ${result.ok ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-            {result.ok ? "✅ " : "⚠️ "}{result.msg}
+          <p className={`text-sm ${result.ok ? "txt-good" : "txt-bad"}`}>
+            {result.msg}
           </p>
         )}
       </div>
@@ -250,7 +250,7 @@ export function TemplateBuilder() {
             {headerType === "TEXT" && header && <div className="mb-1 font-semibold">{header}</div>}
             {isMediaHeader && (
               <div className="mb-1.5 flex items-center justify-center rounded bg-black/5 py-4 text-xs text-black/50 dark:bg-white/10 dark:text-white/50">
-                {headerType === "IMAGE" ? "🖼️ Image" : headerType === "VIDEO" ? "🎬 Video" : `📄 ${headerFile?.name ?? "Document"}`}
+                {headerType === "IMAGE" ? "Image" : headerType === "VIDEO" ? "Video" : `${headerFile?.name ?? "Document"}`}
               </div>
             )}
             <div className="whitespace-pre-wrap break-words text-black/90 dark:text-white/90">
@@ -262,7 +262,7 @@ export function TemplateBuilder() {
             <div className="mt-1 max-w-[85%] space-y-0.5">
               {buttons.filter((b) => b.text.trim()).map((b, i) => (
                 <div key={i} className="rounded-lg bg-white py-2 text-center text-sm font-medium text-[#00a5f4] shadow dark:bg-neutral-900">
-                  {b.type === "URL" ? "🔗 " : b.type === "PHONE_NUMBER" ? "📞 " : "↩ "}{b.text}
+                  {b.type === "URL" ? "" : b.type === "PHONE_NUMBER" ? "" : ""}{b.text}
                 </div>
               ))}
             </div>

@@ -21,9 +21,9 @@ export function LeadDeleteButton({ leadId, name }: { leadId: string; name: strin
           else window.alert(res.error ?? "Delete failed");
         });
       }}
-      className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400"
+      className="txt-bad rounded px-2 py-1 text-xs disabled:opacity-50"
     >
-      {pending ? "…" : "🗑 Delete"}
+      {pending ? "…" : "Delete"}
     </button>
   );
 }

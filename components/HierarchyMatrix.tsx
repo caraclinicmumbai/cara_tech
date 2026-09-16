@@ -137,7 +137,7 @@ export function HierarchyMatrix({ roles, groups }: { roles: RoleState[]; groups:
                   <button
                     disabled={cellBusy || !r.customized}
                     onClick={() => resetRole(r.role, r.label)}
-                    className="mt-1 text-[11px] text-blue-600 hover:underline disabled:opacity-40 dark:text-blue-400"
+                    className="tone-link mt-1 text-[11px] hover:underline disabled:opacity-40"
                     title="Revert this role to built-in defaults"
                   >
                     Reset

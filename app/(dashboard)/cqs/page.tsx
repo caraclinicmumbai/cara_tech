@@ -25,10 +25,10 @@ const SOURCE_LABELS: Record<string, string> = {
 
 function tone(cqs: number): string {
   return cqs >= 75
-    ? "text-green-700 dark:text-green-400"
+    ? "txt-good"
     : cqs >= 50
-      ? "text-amber-700 dark:text-amber-400"
-      : "text-red-700 dark:text-red-400";
+      ? "txt-warn"
+      : "txt-bad";
 }
 
 function avg(nums: number[]): number {
@@ -96,22 +96,22 @@ export default async function CqsPage() {
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card label="Scored calls" value={String(scored.length)} />
         <Card label="Average CQS" value={`${overall}`} valueClass={tone(overall)} />
-        <Card label="High (≥75)" value={`${high}`} valueClass="text-green-700 dark:text-green-400" />
-        <Card label="Low (<50)" value={`${low}`} valueClass="text-red-700 dark:text-red-400" />
+        <Card label="High (≥75)" value={`${high}`} valueClass="txt-good" />
+        <Card label="Low (<50)" value={`${low}`} valueClass="txt-bad" />
       </div>
 
       {/* Distribution bar */}
       <section className="space-y-2">
         <h2 className="text-sm font-medium text-black/60 dark:text-white/60">Distribution</h2>
         <div className="flex h-6 overflow-hidden rounded">
-          <Seg n={high} total={scored.length} cls="bg-green-600/60" title={`High ${high}`} />
-          <Seg n={medium} total={scored.length} cls="bg-amber-500/60" title={`Medium ${medium}`} />
-          <Seg n={low} total={scored.length} cls="bg-red-500/60" title={`Low ${low}`} />
+          <Seg n={high} total={scored.length} cls="bar-good" title={`High ${high}`} />
+          <Seg n={medium} total={scored.length} cls="bar-warn" title={`Medium ${medium}`} />
+          <Seg n={low} total={scored.length} cls="bar-bad" title={`Low ${low}`} />
         </div>
         <div className="flex gap-4 text-xs text-black/50 dark:text-white/50">
-          <span>🟩 High {high}</span>
-          <span>🟨 Medium {medium}</span>
-          <span>🟥 Low {low}</span>
+          <span className="tag tag-aqua">High {high}</span>
+          <span className="tag tag-citric">Medium {medium}</span>
+          <span className="tag tag-tangerine">Low {low}</span>
         </div>
       </section>
 
@@ -145,7 +145,7 @@ export default async function CqsPage() {
             <div key={d.key} className="flex items-center gap-3 text-sm">
               <span className="w-44 shrink-0 text-black/60 dark:text-white/60">{d.label}</span>
               <div className="h-3 flex-1 overflow-hidden rounded bg-black/5 dark:bg-white/10">
-                <div className={`h-full ${d.avg >= 75 ? "bg-green-600/60" : d.avg >= 50 ? "bg-amber-500/60" : "bg-red-500/60"}`} style={{ width: `${d.avg}%` }} />
+                <div className={`h-full ${d.avg >= 75 ? "bar-good" : d.avg >= 50 ? "bar-warn" : "bar-bad"}`} style={{ width: `${d.avg}%` }} />
               </div>
               <span className={`w-10 shrink-0 text-right tabular-nums ${tone(d.avg)}`}>{d.avg}</span>
             </div>
@@ -158,7 +158,7 @@ export default async function CqsPage() {
         <h2 className="text-lg font-semibold">Needs review — low CQS ({reviewQueue.length})</h2>
         {reviewQueue.length === 0 ? (
           <p className="rounded border border-black/10 px-3 py-6 text-center text-sm text-black/50 dark:border-white/15 dark:text-white/50">
-            No low-scoring calls. 🎉
+            No low-scoring calls.
           </p>
         ) : (
           <div className="overflow-x-auto rounded border border-black/10 dark:border-white/15">

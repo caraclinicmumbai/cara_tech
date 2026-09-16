@@ -16,6 +16,7 @@ import {
   IconUp,
   IconDown,
   IconFlat,
+  IconSearch,
 } from "@/components/Icon";
 
 export type LeadRow = {
@@ -574,7 +575,7 @@ export function LeadsTable({
             aria-hidden
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base leading-none text-cara-muted"
           >
-            🔍
+            <IconSearch size={13} />
           </span>
           <input
             value={search}
