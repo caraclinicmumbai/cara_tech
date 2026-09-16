@@ -36,11 +36,10 @@ export default function RootLayout({
       className={`${jakarta.variable} ${playfair.variable} h-full antialiased`}
     >
       <head>
-        {/* Apply the saved (or system) theme, and the saved brand, before paint
-            to avoid a flash of the other design. */}
+        {/* Apply the saved (or system) theme before paint, to avoid a flash. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('cara-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}if(localStorage.getItem('cara-brand')==='enori'){document.documentElement.classList.add('enori');}}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('cara-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();`,
           }}
         />
       </head>

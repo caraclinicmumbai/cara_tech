@@ -6,7 +6,6 @@ import { unreadTotal } from "@/lib/whatsappInbox";
 import { ensurePermissions } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { BrandToggle } from "@/components/BrandToggle";
 import { StatusSwitcher } from "@/components/StatusSwitcher";
 import { NotificationBell } from "@/components/NotificationBell";
 import { SidebarNav, type NavItem, type NavSection } from "@/components/SidebarNav";
@@ -81,24 +80,13 @@ export default async function DashboardLayout({
     <div className="flex min-h-screen bg-cara-page">
       <aside className="cara-sidebar sticky top-0 flex h-screen w-46 shrink-0 flex-col border-r border-cara-rule">
         <div className="cara-sidebar-brand px-4 py-4">
-          {/* Two wordmarks, swapped by CSS rather than by state, so the brand
-              toggle can't produce a hydration mismatch.
-
-              The product mark stands ALONE. The clinic's name used to sit under
+          {/* The product mark stands ALONE. The clinic's name used to sit under
               it, which read as a lockup — and this is sold to clinics that
               compete with each other, so another practice's name on the
               masthead is the one thing the separate brand exists to prevent.
               Tenant context now lives in the account block at the foot, beside
               the person it belongs to. */}
-          <div className="brand-cara flex items-center gap-2">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-cara-accent text-xs font-bold text-white">
-              C
-            </span>
-            <div className="text-[15px] font-bold leading-none tracking-tight text-cara-ink">
-              CARA
-            </div>
-          </div>
-          <div className="brand-enori items-center gap-2">
+          <div className="flex items-center gap-2">
             <span className="enori-squircle" aria-hidden>
               e
             </span>
@@ -146,8 +134,6 @@ export default async function DashboardLayout({
           {rep && <StatusSwitcher initial={rep.availability} />}
           {/* §handover — a handover reaches its telecaller here, in the software. */}
           <NotificationBell />
-          {/* Pilot: lets the business A/B the enori brand on a live screen. */}
-          <BrandToggle />
           <ThemeToggle />
         </header>
         <main className="mx-auto w-full max-w-6xl px-6 py-6">{children}</main>
