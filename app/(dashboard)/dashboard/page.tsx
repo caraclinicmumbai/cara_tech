@@ -1,119 +1,27 @@
 import Link from "next/link";
+import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { formatIst } from "@/lib/datetime";
+import { getDashboardData } from "@/lib/dashboardMetrics";
+import { StatTile } from "@/components/dashboard/StatTile";
+import { LeadsColumns } from "@/components/dashboard/LeadsColumns";
+import { SourceDonut } from "@/components/dashboard/SourceDonut";
+import { QueueCard } from "@/components/dashboard/QueueCard";
+import { IconPhone, IconHandover } from "@/components/Icon";
 
 export const dynamic = "force-dynamic";
 
-const SOURCE_LABELS: Record<string, string> = {
-  web_form: "Website",
-  facebook: "Facebook",
-  instagram: "Instagram",
-  google: "Google",
-  referral: "Referral",
-  manual: "Manual",
-};
-
-// Pipeline stages in funnel order.
-const STATUS_ORDER = ["new", "called", "confirmed", "rescheduled", "lost"];
-const OUTCOME_ORDER = ["confirmed", "rescheduled", "no_answer", "not_interested"];
-const SENTIMENT_ORDER = ["positive", "neutral", "negative"];
-
-function countMap(
-  rows: { _count: { _all: number } }[],
-  key: string,
-): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const r of rows) {
-    const k = (r as Record<string, unknown>)[key];
-    out[k == null ? "—" : String(k)] = r._count._all;
-  }
-  return out;
-}
-
-function StatCard({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-}) {
-  return (
-    <div className="cara-card p-4">
-      <div className="text-[10px] uppercase tracking-[1.5px] text-cara-muted">
-        {label}
-      </div>
-      <div className="mt-1 text-3xl font-bold tabular-nums text-cara-ink">
-        {value}
-      </div>
-      {sub && <div className="mt-0.5 text-xs text-cara-faint">{sub}</div>}
-    </div>
-  );
-}
-
-function BarList({
-  items,
-}: {
-  items: { label: string; value: number }[];
-}) {
-  const max = Math.max(1, ...items.map((i) => i.value));
-  return (
-    <div className="space-y-2">
-      {items.map((i) => (
-        <div key={i.label} className="space-y-1">
-          <div className="flex justify-between text-sm">
-            <span className="capitalize text-cara-ink">{i.label.replace(/_/g, " ")}</span>
-            <span className="tabular-nums text-cara-muted">{i.value}</span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-cara-surface-2">
-            <div
-              className="h-full rounded-full bg-cara-beige"
-              style={{ width: `${(i.value / max) * 100}%` }}
-            />
-          </div>
-        </div>
-      ))}
-      {items.length === 0 && (
-        <p className="text-sm text-cara-faint">No data yet.</p>
-      )}
-    </div>
-  );
-}
-
-function Panel({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="cara-card space-y-4 p-5">
-      <h2 className="cara-eyebrow">{title}</h2>
-      {children}
-    </section>
-  );
+/// First name only. "Hello, Dr. Asif Sheikh" reads like a letter from a bank;
+/// the greeting is meant to sound like the software knows who just logged in.
+function firstName(name?: string | null, email?: string | null): string {
+  const from = name?.trim() || email?.split("@")[0] || "there";
+  return from.split(/[\s.]+/)[0].replace(/^./, (c) => c.toUpperCase());
 }
 
 export default async function DashboardPage() {
-  const [
-    totalLeads,
-    totalCalls,
-    byStatus,
-    bySource,
-    byOutcome,
-    bySentiment,
-    durationAgg,
-    recentCalls,
-  ] = await Promise.all([
-    prisma.lead.count({ where: { deletedAt: null } }),
-    prisma.call.count(),
-    prisma.lead.groupBy({ by: ["status"], where: { deletedAt: null }, _count: { _all: true } }),
-    prisma.lead.groupBy({ by: ["source"], where: { deletedAt: null }, _count: { _all: true } }),
-    prisma.call.groupBy({ by: ["outcome"], _count: { _all: true } }),
-    prisma.call.groupBy({ by: ["sentiment"], _count: { _all: true } }),
-    prisma.call.aggregate({ _avg: { duration: true } }),
+  const [session, data, recentCalls] = await Promise.all([
+    auth(),
+    getDashboardData(),
     prisma.call.findMany({
       orderBy: { createdAt: "desc" },
       include: { lead: true },
@@ -121,75 +29,103 @@ export default async function DashboardPage() {
     }),
   ]);
 
-  const statusCounts = countMap(byStatus, "status");
-  const outcomeCounts = countMap(byOutcome, "outcome");
-
-  const confirmed = statusCounts["confirmed"] ?? 0;
-  const conversionRate = totalLeads ? (confirmed / totalLeads) * 100 : 0;
-  const avgDuration = Math.round(durationAgg._avg.duration ?? 0);
-  const noAnswer = outcomeCounts["no_answer"] ?? 0;
-  const reachRate = totalCalls ? ((totalCalls - noAnswer) / totalCalls) * 100 : 0;
-
-  // Ordered chart series (known buckets first, then any extras).
-  const pipeline = STATUS_ORDER.filter((s) => s in statusCounts).map((s) => ({
-    label: s,
-    value: statusCounts[s],
-  }));
-  const sources = Object.entries(countMap(bySource, "source"))
-    .map(([label, value]) => ({
-      label: SOURCE_LABELS[label] ?? label,
-      value,
-    }))
-    .sort((a, b) => b.value - a.value);
-  const outcomes = OUTCOME_ORDER.filter((o) => o in outcomeCounts).map((o) => ({
-    label: o,
-    value: outcomeCounts[o],
-  }));
-  const sentimentCounts = countMap(bySentiment, "sentiment");
-  const sentiments = SENTIMENT_ORDER.filter((s) => s in sentimentCounts).map(
-    (s) => ({ label: s, value: sentimentCounts[s] }),
-  );
+  const today = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(new Date());
 
   return (
-    <div className="space-y-8">
-      <header className="cara-sec-hd">
-        <div className="cara-eyebrow">Overview</div>
-        <h1 className="cara-title">Dashboard</h1>
+    <div className="space-y-4">
+      {/* Greeting rather than a page title: this screen is the first thing the
+          desk sees each morning, and it should open by naming the day. */}
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-[19px] font-semibold tracking-tight text-cara-ink">
+            Hello, {firstName(session?.user?.name, session?.user?.email)}
+          </h1>
+          <p className="mt-0.5 text-[12px] text-cara-muted">
+            Here&rsquo;s what&rsquo;s happening at the clinic this month.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="cara-chip">{data.monthLabel}</span>
+          <span className="cara-chip text-cara-muted">{today}</span>
+        </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatCard label="Total leads" value={totalLeads} />
-        <StatCard label="Calls made" value={totalCalls} />
-        <StatCard
-          label="Confirmed"
-          value={confirmed}
-          sub={`${conversionRate.toFixed(0)}% of leads`}
-        />
-        <StatCard label="Reach rate" value={`${reachRate.toFixed(0)}%`} sub="calls answered" />
-        <StatCard
-          label="Avg call"
-          value={avgDuration ? `${avgDuration}s` : "—"}
-        />
+      {/* Bento: the five headline figures on the left, the trend beside them. */}
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        {/* Five figures in a two-column block: the last one spans, so the grid
+            closes instead of leaving an orphan tile beside empty space. */}
+        <div className="grid grid-cols-2 gap-3 self-start">
+          {data.stats.map((stat, i) => (
+            <div key={stat.label} className={i === data.stats.length - 1 ? "col-span-2" : ""}>
+              <StatTile stat={stat} featured={i === 0} />
+            </div>
+          ))}
+        </div>
+
+        <section className="cara-card p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-[13px] font-semibold text-cara-ink">Leads coming in</h2>
+              <p className="mt-0.5 text-[11px] text-cara-faint">Last 8 days · IST</p>
+            </div>
+            <Link href="/leads" aria-label="Open leads" className="cara-tile-arrow" title="Open leads">
+              <span aria-hidden>↗</span>
+            </Link>
+          </div>
+          <div className="mt-3">
+            <LeadsColumns data={data.daily} />
+          </div>
+        </section>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Lead pipeline">
-          <BarList items={pipeline} />
-        </Panel>
-        <Panel title="Leads by source">
-          <BarList items={sources} />
-        </Panel>
-        <Panel title="Call outcomes">
-          <BarList items={outcomes} />
-        </Panel>
-        <Panel title="Call sentiment">
-          <BarList items={sentiments} />
-        </Panel>
+      {/* What is waiting on a person, and where the leads came from. */}
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)]">
+        <QueueCard
+          icon={<IconPhone size={16} />}
+          count={data.awaitingFirstCall}
+          noun={data.awaitingFirstCall === 1 ? "lead" : "leads"}
+          waiting={`${data.awaitingFirstCall} ${data.awaitingFirstCall === 1 ? "lead has" : "leads have"} never been called.`}
+          href="/leads"
+          linkLabel="Open leads awaiting a first call"
+        />
+        <QueueCard
+          icon={<IconHandover size={16} />}
+          count={data.awaitingHandover}
+          noun={data.awaitingHandover === 1 ? "handover" : "handovers"}
+          waiting={`${data.awaitingHandover} ${data.awaitingHandover === 1 ? "patient is" : "patients are"} waiting for a counsellor.`}
+          href="/leads"
+          linkLabel="Open handovers"
+        />
+
+        <section className="cara-card p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-[13px] font-semibold text-cara-ink">Where leads come from</h2>
+              <p className="mt-0.5 text-[11px] text-cara-faint">All time, by source</p>
+            </div>
+            <Link href="/reports" aria-label="Open reports" className="cara-tile-arrow" title="Open reports">
+              <span aria-hidden>↗</span>
+            </Link>
+          </div>
+          <div className="mt-3">
+            <SourceDonut data={data.sources} />
+          </div>
+        </section>
       </div>
 
-      <section className="space-y-4">
-        <h2 className="cara-eyebrow">Recent calls</h2>
-        <div className="cara-card overflow-x-auto">
+      <section className="cara-card overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <h2 className="text-[13px] font-semibold text-cara-ink">Recent calls</h2>
+          <Link href="/calls" className="tone-link text-[13px] hover:underline">
+            All calls →
+          </Link>
+        </div>
+        <div className="overflow-x-auto">
           <table className="cara-table">
             <thead>
               <tr>
@@ -211,9 +147,9 @@ export default async function DashboardPage() {
                       {call.lead.name}
                     </Link>
                   </td>
-                  <td>{call.callType}</td>
-                  <td>{call.outcome ?? "—"}</td>
-                  <td>{call.sentiment ?? "—"}</td>
+                  <td className="text-cara-muted">{call.callType}</td>
+                  <td className="text-cara-muted">{call.outcome ?? "—"}</td>
+                  <td className="text-cara-muted">{call.sentiment ?? "—"}</td>
                   <td className="text-cara-muted">{formatIst(call.createdAt)}</td>
                 </tr>
               ))}

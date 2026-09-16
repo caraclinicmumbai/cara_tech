@@ -118,8 +118,8 @@
   --radius-cara:    var(--cara-r);
   --radius-cara-lg: var(--cara-r-lg);
 
-  --font-sans:  var(--font-sans), "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: var(--font-serif), "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --font-sans:  var(--font-sans), "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-serif), "Playfair Display", Georgia, "Times New Roman", serif;
 }
 
 /* Dark mode is opt-in via a `.dark` class on <html> (set by the theme toggle +
@@ -170,7 +170,7 @@ html.dark { color-scheme: dark; }
 body {
   background: var(--cara-page);
   color: var(--cara-text);
-  font-family: var(--font-sans), "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-sans), "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
@@ -179,7 +179,7 @@ body {
 
 /* Modern-sans headings to match the bento SaaS inspiration. */
 h1, h2, h3 {
-  font-family: var(--font-sans), "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-sans), "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.01em;
@@ -413,3 +413,646 @@ h1, h2, h3 {
   border-radius: 999px;
 }
 .cara-scroll-x::-webkit-scrollbar-thumb:hover { background: var(--cara-text-faint); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ENORI BRAND LAYER — pilot (enori Brand Guidelines v2.0)
+   ───────────────────────────────────────────────────────────────────────
+   Opt-in via an `enori` class on <html>, set by the brand toggle + the
+   no-flash init script, exactly like `.dark`. Scoping it this way is what
+   makes the pilot a pilot: the business can flip between the two designs
+   on a live screen instead of judging a screenshot.
+
+   It overrides the SAME `--cara-*` tokens the app already consumes, so
+   every surface, border and control follows without touching a component.
+   What does NOT follow are the ~246 hard-coded Tailwind colour classes
+   (text-red-600 and friends) scattered across 39 files — those are the
+   real work, and the tone ladder further down is the proposed answer.
+
+   Declared after `.dark` so that on <html class="dark enori"> the enori
+   values win on source order, and `.enori.dark` (higher specificity) wins
+   over both.
+   ═══════════════════════════════════════════════════════════════════════ */
+.enori {
+  /* Surfaces — a near-white grey ground, white cards. */
+  --cara-page:         #f5f6f8;
+  --cara-surface:      #ffffff;
+  --cara-surface-2:    #eef0f4;
+  --cara-tint:         #eef0f4;
+
+  --cara-rule:         #e6e8ee;
+  --cara-rule-strong:  #d2d6e0;
+  --cara-rule-soft:    #eff1f5;
+
+  --cara-ink:          #14161d;
+  --cara-ink-soft:     #363b47;
+
+  /* Accent — the royal blue the reference leads with. White measures 5.65:1
+     against it, so it can carry the navbar as a flat field as well as fill
+     buttons and marks. */
+  --cara-beige:        #3358e8;   /* royal blue — fill */
+  --cara-beige-deep:   #2a46c4;   /* the deeper step, for text on white */
+  --cara-accent-bg:    #e8edfd;
+
+  --enori-cobalt:      #3358e8;
+  --enori-light:       #7f9bf2;
+  --enori-deep:        #2440b8;
+  --enori-sky:         #e8edfd;
+  --enori-indigo:      #2440b8;
+  /* The lime the reference uses for its one highlighted figure. */
+  --enori-lime:        #ddf26b;
+
+  --cara-yellow:       #3358e8;
+  --cara-yellow-soft:  #e8edfd;
+  --cara-coral:        #7f9bf2;
+  --cara-coral-soft:   #eef2fe;
+  --cara-dark:         #14161d;
+  --cara-dark-2:       #242938;
+
+  --cara-text:         #14161d;
+  --cara-text-muted:   #6b7280;
+  --cara-text-faint:   #9aa1ad;
+
+  /* Semantic ramps in the same family: depth, border and ink weight carry the
+     urgency. Identity, where a badge needs it, comes from the tag palette. */
+  --state-info-bg:      #e8edfd;
+  --state-info-bd:      #c6d3fa;
+  --state-info-tx:      #2440b8;
+
+  --state-success-bg:   #e8edfd;
+  --state-success-bd:   #c6d3fa;
+  --state-success-tx:   #2440b8;
+
+  --state-warning-bg:   #f2f5fe;
+  --state-warning-bd:   #dfe6fc;
+  --state-warning-tx:   #2a46c4;
+
+  --state-danger-bg:    #ccd7fb;
+  --state-danger-bd:    #8fa8f3;
+  --state-danger-tx:    #1c3391;
+
+  --path-hair-bg:       #e8edfd;
+  --path-hair-accent:   #2440b8;
+  --path-skin-bg:       #f2f5fe;
+  --path-skin-accent:   #2a46c4;
+  --path-nsr-bg:        #eef2fe;
+  --path-nsr-accent:    #7f9bf2;
+
+  --cara-shadow:    0 1px 2px rgba(20,22,29,.04), 0 4px 16px rgba(20,22,29,.06);
+  --cara-shadow-lg: 0 10px 30px rgba(20,22,29,.10);
+
+  --background: var(--cara-page);
+  --foreground: var(--cara-ink);
+}
+
+
+
+/* Mandatory across every stat counter, call timer and financial figure, so
+   digits stop shifting width as they change. */
+.enori table,
+.enori .cara-stat,
+.enori [data-numeric] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Derived dark palette ───────────────────────────────────────────────
+   NOT IN THE DECK. The guidelines define no dark ramp — only "on dark
+   surfaces, switch 'ori' to white" — so these values are extrapolated from
+   the Deep Ink Slate root and need brand sign-off before they ship. The
+   app has a working dark mode today, so the alternative was to break it. */
+.enori.dark {
+  --cara-page:         #0f1220;
+  --cara-surface:      #181d31;
+  --cara-surface-2:    #222842;
+  --cara-tint:         #181d31;
+
+  --cara-rule:         #2b3252;
+  --cara-rule-strong:  #3b4468;
+  --cara-rule-soft:    #212743;
+
+  --cara-ink:          #f5f6f8;
+  --cara-ink-soft:     #d2d6e0;
+  --cara-beige:        #6b8af0;
+  --cara-beige-deep:   #a5b9f7;
+  --cara-accent-bg:    #1d2547;
+
+  --enori-sky:         #1d2547;
+  --enori-indigo:      #c6d3fa;
+
+  --cara-yellow:       #6b8af0;
+  --cara-yellow-soft:  #1d2547;
+  --cara-coral:        #a5b9f7;
+  --cara-coral-soft:   #1d2547;
+  --cara-dark:         #222842;
+  --cara-dark-2:       #2b3252;
+
+  --cara-text:         #eef0f6;
+  --cara-text-muted:   #9aa1b5;
+  --cara-text-faint:   #6d7590;
+
+  --state-info-bg:      #1d2547;
+  --state-info-bd:      #2f3c78;
+  --state-info-tx:      #c6d3fa;
+  --state-success-bg:   #1d2547;
+  --state-success-bd:   #2f3c78;
+  --state-success-tx:   #c6d3fa;
+  --state-warning-bg:   #191f3a;
+  --state-warning-bd:   #26305a;
+  --state-warning-tx:   #b3c2f8;
+  --state-danger-bg:    #2b3a8f;
+  --state-danger-bd:    #4a5cc4;
+  --state-danger-tx:    #e8edfd;
+}
+
+
+
+/* ─── The tone ladder ────────────────────────────────────────────────────
+   The Zero Green / Zero Red rule's real cost: status colour in this CRM is
+   not decoration. "Overdue", "call failed", "lost", "CQS 31" have to be
+   legible at a glance down a seventeen-column table.
+
+   Hue used to do that work. Without green or red — and staying in PASTEL, so
+   nothing shouts with a saturated fill — three quieter cues carry it instead,
+   and they stack:
+
+     • tint depth   #eff7fd → #b9dcf6, faintest to deepest
+     • border       only the critical rung carries a visible one
+     • ink + weight #0069b4 regular → #00395e semibold
+
+   One of those alone would be too soft to catch a telecaller scanning forty
+   rows; together they read as a clear step up without raising the volume.
+   The ordering also survives greyscale and colour-blindness, which the
+   red/green pair it replaces never did.
+
+   Each class renders today's colours by default and the enori palette under
+   `.enori`, so the same markup shows either design and the swap is a CSS
+   concern rather than a JSX rewrite — which is how the remaining 38 files
+   would follow if the pilot is accepted. */
+.tone {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--cara-pill);
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.tone-neutral   { background: rgba(100,116,139,.12); color: var(--cara-text-muted); }
+.tone-info      { background: var(--state-info-bg);    color: var(--state-info-tx);    border-color: var(--state-info-bd); }
+.tone-positive  { background: var(--state-success-bg); color: var(--state-success-tx); border-color: var(--state-success-bd); }
+.tone-attention { background: var(--state-warning-bg); color: var(--state-warning-tx); border-color: var(--state-warning-bd); }
+.tone-critical  { background: var(--state-danger-bg);  color: var(--state-danger-tx);  border-color: var(--state-danger-bd); }
+
+/* Under enori the critical rung has no fill to lean on, so it takes the ink
+   weight and keeps the only visible border in the set. In the CARA design red
+   already shouts and needs neither. */
+.enori .tone-critical {
+  font-weight: 600;
+  border-width: 1px;
+}
+.enori .tone-attention { border-color: var(--state-warning-bd); }
+
+/* Interactive text: Cobalt Spark drives links and active controls. */
+.enori .tone-link { color: var(--enori-cobalt); }
+.tone-link { color: #2563eb; }
+.dark .tone-link { color: #60a5fa; }
+.enori.dark .tone-link { color: #8fa9f4; }
+
+/* ─── Wordmark ───────────────────────────────────────────────────────────
+   Both marks are in the DOM and CSS picks one, so switching brand can never
+   desync server and client HTML. */
+.brand-enori { display: none; }
+.enori .brand-cara { display: none; }
+.enori .brand-enori { display: flex; }
+
+/* Minimum 28px in application top navigation (Brand Guidelines p.4). */
+.enori-wordmark {
+  font-family: var(--font-serif), "Playfair Display", Georgia, serif;
+  font-size: 28px;
+  line-height: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #1b1b2e;              /* Deep Ink Slate — the "ori" root */
+}
+.enori-wordmark-en { color: #7266dc; }   /* Iris Violet — the "en" prefix */
+/* On dark surfaces the root switches to white; the prefix holds its violet. */
+.enori.dark .enori-wordmark { color: #ffffff; }
+.enori.dark .enori-wordmark-en { color: #8b80e6; }
+
+/* The micro mark: lowercase "e" centred in an Iris Violet squircle. */
+.enori-squircle {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;         /* squircle, not a circle and not a box */
+  background: #7266dc;
+  color: #ffffff;
+  font-family: var(--font-serif), "Playfair Display", Georgia, serif;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1;
+  /* Clear space equal to the height of the lowercase "e" (p.4) is held by the
+     gap on the flex parent and the sidebar's own padding. */
+}
+
+/* The primary button leads with Cobalt Spark rather than Deep Ink Slate, which
+   the deck assigns to typography and not to action.
+   DEVIATION: p.6 reserves Iris Violet for primary calls-to-action. The clinic
+   asked for blue over violet across the interface, so Cobalt takes the CTA and
+   violet is held back for the logotype. Still the 5% of the 60-30-10 split —
+   one button per screen. */
+.enori .cara-btn-primary,
+.enori.dark .cara-btn-primary {
+  background: var(--enori-cobalt);
+  border-color: var(--enori-cobalt);
+  color: #ffffff;
+}
+.enori .cara-btn-primary:hover,
+.enori.dark .cara-btn-primary:hover {
+  background: #2a46c4;
+  border-color: #2a46c4;
+}
+
+/* Cobalt Spark drives interactive controls and focus (p.6). */
+.enori .cara-input:focus,
+.enori .cara-textarea:focus,
+.enori .cara-select:focus {
+  border-color: var(--enori-cobalt);
+  box-shadow: 0 0 0 3px rgba(73, 111, 233, .18);
+}
+
+/* ─── Chart tokens ───────────────────────────────────────────────────────
+   Roles, not raw hex, so light/dark and CARA/enori swap in one place and the
+   chart bodies stay written against meaning.
+
+   The SEQUENCE is deliberately a single-hue ramp rather than a set of
+   categorical hues. The brand forbids green and red, and a validated check of
+   six blue/violet hues put the worst adjacent pair at ΔE 5.6 for NORMAL colour
+   vision — below the 15 floor, i.e. two slices most people cannot tell apart.
+   A band that narrow cannot carry identity, so magnitude carries it instead:
+   segments are ordered largest to smallest and darkest to lightest, and the
+   legend (name + count + share) is what actually names them. */
+:root {
+  --viz-bar:      var(--cara-beige-deep);
+  --viz-bar-peak: var(--cara-ink);
+  --viz-grid:     var(--cara-rule);
+  --viz-seq-1:    #8a6d2e;
+  --viz-seq-2:    #a98b4a;
+  --viz-seq-3:    #c9ab6e;
+  --viz-seq-4:    #e0c797;
+  --viz-seq-5:    #efe0c4;
+}
+.dark {
+  --viz-bar:      var(--cara-beige);
+  --viz-bar-peak: #ffffff;
+  --viz-seq-1:    #f0c24a;
+  --viz-seq-2:    #d9a93c;
+  --viz-seq-3:    #b98f34;
+  --viz-seq-4:    #8e6d29;
+  --viz-seq-5:    #5f4a1c;
+}
+.enori {
+  /* The bars sit back and the busiest day comes forward, rather than the whole
+     series arriving at full saturation. Eight columns of solid royal blue is a
+     lot of ink for a card this size; softening the many and keeping the one is
+     also the better emphasis — the bar that matters is now the strongest thing
+     in the chart instead of the second strongest. */
+  --viz-bar:      #97aef2;   /* the quiet many */
+  --viz-bar-peak: #3358e8;   /* the busiest day, at full strength */
+  --viz-grid:     var(--cara-rule);
+  --viz-seq-1:    #2440b8;
+  --viz-seq-2:    #3358e8;
+  --viz-seq-3:    #6b8af0;
+  --viz-seq-4:    #a5b9f7;
+  --viz-seq-5:    #d8e1fc;
+}
+/* Dark gets its OWN steps off the same ramp — not an inversion. The darkest
+   violets disappear against a Deep Ink Slate ground, so the whole sequence
+   shifts up into the range that stays visible on it. */
+.enori.dark {
+  --viz-bar:      #3a4a86;
+  --viz-bar-peak: #8ba5f5;
+  --viz-seq-1:    #d8e1fc;
+  --viz-seq-2:    #a5b9f7;
+  --viz-seq-3:    #6b8af0;
+  --viz-seq-4:    #3358e8;
+  --viz-seq-5:    #2440b8;
+}
+
+/* ─── Dashboard tiles ────────────────────────────────────────────────────
+   The corner arrow the reference puts on every card: a number on a dashboard
+   should always open the screen it came from. */
+.cara-tile-arrow {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: var(--cara-pill);
+  background: var(--cara-surface-2);
+  border: 1px solid var(--cara-rule);
+  color: var(--cara-text-muted);
+  font-size: 12px;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.cara-tile-arrow:hover {
+  background: var(--cara-beige-deep);
+  border-color: var(--cara-beige-deep);
+  color: var(--cara-surface);
+}
+/* One tile leads — the reference gives its first card the filled treatment so
+   the eye has somewhere to land before it starts reading. */
+.cara-tile-featured { border-color: var(--cara-rule-strong); }
+.enori .cara-tile-featured {
+  background: linear-gradient(180deg, var(--cara-accent-bg), var(--cara-surface) 70%);
+  border-color: #c6d3fa;
+}
+.enori .cara-tile-featured .cara-tile-arrow {
+  background: var(--enori-cobalt);
+  border-color: var(--enori-cobalt);
+  color: #ffffff;
+}
+.enori.dark .cara-tile-featured {
+  background: linear-gradient(180deg, var(--cara-accent-bg), var(--cara-surface) 70%);
+  border-color: #2f3c78;
+}
+
+.cara-queue-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: var(--cara-beige-deep);
+  background: var(--cara-surface-2);
+  border: 1px solid var(--cara-rule);
+}
+.enori .cara-queue-icon {
+  background: var(--cara-accent-bg);
+  border-color: transparent;
+}
+
+/* ─── The navbar ─────────────────────────────────────────────────────────
+   A single blue field with white type, per the reference.
+
+   A flat field rather than a gradient, as the reference has it. White measures
+   5.65:1 against #3358E8, which clears AA for body text, so the column is
+   legible top to bottom without needing to darken as it descends. */
+.enori .cara-sidebar {
+  border-right-color: var(--cara-rule);
+}
+
+/* ─── Tags ───────────────────────────────────────────────────────────────
+   Built to the sticker reference: a candy-pastel ground with a gloss falling
+   off the top edge, a thin saturated outline, a line-art glyph and lowercase
+   label both set in the same saturated hue, on a soft drop shadow. Rounded
+   rectangles rather than capsules — the reference's corners are generous but
+   its ends are not circular.
+
+   ONE deliberate departure. In the reference the label is the same colour as
+   the outline, which works because those stickers are enormous: at that size
+   3:1 is a legal contrast ratio. Ours are twelve pixels tall, where the
+   threshold is 4.5:1, and the reference's own pairing measures 2.96:1. So the
+   ink takes one step darker than the outline — same hue, same family, enough
+   contrast to be read at the size it is actually used.
+
+   The construction still puts THREE channels on every badge — fill, outline
+   and glyph — so a state survives greyscale, colour blindness and print, none
+   of which a block of colour does.
+
+   DEVIATION, deliberate: the Brand Guidelines (p.11) say "Never introduce
+   green or red status badges". This palette has both. It was supplied for the
+   tags specifically, so it is scoped to them — charts and trends stay on the
+   blue ladder where the rule still holds. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: 8px;
+  background-color: var(--tag-fill, var(--cara-surface-2));
+  /* The gloss: white falling off the top edge, as the reference has it. */
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 60%);
+  color: var(--tag-ink, var(--cara-text));
+  box-shadow: 0 1px 2px rgba(20, 22, 29, .10);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 17px;
+  text-transform: lowercase;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+/* The glyph rides bare in the label's colour — no chip behind it. It is drawn
+   rather than typed: emoji and dingbats are rendered by the operating system,
+   so the same character is a different picture on every machine. */
+.tag-icon {
+  flex-shrink: 0;
+  opacity: .9;
+}
+
+.tag-blue      { --tag-fill: #cfe3fb; --tag-line: #3b82f6; --tag-ink: #1d4fbf; }
+.tag-lime      { --tag-fill: #e4f59b; --tag-line: #8fbe1f; --tag-ink: #4e680d; }
+.tag-aqua      { --tag-fill: #b9edd4; --tag-line: #22a96f; --tag-ink: #14714c; }
+.tag-citric    { --tag-fill: #fbdfb0; --tag-line: #e2761b; --tag-ink: #9a4c08; }
+.tag-klein     { --tag-fill: #e8d4fa; --tag-line: #a855f7; --tag-ink: #7028b8; }
+.tag-fushia    { --tag-fill: #fbd5e8; --tag-line: #ec4899; --tag-ink: #a61e63; }
+.tag-tangerine { --tag-fill: #fcdad3; --tag-line: #ef5b3c; --tag-ink: #a93317; }
+.tag-ink       { --tag-fill: #e6e9ec; --tag-line: #97a3ab; --tag-ink: #46525a; }
+.tag-neutral   { --tag-fill: var(--cara-surface-2); --tag-line: var(--cara-rule-strong); --tag-ink: var(--cara-text-muted); }
+
+/* On a dark ground the gloss would read as haze, so it comes off and the
+   three channels invert: a deep tint of the hue, a mid outline, light ink. */
+.dark .tag { background-image: none; box-shadow: none; }
+.dark .tag-blue      { --tag-fill: #16264a; --tag-line: #4571cf; --tag-ink: #b9d0f8; }
+.dark .tag-lime      { --tag-fill: #29330f; --tag-line: #86a52c; --tag-ink: #dcf08a; }
+.dark .tag-aqua      { --tag-fill: #0f3325; --tag-line: #2a9b6c; --tag-ink: #9ae9c4; }
+.dark .tag-citric    { --tag-fill: #3a2408; --tag-line: #c1701f; --tag-ink: #f6cf95; }
+.dark .tag-klein     { --tag-fill: #2b1a45; --tag-line: #8b57cf; --tag-ink: #ddc2fa; }
+.dark .tag-fushia    { --tag-fill: #3b1229; --tag-line: #c44a84; --tag-ink: #f7bcdb; }
+.dark .tag-tangerine { --tag-fill: #3d1a12; --tag-line: #c25340; --tag-ink: #ffbcae; }
+.dark .tag-ink       { --tag-fill: #1f272c; --tag-line: #6e7a83; --tag-ink: #cfd7dd; }
+
+/* The unread-WhatsApp count in the nav. It was a green pill, which the brand
+   rules bar outright and which disappears against the blue column anyway. */
+.nav-count {
+  display: grid;
+  place-items: center;
+  height: 16px;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: var(--cara-pill);
+  background: #16a34a;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+}
+.enori .nav-count { background: #ddf26b; color: #2c3506; }   /* Tangerine, from the tag palette */
+
+/* ─── Top-bar buttons ────────────────────────────────────────────────────
+   The reference's tab control: a white pill that sits slightly proud of the
+   ground on a soft shadow, with the active one carrying the brand blue and the
+   rest staying quiet. Under enori every chip in the header takes it — the
+   theme and brand toggles, and the month and date on the dashboard. */
+.enori .cara-chip {
+  background: var(--cara-surface);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 8px 15px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cara-text-muted);
+  box-shadow: 0 1px 2px rgba(20, 22, 29, .06), 0 2px 8px rgba(20, 22, 29, .05);
+}
+.enori .cara-chip:hover {
+  border-color: transparent;
+  color: var(--cara-ink);
+  box-shadow: 0 2px 4px rgba(20, 22, 29, .08), 0 6px 16px rgba(20, 22, 29, .08);
+}
+/* Active: the blue does the talking, the pill stays white. A filled tab would
+   compete with the one filled thing on the page that matters — the primary
+   action — and the reference keeps that distinction. */
+.enori .cara-chip.on,
+.enori .cara-chip[aria-pressed="true"] {
+  background: var(--cara-surface);
+  border-color: transparent;
+  color: var(--enori-cobalt);
+  font-weight: 600;
+}
+
+/* ─── The brand block ────────────────────────────────────────────────────
+   The logo sits on white rather than on the blue field. On the blue the mark
+   had to be inverted to stay visible — squircle flipped to white, prefix
+   pushed to a pale tint — which is a compromised version of it. On white it
+   is simply itself: the blue squircle, the two-tone wordmark, the tenant name
+   in muted grey.
+
+   The colour change is the divider, so the rule underneath comes off. */
+.enori .cara-sidebar-brand {
+  background: var(--cara-surface);
+  border-bottom-color: transparent !important;
+}
+.enori .cara-sidebar .cara-sidebar-brand .enori-wordmark { color: var(--cara-ink); }
+.enori .cara-sidebar .cara-sidebar-brand .enori-wordmark-en { color: var(--enori-cobalt); }
+.enori .cara-sidebar .cara-sidebar-brand .enori-squircle {
+  background: var(--enori-cobalt);
+  color: #ffffff;
+}
+.enori .cara-sidebar .cara-sidebar-brand .text-cara-muted { color: var(--cara-text-muted); }
+.enori.dark .cara-sidebar-brand { background: var(--cara-surface); }
+
+/* ─── Radius ─────────────────────────────────────────────────────────────
+   Tighter corners than the CARA design's. The 16px card radius came from a
+   soft bento look; against a flat blue navbar and square-shouldered tables it
+   read as too soft. These are the same tokens every surface already consumes,
+   so cards, panels, inputs and selects all tighten together. */
+.enori {
+  --cara-r-sm:  8px;
+  --cara-r:     10px;
+  --cara-r-lg:  14px;
+}
+/* The header buttons and the queue icons follow — the round arrow buttons do
+   not, being circles by intent rather than rounded boxes. */
+.enori .cara-chip { border-radius: 10px; }
+.enori .cara-queue-icon { border-radius: 10px; }
+.enori .enori-squircle { border-radius: 9px; }
+
+/* ─── Flat surfaces ──────────────────────────────────────────────────────
+   No shadow on the cards. With the page at #F5F6F8 and the cards at white,
+   the surfaces already separate on tone; the 1px rule does the edge. A shadow
+   on top of both was a third statement of the same boundary.
+
+   The hover lift goes with it — a card that rises with nothing beneath it to
+   cast onto reads as a glitch — and the border does the acknowledging
+   instead. The top-bar buttons and the tag stickers keep theirs: those are
+   objects meant to sit ON the surface, which is a different claim from a panel
+   that IS the surface. */
+.enori .cara-card { box-shadow: none; }
+.enori .cara-card-hover:hover {
+  box-shadow: none;
+  transform: none;
+  border-color: var(--cara-rule-strong);
+}
+.enori .cara-btn { box-shadow: none; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DENSITY PASS
+   ───────────────────────────────────────────────────────────────────────
+   The display end of the scale comes down by roughly a third and the
+   space it was holding open comes back as rows on screen.
+
+   ONE exception, stated because it is a deliberate miss: BODY text goes
+   14px → 13px, not 14 → 9.8. A third off the reading size is below any
+   defensible minimum — the tables here are read all day by people on
+   laptop screens, and 10px copy is not a denser product, it is an
+   unusable one. Density is bought from the headline sizes and the
+   padding, which is where the slack actually was.
+   ═══════════════════════════════════════════════════════════════════════ */
+.enori body { font-size: 13px; line-height: 1.5; }
+
+.enori h1 { font-size: 19px; }          /* was 26 */
+.enori h2 { font-size: 15px; }
+.enori h3 { font-size: 14px; }
+.enori .cara-title { font-size: 16px; } /* was 22 */
+.enori .cara-eyebrow { font-size: 10px; letter-spacing: 1.2px; }
+.enori .cara-note { font-size: 12px; }
+.enori .cara-sec-hd { margin-bottom: 16px; padding-bottom: 10px; }
+
+/* Controls: the same reduction, so inputs sit beside the text rather than
+   towering over it. */
+.enori .cara-input,
+.enori .cara-textarea,
+.enori .cara-select { padding: 7px 10px; font-size: 13px; }
+.enori .cara-btn { padding: 7px 14px; font-size: 12.5px; }
+.enori .cara-chip { padding: 6px 12px; font-size: 12px; }
+.enori .cara-table th { font-size: 10px; letter-spacing: .06em; }
+.enori .cara-table td { font-size: 12.5px; }
+.enori .cara-table th,
+.enori .cara-table td { padding-top: 7px; padding-bottom: 7px; }
+
+/* Dashboard figures. A 32px stat on a card this size was set for a poster;
+   22px still reads as the headline of its tile and gives back a row. */
+.enori .cara-stat-value { font-size: 22px; }
+.enori .cara-stat-hero { font-size: 27px; }
+
+/* ─── Sidebar ────────────────────────────────────────────────────────────
+   Light, narrow, and sectioned. The solid blue slab was a lot of chrome for
+   something a person navigates past rather than looks at, and it made every
+   item equally loud — so nothing indicated where you were. The field is now
+   the page's own surface and the ACTIVE item is the only coloured thing in
+   the column, which is the job colour should be doing here. */
+.enori .cara-sidebar {
+  background: var(--cara-surface);
+  border-right-color: var(--cara-rule);
+  color: var(--cara-text);
+}
+.enori .cara-sidebar-brand { background: transparent; }
+.enori .cara-sidebar .cara-sidebar-brand .enori-wordmark { font-size: 22px; line-height: 22px; }
+.enori .enori-squircle { width: 26px; height: 26px; font-size: 15px; border-radius: 8px; }
+
+.cara-nav-heading {
+  padding: 0 8px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--cara-text-faint);
+}
+.cara-nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: var(--cara-text-muted);
+  transition: background .12s, color .12s;
+}
+.cara-nav-link:hover { background: var(--cara-surface-2); color: var(--cara-ink); }
+.cara-nav-link.is-active {
+  background: var(--cara-accent-bg);
+  color: var(--enori-cobalt);
+  font-weight: 600;
+}

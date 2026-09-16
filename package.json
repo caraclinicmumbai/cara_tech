@@ -22,6 +22,7 @@
     "protect:audit": "dotenv -e .env.local -- tsx scripts/protectAuditLog.ts",
     "backfill:journeys": "dotenv -e .env.local -- tsx scripts/backfillPostSalesJourneys.ts",
     "backfill:capabilities": "dotenv -e .env.local -- tsx scripts/backfillRoleCapabilities.ts",
+    "seed:demo": "dotenv -e .env.local -- tsx scripts/seedDemoData.ts",
     "backup:now": "dotenv -e .env.local -- tsx scripts/runBackup.ts",
     "backup:list": "dotenv -e .env.local -- tsx scripts/restoreBackup.ts list",
     "backup:verify": "dotenv -e .env.local -- tsx scripts/restoreBackup.ts verify",

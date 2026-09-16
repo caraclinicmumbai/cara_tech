@@ -64,13 +64,13 @@ export function LeadForm() {
       <button
         type="submit"
         disabled={submitting}
-        className="rounded bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
+        className="cara-btn cara-btn-primary"
       >
         {submitting ? "Creating…" : "Create lead & call"}
       </button>
-      {error && <p className="text-sm text-red-600 sm:col-span-2">{error}</p>}
+      {error && <p className="tone tone-critical sm:col-span-2">{error}</p>}
       {dupOfId && (
-        <p className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm sm:col-span-2">
+        <p className="tone tone-attention px-3 py-2 sm:col-span-2">
           ⚠️ This phone/email matches an existing lead — saved to manual review, <strong>no AI call placed</strong>.{" "}
           <a href={`/leads/${dupOfId}`} className="font-medium underline">
             Review the existing record

@@ -1,18 +1,22 @@
 import type { Metadata } from "next";
-import { Cormorant_Garamond, Inter } from "next/font/google";
+import { Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
-// CARA editorial type system: Cormorant Garamond (serif headings) + Inter (sans body).
-const inter = Inter({
+// TWO families, and only two. Plus Jakarta Sans carries the entire interface;
+// Playfair Display is reserved for the logotype and display headings, where its
+// Didone heritage pairs with the mark. Inter and Cormorant Garamond were dropped
+// — four families on one screen is three too many, and every extra face is
+// another render-blocking request for no gain a reader could name.
+const jakarta = Plus_Jakarta_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const cormorant = Cormorant_Garamond({
+const playfair = Playfair_Display({
   variable: "--font-serif",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -29,13 +33,14 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${inter.variable} ${cormorant.variable} h-full antialiased`}
+      className={`${jakarta.variable} ${playfair.variable} h-full antialiased`}
     >
       <head>
-        {/* Apply the saved (or system) theme before paint to avoid a flash. */}
+        {/* Apply the saved (or system) theme, and the saved brand, before paint
+            to avoid a flash of the other design. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('cara-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('cara-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}if(localStorage.getItem('cara-brand')==='enori'){document.documentElement.classList.add('enori');}}catch(e){}})();`,
           }}
         />
       </head>
