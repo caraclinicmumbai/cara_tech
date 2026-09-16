@@ -11,6 +11,7 @@
 // keeping the queue per-tab and off the URL.
 import { useSyncExternalStore } from "react";
 import Link from "next/link";
+import { IconClose } from "@/components/Icon";
 import {
   clearLeadQueue,
   positionIn,
@@ -31,8 +32,14 @@ export function LeadQueueNav({ leadId }: { leadId: string }) {
   const pos = positionIn(queue, leadId);
   if (!pos) return null;
 
-  const btn =
-    "inline-flex items-center gap-1 rounded-lg border border-cara-rule px-2.5 py-1 text-[13px] text-cara-ink transition-colors hover:bg-cara-surface-2 disabled:cursor-not-allowed disabled:opacity-40";
+  // The app's own button classes rather than a hand-rolled set. The previous
+  // version composed a base string carrying `hover:bg-cara-surface-2` with an
+  // override carrying `hover:bg-cara-ink-soft` — two utilities for the same
+  // property, where the winner is decided by the order Tailwind emits them, not
+  // the order they appear in the string. When the light one won, the Next
+  // button's near-white text landed on a light grey ground and the control all
+  // but vanished at exactly the moment a hand was on it.
+  const btn = "cara-btn text-[12.5px]";
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-cara-rule bg-cara-surface-2 px-3 py-2">
@@ -53,10 +60,12 @@ export function LeadQueueNav({ leadId }: { leadId: string }) {
         )}
 
         {pos.nextId ? (
-          // The one telecallers actually use, so it's the emphasised control.
+          // The one telecallers actually use, so it takes the primary treatment —
+          // the accent blue every other primary action in the app already uses,
+          // which also means its hover state is defined in one place.
           <Link
             href={`/leads/${pos.nextId}`}
-            className={`${btn} border-cara-ink bg-cara-ink font-medium text-cara-page hover:bg-cara-ink-soft`}
+            className={`${btn} cara-btn-primary`}
             aria-label="Next lead in this list"
           >
             Next lead →
@@ -68,11 +77,11 @@ export function LeadQueueNav({ leadId }: { leadId: string }) {
         <button
           type="button"
           onClick={clearLeadQueue}
-          className="rounded px-1.5 py-1 text-[12px] text-cara-muted hover:text-cara-ink"
+          className="grid h-6 w-6 place-items-center rounded text-cara-faint transition-colors hover:bg-cara-surface hover:text-cara-ink"
           aria-label="Stop stepping through this list"
           title="Stop stepping through this list"
         >
-          ✕
+          <IconClose size={12} />
         </button>
       </div>
     </div>

@@ -121,3 +121,10 @@ export const IconSearch = (p: IconProps) => (
     <path d="m10.5 10.5 3 3" />
   </Svg>
 );
+
+/// A close cross — dismissing the lead-queue strip.
+export const IconClose = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 4l8 8M12 4l-8 8" />
+  </Svg>
+);
