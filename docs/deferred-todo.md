@@ -18,10 +18,31 @@ From the 2026-09-03 test run: calls from the CRM go unanswered; the same patient
 Neodove call minutes later. Cause: an **unknown +1 caller** gets a Truecaller spam warning
 and is ignored.
 
-**Verified 2026-09-08 from Twilio's call log — production is still dialling as
-`+18104280484`.** Every call up to 08 Sep 06:51 used it. The local `.env.local` was changed
-on 4 Sep; **Railway has its own copy and was never updated**, so nothing changed for a
-patient. This is the whole of the remaining problem.
+**Re-verified 2026-09-18 from Twilio's call log — production is STILL dialling as
+`+18104280484`.** Every call in the account's history, through the most recent on 14 Sep
+11:03 UTC, put `+18104280484` on *both* legs. The local `.env.local` was changed on 4 Sep;
+**Railway has its own copy and was never updated**, so nothing has changed for a patient.
+This is the whole of the remaining problem.
+
+**"But it works when Mandira calls" — it doesn't, and this is worth understanding.** The
+Indian caller ID is live for *nobody*. The 14 Sep log shows her own click-to-call going out
+to the patient as `+1`:
+```
+10:56:02  rep leg      +18104280484 → +917710070566   ← ringing MANDIRA
+10:56:27  patient leg  +18104280484 → …               ← what the patient sees: +1
+```
+What is special about Mandira is that `+917710070566` **is her handset** — the very number
+we intend to *use* as the patient-facing caller ID. So a lead who sees an Indian number from
+her is seeing her phone, because she dialled it directly rather than through the CRM button.
+Nothing in the code branches on who is calling: `dialLeadTwiML` always uses
+`TWILIO_CALLER_ID`, identically for every counsellor. There is no per-rep bug to fix — there
+is one unset production variable.
+
+**Why nobody noticed for six weeks.** A `<Dial callerId>` Twilio doesn't accept is not an
+error: it silently substitutes the parent leg's `From`. The call connects, the counsellor
+hears nothing unusual, the CRM logs a success, and no alert is raised (confirmed — zero
+`13214` alerts on the account). `preflight.ts` now asks Twilio directly whether the caller ID
+is owned-or-verified, which turns this from invisible into a red line.
 
 **Do this:** on Railway, on **both the web and the worker** services, set
 ```
