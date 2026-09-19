@@ -7,6 +7,39 @@ Format: newest first.
 
 ---
 
+## 2026-09-19 — The Indian caller ID works for nobody, and nothing said so
+
+Files: `scripts/preflight.ts`. Flow doc updated:
+**[flows/04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**.
+Also corrects the open item in [deferred-todo.md](deferred-todo.md).
+
+Reported as: the Indian number shows for Mandira but an international one for Jatin —
+so something branches on who is calling. Nothing does. `dialLeadTwiML` uses
+`TWILIO_CALLER_ID` identically for every counsellor, and Twilio's call log shows every
+call in the account's history, through the latest on 14 Sep, putting `+18104280484` on
+*both* legs. Hers included:
+
+```
+10:56:02  rep leg      +1810… -> +917710070566   ringing MANDIRA
+10:56:27  patient leg  +1810… -> …               the patient sees +1
+```
+
+What is special about Mandira is that `+917710070566` **is her handset** — the number
+we intend to *use* as the patient-facing caller ID — so a lead seeing `+91` from her is
+seeing her phone, dialled directly rather than through the CRM. The production variable
+was still unset, which is the item that has been open in `deferred-todo.md` since
+3 September.
+
+**Worth knowing generally:** the reason this survived being "fixed" twice is that the
+failure is silent by design. A `<Dial callerId>` Twilio doesn't accept raises no error
+and no alert (confirmed — zero `13214`s on the account); Twilio just substitutes the
+parent leg's `From`, so the call connects normally and the CRM files a success. A caller
+ID is only usable if the account **owns** the number or has **verified** it. `preflight.ts`
+now asks Twilio which, and fails loudly when the answer is neither — where the old check
+printed a cheerful "Indian number" for a number Twilio would never put on the wire.
+
+---
+
 ## 2026-09-17 — The Next-lead button stops vanishing under the cursor
 
 Files: `components/LeadQueueNav.tsx`, `components/Icon.tsx`. No flow doc change.

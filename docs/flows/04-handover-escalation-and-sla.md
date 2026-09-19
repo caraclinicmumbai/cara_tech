@@ -76,6 +76,14 @@ thresholds.
      the clinic owns, `repCallerId(avoid)` refuses the collision (falling back to
      `TWILIO_OWNED_NUMBER`), and `scripts/preflight.ts` fails if the patient caller ID is
      any active rep's phone.
+   - **Setting the variable is not the same as the number being used.** A `<Dial
+     callerId>` Twilio doesn't recognise is not an error: it silently substitutes the
+     parent leg's `From`. The call connects, the counsellor hears nothing unusual, the
+     CRM files a success, and no alert fires — the patient simply sees the old number.
+     Twilio accepts a caller ID only if the account **owns** it or has **verified** it,
+     so `preflight.ts` asks the account directly (`callerIdStatus`) rather than trusting
+     the variable. Without that check the only witness is Twilio's call log, which is
+     how a `+1` survived being "fixed" twice.
    - **A call that never connects is recorded too.** The `<Dial action>` callback
      (`/api/twilio/dial-result`) fires whatever the outcome — busy, no answer, carrier
      rejection — files a `Call` with the outcome, rings the rep's bell, reverts their
