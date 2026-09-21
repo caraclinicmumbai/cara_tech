@@ -68,13 +68,38 @@ phone.
 *(An earlier note here claimed `+917710070566` matched no rep. That check ran against the
 LOCAL database; production has different reps. Wrong database, wrong conclusion.)*
 
-**Then still test on a handset.** India's DoT directs carriers to block incoming
-international calls displaying an Indian CLI — the signature of spoofed scam calls — and a
-Twilio call from outside India showing `+91` fits it. Three outcomes, only a test tells
-them apart: the `+91` shows (solved); the CLI is replaced or reads unknown (no better); the
-call is blocked (worse — revert). **If it fails, the durable answer is an Indian provider**
-(Exotel, Knowlarity, Ozonetel) that originates the call inside India, which is what Neodove
-uses; that also settles the TRAI DND gap in `gaps-and-roadmap.md`.
+### ANSWERED 2026-09-21 — Twilio cannot do this. The test was run and it failed.
+
+The variables were set on Railway and the `+91` went out exactly as designed. **Twilio then
+refused every patient leg**, six for six, with error **13247** — *"From number (caller ID)
+must be valid and not on the do-not-originate (DNO) list"*:
+
+```
+07:29:24  rep leg      +1810…        -> +917506452977   completed   ← counsellor answers
+07:29:28  patient leg  +917710070566 -> …               FAILED 0s   ← refused at Twilio
+```
+
+The counsellor's leg still connected, so the failure wore a disguise: the rep answered,
+heard *"that number could not be reached"*, and went to check a lead number that was never
+wrong. Reverted to `+18104280484` at 08:14 and calling resumed the same minute.
+
+**Why no Twilio setting fixes it.** The account owns exactly one number — `+18104280484`
+(US). `+917710070566` is only a *verified caller ID*. Twilio accepts a verified number as
+the `From` on a REST call, which is why the rep leg worked throughout, but it will not
+**originate** into India presenting a CLI it never issued. Owning the number is the only
+thing that qualifies, and an Indian number we own is not something Twilio will sell us for
+this purpose.
+
+**So the durable answer is an Indian provider** — Exotel, Knowlarity, Ozonetel — that
+originates the call inside India on an Exophone we control. That is what Neodove uses. It
+also collects three other open problems in one move: patients ringing back reach the CRM
+instead of a counsellor's handset (below), `TWILIO_INBOUND_NUMBER` stops being unset, and
+the TRAI DND gap in `gaps-and-roadmap.md` is settled.
+
+**Interim, worth doing this week:** register `+18104280484` with **Truecaller Business** so
+it presents as *Cara Clinic* rather than an unknown foreign number. It does not make the
+number Indian, but it removes the spam flag, and it costs nothing to try while procurement
+runs.
 
 **Register whichever number dials with Truecaller Business** and let it warm up.
 
