@@ -6,6 +6,32 @@
 
 ---
 
+## Twilio confirmed it in writing (2026-09-21)
+
+We asked Twilio Support directly. Their answer, verbatim in substance:
+
+| Number type | Outbound voice | Usable as CLI into India |
+|---|---|---|
+| Indian **local** | Not available | No — cannot be purchased or ported |
+| Indian **mobile** | Not available | No — cannot be purchased or ported |
+| Indian **toll-free** | By special request | Yes, with restrictions |
+| **Verified** non-Twilio | Not supported | No — DNO + Indian regulation |
+
+> *"If presenting a local Indian CLI is a strict requirement for your use case, you will need
+> to consider alternative providers who can offer this capability under Indian regulations."*
+
+**The toll-free exception does not apply to us, and this is the detail that closes the last
+door.** Twilio's India toll-free product requires *"the business or individual to be **outside
+of India**"* — it exists for foreign companies dialling into India. Cara is a Mumbai clinic.
+We are the wrong side of that rule and cannot buy it.
+
+Even if we could: a 1800 number presented on an outbound call to a patient reads as
+telemarketing, not as their clinic, and the recipient must be able to receive toll-free calls
+at all. It would be a worse caller ID than the one we have.
+
+So there is no Twilio configuration, purchase, or escalation that solves this. The vendor has
+said so itself. This question is closed — do not reopen it.
+
 ## The one-paragraph reason
 
 Twilio owns one number on our account, `+18104280484` (US). An Indian number can be

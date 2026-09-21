@@ -90,6 +90,13 @@ the `From` on a REST call, which is why the rep leg worked throughout, but it wi
 thing that qualifies, and an Indian number we own is not something Twilio will sell us for
 this purpose.
 
+**Twilio Support confirmed this in writing on 2026-09-21**: Indian local and mobile numbers
+cannot be bought or ported on Twilio at all, a verified non-Twilio Indian number is expressly
+not supported as CLI into India, and the one exception — Indian toll-free — *requires the
+business to be outside India*, which a Mumbai clinic is not. Their own closing line is that we
+"will need to consider alternative providers". Recorded in
+[exotel-migration.md](./exotel-migration.md); the question is closed.
+
 **So the durable answer is an Indian provider** — Exotel, Knowlarity, Ozonetel — that
 originates the call inside India on an Exophone we control. That is what Neodove uses. It
 also collects three other open problems in one move: patients ringing back reach the CRM
