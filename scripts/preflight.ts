@@ -185,12 +185,23 @@ async function callerIdRegion(auth: { username: string; password: string }) {
           `silently ignore it and dial patients from the number that rings the counsellor instead. ` +
           `Verify it (Console → Phone Numbers → Manage → Verified Caller IDs) or buy an Indian number.`,
       );
-    } else {
+    } else if (patient === "verified") {
+      // Verified is NOT the same as usable, and this check said it was — which is how
+      // the +91 went live and broke every call on 21 Sep with error 13247, "From number
+      // (caller ID) must be valid and not on the do-not-originate list". Twilio will
+      // accept a verified number as the From on a REST call, but it refuses to
+      // ORIGINATE to India presenting a CLI it hasn't issued. Only a number the account
+      // OWNS is safe on the patient leg.
       line(
-        OK,
+        WARN,
         "Caller ID on Twilio",
-        `${caller} is ${patient === "owned" ? "a number this account owns" : "a verified caller ID"} — Twilio will use it`,
+        `${caller} is only a VERIFIED caller ID, not a number this account owns. Twilio may ` +
+          `refuse to originate with it (error 13247, do-not-originate) — which fails the patient ` +
+          `leg of every call while the counsellor's leg still connects. Test one real call before ` +
+          `trusting it; the durable fix is a number we own, or an Indian provider.`,
       );
+    } else {
+      line(OK, "Caller ID on Twilio", `${caller} is a number this account owns — Twilio will use it`);
     }
 
     // The rep leg is a REST `From`, which Twilio validates strictly (error 21210) —

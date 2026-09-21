@@ -9,7 +9,7 @@
 // out loud why the call is ending.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyTwilioSignature, publicBase, dialFailedTwiML } from "@/lib/providers/twilio";
+import { verifyTwilioSignature, publicBase, dialFailedTwiML, patientCallerId } from "@/lib/providers/twilio";
 import { endConsultation } from "@/lib/presence";
 import { notifyRep } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
@@ -18,7 +18,7 @@ import { logger } from "@/lib/logger";
 const FAILED: Record<string, string> = {
   busy: "The patient's line was busy",
   "no-answer": "The patient didn't answer",
-  failed: "The carrier rejected the number",
+  failed: "The call could not be placed",
   canceled: "The call was cancelled before it connected",
 };
 
@@ -53,9 +53,14 @@ export async function POST(req: Request) {
 
   const summary = FAILED[status] ?? `The call ended (${status})`;
   const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { name: true, phone: true } });
+  // Log the caller ID we dialled FROM, not just the outcome. A `failed` patient leg
+  // looks identical whether the lead's number is wrong or Twilio refused our own caller
+  // ID (error 13247) — and when it's the caller ID it fails for every patient at once,
+  // which is invisible one call at a time. The From is what tells the two apart.
   logger.warn(
     `Click-to-call to lead ${leadId} did not connect: ${status}` +
-      (params.DialCallSid ? ` (leg ${params.DialCallSid})` : ""),
+      (params.DialCallSid ? ` (leg ${params.DialCallSid})` : "") +
+      ` — dialled from ${patientCallerId() || "unset"}`,
   );
 
   // File it as an attempt so the lead's history shows the try. Idempotent on the
