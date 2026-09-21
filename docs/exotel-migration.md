@@ -138,6 +138,78 @@ Preflight (`scripts/preflight.ts`) gains an Exotel section. The lesson from 21 S
 applies directly: **it must verify against the provider that the Exophone can originate**,
 not merely that a variable is set. "Configured" and "works" are different claims.
 
+## Onboarding runbook (the commercial path)
+
+> Exotel's exact process may have changed — confirm each step with them rather than
+> treating this as gospel. The *sequence* and the decision points are the durable part.
+
+### Phase 0 — Gather before you contact anyone (1 evening)
+
+Nothing here needs Exotel, and having it ready is the difference between a two-week
+onboarding and a five-week one. Indian telecom KYC is DoT-mandated and they cannot waive it.
+
+- Certificate of Incorporation **or** GST certificate **or** Shop & Establishment licence
+- Company **PAN**
+- Registered **address proof** (utility bill / rent agreement / bank statement)
+- **Authorised signatory ID** (Aadhaar + PAN) and, for a company, a board resolution or
+  authorisation letter naming them
+- **Expected monthly outbound minutes** — the first thing sales asks; a rough number is fine
+- The existing **business landline number** and which operator issued it (for questions 7–8)
+
+### Phase 1 — First contact
+
+Exotel is sales-led for business accounts; a self-serve signup usually lands you in a trial
+with limited capability. Contact sales at exotel.com and put the eight questions below in
+that first conversation, in writing, so the answers are on record.
+
+**Ask one more thing that is not on that list:** *can we have API credentials on a trial or
+sandbox account while KYC is processing?* If yes, the integration is built in parallel with
+the paperwork instead of after it — that is potentially two or three weeks off the date, and
+it costs nothing to ask.
+
+### Phase 2 — KYC submission
+
+Submit the Phase 0 documents plus a signed **CAF** (Customer Application Form). Expect days
+to weeks. A missing or mismatched document restarts the clock, so check that the entity name
+matches **exactly** across the CoI, PAN and address proof before submitting.
+
+### Phase 3 — Choose the Exophone (a real decision, not a formality)
+
+Exotel issues the number. Two formats, and they behave differently:
+
+| | Reads as | Best for |
+|---|---|---|
+| **Landline** (e.g. `022…`) | An established Mumbai clinic | The **published** number patients call |
+| **Mobile** (`+91 9x…`) | A person calling you | **Outbound** to patients — generally answered more |
+
+For our use case these are different jobs, and it is worth asking for **both**: a mobile-format
+Exophone as the outbound CLI on click-to-call, and a landline as the published inbound number.
+If budget allows only one, take the mobile format — outbound answer rate is the problem we are
+solving.
+
+**Unless question 7 comes back yes**, in which case the clinic's existing business line becomes
+the outbound CLI and carries whatever recognition it already has.
+
+### Phase 4 — Credentials and a sandbox call
+
+You will receive an **API key**, **API token**, **Account SID** and a **subdomain**. These are
+production credentials for a paid telecom service — they go straight into Railway variables,
+never into the repo, and never into a chat window.
+
+Before any integration work is trusted: place **one manual call from Exotel's dashboard** to a
+handset you are holding, and look at the screen. That is the test that was never run before
+the Twilio attempt, and running it early is the whole lesson of September.
+
+### Phase 5 — Integration
+
+See the scope above. `Call.provider` lands first (independent of Exotel), then the outbound
+adapter behind `CALL_PROVIDER`, then one real call, then the flip. Inbound moves on a
+different day.
+
+### Phase 6 — Truecaller
+
+Register whichever number **ends up dialling**, once it is settled and not before.
+
 ## Questions to put to Exotel before committing
 
 Ask these during onboarding, while there is still leverage:
