@@ -302,7 +302,7 @@ POST /api/webhooks/ad-spend    x-webhook-secret: <WEBHOOK_SECRET>
 
 | Need | Why | Priority |
 |---|---|---|
-| **Indian caller ID or Indian telephony provider** | Patients don't answer the US number. Verifying an Indian number you own as a Twilio caller ID may be free; an Indian provider (Exotel / Knowlarity / Ozonetel) is a subscription | 🔴 Blocks calling |
+| **An Indian telephony provider** | Patients don't answer the US number. *Verifying an Indian number on Twilio does NOT work and is not a cheaper route* — tested 2026-09-21, Twilio refuses to originate into India with a CLI it did not issue (error 13247), so every patient leg failed. Only a provider that originates inside India (Exotel / Knowlarity / Ozonetel) solves it; that is a subscription. See [exotel-migration.md](./exotel-migration.md) | 🔴 Blocks calling |
 | **Truecaller Business listing** | Whichever number ends up dialling should be verified, or it gets flagged on reputation alone | 🔴 Pairs with the above |
 | **Email provider** | The International Patient campaign is WhatsApp + email; no email provider is wired up, so that campaign has no steps | 🟠 Blocks one campaign |
 | **Meta App Review** (`leads_retrieval`) | Until approved, Facebook/Instagram leads are captured but never auto-called | 🟠 No cost, needs submission |
