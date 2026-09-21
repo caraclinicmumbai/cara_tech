@@ -125,6 +125,20 @@ Ask these during onboarding, while there is still leverage:
    registered? (Open item in [gaps-and-roadmap.md](./gaps-and-roadmap.md).)
 6. Does the Exophone support **inbound**, so callbacks land in the CRM instead of a
    counsellor's handset?
+7. **Can our existing business line be used as the outbound CLI?** The clinic already holds
+   a telecom-operator business number. It has no API — nothing can dial through it — but
+   Indian providers can often provision a customer-owned number as the outbound caller ID
+   given an authorisation letter / NOC from the operator. If yes, patients see a number the
+   clinic already publishes instead of a fresh one with no reputation, and any Truecaller
+   standing it has carries over.
+8. **Can it be ported, or forwarded in?** Failing 7 — can that number be ported onto the
+   platform, or forwarded to the Exophone so calls patients already make to it land in the
+   CRM rather than ringing a desk nobody is sitting at?
+
+> **Note on Truecaller.** Register whichever number ENDS UP DIALLING. Paying to list
+> `+18104280484` makes sense only if the provider move is more than a month out — if the
+> answer to 7 is yes, the listing belongs on the business line instead, and registering the
+> US number first is money spent on a number about to be retired.
 
 ## Implementation note
 
