@@ -138,6 +138,35 @@ Preflight (`scripts/preflight.ts`) gains an Exotel section. The lesson from 21 S
 applies directly: **it must verify against the provider that the Exophone can originate**,
 not merely that a variable is set. "Configured" and "works" are different claims.
 
+## The provider is not finally chosen — run two in parallel
+
+This doc is written around Exotel because its click-to-call API maps most cleanly onto what we
+already built. **Exotel is the reference, not the decision.** Everything here — the provider
+seam, `Call.provider`, the flag-based cutover, the eight questions — is provider-agnostic.
+
+**Airtel IQ is a serious candidate, and possibly a faster one.** Distinguish two Airtel
+products that get called the same thing in conversation:
+
+| | What it is | Use to us |
+|---|---|---|
+| **Airtel IVR** / toll-free | A managed inbound IVR — menu trees, routing to desks | **No.** Inbound-shaped, not a programmable outbound API |
+| **Airtel IQ** | Airtel's CPaaS platform — voice/SMS/WhatsApp APIs | **Possibly yes** — this is the one to ask about |
+
+The argument for Airtel IQ is not technical, it is **time**. KYC is the entire critical path,
+and the clinic is already an Airtel customer with documents on file and a signed relationship.
+An existing-customer onboarding can be materially faster than a cold one, and it may make
+question 7 (our own line as outbound CLI) a much easier yes — it is their number.
+
+The argument against is maturity: Exotel's voice API is better documented and more widely used
+for exactly this two-leg click-to-call pattern. Airtel IQ must be held to the **same eight
+questions**, with no benefit of the doubt for being the incumbent. Recording deletion over API
+and mid-call dynamic routing are the two most likely to come back "no".
+
+**So approach both, the same week, with the same questions.** They are free to ask and the
+answers are comparable. Whoever answers well *and* moves fast wins — and if Airtel IQ can
+originate on the clinic's existing number, it wins on reputation too, because patients would
+see a number the clinic already publishes.
+
 ## Onboarding runbook (the commercial path)
 
 > Exotel's exact process may have changed — confirm each step with them rather than
