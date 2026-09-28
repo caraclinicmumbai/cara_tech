@@ -1,6 +1,7 @@
-# Exotel migration — scope
+# Indian telephony migration — scope
 
-> **Status:** planned, not started. Blocked on provider KYC (commercial, not technical).
+> **Status:** planned, not started. Provider not yet chosen — **Plivo currently leads**, see
+> *Provider shortlist*. Blocked on provider KYC (commercial, not technical).
 > **Why:** [deferred-todo.md](./deferred-todo.md) — Twilio cannot originate an Indian CLI
 > for us, proven 2026-09-21 with error 13247 on six consecutive calls.
 
@@ -59,9 +60,11 @@ policy of its own"). What is Twilio-shaped is the **call control**, not the busi
 | `api/webhooks/twilio/recording` | **Rewrite** — different payload, different auth |
 | `api/twilio/inbound/*` | **Rewrite** — the risk area, see *Inbound* |
 
-## Outbound: two steps become one
+## Outbound: one step or two, depending on the provider
 
-Twilio needs a round trip through us. Exotel does not:
+This differs per candidate and is the main driver of adapter cost. **Plivo keeps Twilio's
+two-step shape** — its XML is TwiML-like, so `dialLeadTwiML` transliterates rather than
+disappears, and the whisper-on-answer survives. Exotel collapses both legs into one API call:
 
 ```
 TWILIO   REST create call (ring rep)  →  rep answers  →  Twilio fetches OUR TwiML
@@ -78,8 +81,12 @@ Exotel's connect API is the same two-leg model we already built, which is why th
 contained change rather than a redesign. `CustomField` carries `leadId` / `repId` through,
 replacing the query-string threading on the callback URLs.
 
-**Net effect:** the `voice/[leadId]` and `whisper` routes stop being needed for outbound, and
-`dialLeadTwiML` / `xmlEscape` go with them.
+**Net effect, Exotel:** the `voice/[leadId]` and `whisper` routes stop being needed for
+outbound, and `dialLeadTwiML` / `xmlEscape` go with them.
+
+**Net effect, Plivo:** they all stay, with their bodies rewritten to Plivo XML — more files
+touched, but each change is mechanical and the call-control *shape* is already proven in
+production. This is the cheaper and lower-risk of the two.
 
 ## The migration-period trap: old recordings stay on Twilio
 
@@ -99,12 +106,14 @@ Our ladder is driven by returning fresh TwiML per leg — sticky owner → same-
 colleague → round-robin → hold → second pass → voicemail, with `tried` carried forward so no
 handset rings twice. That works because Twilio asks us what to do after *every* leg.
 
-Exotel's flows are built in its App Bazaar and are **less programmable**. The ladder survives
-only if Exotel can fetch each next destination from our endpoint mid-call.
+**This risk is Exotel-shaped and largely evaporates on Plivo.** Exotel's flows are built in
+its App Bazaar and are less programmable — the ladder survives only if Exotel can fetch each
+next destination from our endpoint mid-call. Plivo, returning XML per leg exactly as Twilio
+does, keeps the ladder working the way it does today.
 
-**This must be confirmed before signing.** If it cannot, the options are a shorter ladder
-(owner → round-robin → voicemail) or keeping inbound on a Twilio number while outbound moves —
-they are independent numbers and can live on different providers.
+**Confirm before signing, whoever it is.** If a provider cannot do it, the options are a
+shorter ladder (owner → round-robin → voicemail) or leaving inbound where it is while outbound
+moves — they are independent numbers and can live on different providers.
 
 ## Compliance: two things that do not port automatically
 
@@ -126,46 +135,65 @@ open because the old check no longer applies.
 
 ## Cutover
 
-Add `CALL_PROVIDER=twilio|exotel`, defaulting to `twilio`. Both adapters ship behind it.
+Add `CALL_PROVIDER=twilio|plivo|exotel`, defaulting to `twilio`. Both adapters ship behind it.
 
 1. `Call.provider` column + backfill (safe, independent, do first)
-2. Exotel adapter for **outbound only**, behind the flag
+2. The chosen provider's adapter for **outbound only**, behind the flag
 3. One real call on a handset before anyone else is switched
 4. Flip outbound; Twilio stays configured and one variable away for a week
 5. Inbound after outbound has settled — never the same day
 
-Preflight (`scripts/preflight.ts`) gains an Exotel section. The lesson from 21 September
+Preflight (`scripts/preflight.ts`) gains a section for the chosen provider. The lesson from 21 September
 applies directly: **it must verify against the provider that the Exophone can originate**,
 not merely that a variable is set. "Configured" and "works" are different claims.
 
-## The provider is not finally chosen — run two in parallel
+## Provider shortlist (evaluated 2026-09-29)
 
-This doc is written around Exotel because its click-to-call API maps most cleanly onto what we
-already built. **Exotel is the reference, not the decision.** Everything here — the provider
-seam, `Call.provider`, the flag-based cutover, the eight questions — is provider-agnostic.
+This doc was first written around Exotel because its API maps cleanly onto what we built.
+**Exotel is no longer the front-runner.** Everything here — the provider seam, `Call.provider`,
+the flag-based cutover, the questions — is provider-agnostic; only the adapter differs.
 
-**Airtel IQ is a serious candidate, and possibly a faster one.** Distinguish two Airtel
-products that get called the same thing in conversation:
-
-| | What it is | Use to us |
+| Candidate | Verdict | Why |
 |---|---|---|
-| **Airtel IVR** / toll-free | A managed inbound IVR — menu trees, routing to desks | **No.** Inbound-shaped, not a programmable outbound API |
-| **Airtel IQ** | Airtel's CPaaS platform — voice/SMS/WhatsApp APIs | **Possibly yes** — this is the one to ask about |
+| **Plivo** | **Leading** | India-registered businesses **can** rent Indian numbers and use domestic routes — we qualify. XML is TwiML-shaped (`<Dial callerId action>` with nested `<Number>`), so the adapter is the cheapest of any option. Has a **delete-recording API** (DPDP). Caller ID must be a *Plivo-rented* Indian number — our own Airtel line cannot be used |
+| **Exotel** | Strong second | Purpose-built Indian CPaaS, best-documented two-leg connect API. Sales-led onboarding |
+| **Airtel IQ** | Worth asking | Incumbent relationship may shorten KYC; may allow our own number as CLI. Least certain API maturity |
+| **Netcore** | Unlikely | Voice product is campaign/OBD/IVR-shaped — upload prompts, schedule campaigns — not a programmable two-leg click-to-call. Primarily a martech/email company |
+| **InterVoIP** | **No** | A softphone app from ICUK Computing Services (UK). No API, no Indian numbers, not a telecom provider. Not applicable |
 
-The argument for Airtel IQ is not technical, it is **time**. KYC is the entire critical path,
-and the clinic is already an Airtel customer with documents on file and a signed relationship.
-An existing-customer onboarding can be materially faster than a cold one, and it may make
-question 7 (our own line as outbound CLI) a much easier yes — it is their number.
+**Why Plivo changes the estimate.** Plivo's XML was deliberately built Twilio-shaped. Our
+`dialLeadTwiML` becomes a near-transliteration rather than a rewrite, the whisper-on-answer
+pattern survives, and the inbound ladder — the single biggest risk with Exotel, because it
+needs fresh call control returned per leg — keeps working the way it does today. That risk
+largely evaporates.
 
-The argument against is maturity: Exotel's voice API is better documented and more widely used
-for exactly this two-leg click-to-call pattern. Airtel IQ must be held to the **same eight
-questions**, with no benefit of the doubt for being the incumbent. Recording deletion over API
-and mid-call dynamic routing are the two most likely to come back "no".
+## The number-series trap — ask this FIRST, of every provider
 
-**So approach both, the same week, with the same questions.** They are free to ask and the
-answers are comparable. Whoever answers well *and* moves fast wins — and if Airtel IQ can
-originate on the clinic's existing number, it wins on reputation too, because patients would
-see a number the clinic already publishes.
+This is bigger than the choice of vendor and it applies to **all** of them, because it is TRAI
+regulation, not a provider policy:
+
+| Series | Permitted use |
+|---|---|
+| **Landline** (`022…`, `080…`) | Service and transactional calls **only** — promotional strictly prohibited |
+| **140-series** | Promotional calls **only** |
+| **160-series** | Service/transactional, **BFSI only** — not us |
+
+**Why this could defeat the entire exercise.** A 140-series number is instantly recognisable in
+India as telemarketing and is ignored or auto-blocked — which is the exact problem we are
+trying to solve. Getting an Indian number is only a win if it is a *landline* series number.
+
+And our calling is not all one kind. A counsellor ringing someone who just submitted an enquiry
+is plausibly a **service** call. The **win-back campaigns** (`lib/campaigns/winback.ts`) ringing
+leads who went cold months ago are far closer to **promotional**. On a landline number that is
+prohibited; on a 140 number nobody answers.
+
+**Consequences to settle before signing anything:**
+1. Get the provider's written classification of our two call types.
+2. Expect possibly **two numbers** — a landline for enquiry follow-up, a 140 for campaigns —
+   and decide whether win-back calling survives that at all.
+3. TRAI also requires **explicit digital consent** for commercial calls; cold calling is
+   prohibited. Our leads arrive from web and Meta forms, so consent plausibly exists — but it
+   must be *recorded and provable*, which is a CRM question, not a telephony one.
 
 ## Onboarding runbook (the commercial path)
 
@@ -239,9 +267,14 @@ different day.
 
 Register whichever number **ends up dialling**, once it is settled and not before.
 
-## Questions to put to Exotel before committing
+## Questions to put to EVERY provider before committing
 
-Ask these during onboarding, while there is still leverage:
+Ask all of them the same list, in writing, while there is still leverage. Question 0 is the
+one added on 29 September and it outranks the rest — see *The number-series trap*.
+
+0. **Which number series** can we have, given we make both enquiry follow-up calls and
+   win-back campaign calls? Will we need a landline number *and* a 140 number? Get the
+   classification of our call types in writing.
 
 1. Can a call flow fetch its **next destination dynamically** from our HTTPS endpoint mid-call?
    (Decides whether the inbound ladder survives.)

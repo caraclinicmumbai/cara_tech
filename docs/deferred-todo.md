@@ -95,7 +95,7 @@ cannot be bought or ported on Twilio at all, a verified non-Twilio Indian number
 not supported as CLI into India, and the one exception — Indian toll-free — *requires the
 business to be outside India*, which a Mumbai clinic is not. Their own closing line is that we
 "will need to consider alternative providers". Recorded in
-[exotel-migration.md](./exotel-migration.md); the question is closed.
+[indian-telephony-migration.md](./indian-telephony-migration.md); the question is closed.
 
 **So the durable answer is an Indian provider** — Exotel, Knowlarity, Ozonetel — that
 originates the call inside India on an Exophone we control. That is what Neodove uses. It
