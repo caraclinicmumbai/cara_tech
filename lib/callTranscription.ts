@@ -8,7 +8,7 @@
 // Best-effort and self-contained: every step degrades to a no-op on failure so a
 // missing transcript or unfunded API key never throws into the webhook.
 import { prisma } from "@/lib/prisma";
-import { fetchTwilioRecording } from "@/lib/providers/twilio";
+import { fetchRecording } from "@/lib/providers/recordings";
 import { transcribeAudio } from "@/lib/providers/elevenlabs";
 import { scoreCQS } from "@/lib/cqs";
 import { isEscalationScore, escalateHotCall } from "@/lib/handover";
@@ -23,7 +23,12 @@ export async function transcribeAndScoreCall(
   recordingUrl: string,
 ): Promise<void> {
   try {
-    const audio = await fetchTwilioRecording(recordingUrl);
+    // Which provider holds this audio is a property of the CALL, not of the URL.
+    const owner = await prisma.call.findUnique({
+      where: { id: callId },
+      select: { provider: true },
+    });
+    const audio = await fetchRecording(recordingUrl, owner?.provider);
     if (!audio) {
       logger.warn(`Transcription: could not fetch recording for call ${callId}`);
       return;

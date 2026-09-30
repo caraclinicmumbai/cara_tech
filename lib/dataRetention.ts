@@ -9,7 +9,7 @@
 // is destroyed until the clinic sets a window. The worker calls runRetentionPurge()
 // on a daily interval (see workers/callQueueWorker.ts).
 import { prisma } from "@/lib/prisma";
-import { deleteTwilioRecording } from "@/lib/providers/twilio";
+import { deleteRecording } from "@/lib/providers/recordings";
 import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 
@@ -42,6 +42,7 @@ export async function runRetentionPurge(now: Date = new Date()): Promise<Retenti
   const BATCH = 200;
   let scanned = 0;
   let purged = 0;
+  let failed = 0; // recordings the provider would not delete — audio still out there
 
   // Loop batches until no call older than the cutoff still holds a recording/transcript.
   for (;;) {
@@ -50,14 +51,27 @@ export async function runRetentionPurge(now: Date = new Date()): Promise<Retenti
         createdAt: { lt: cutoff },
         OR: [{ recordingUrl: { not: null } }, { transcript: { not: null } }],
       },
-      select: { id: true, recordingUrl: true },
+      select: { id: true, recordingUrl: true, provider: true },
       take: BATCH,
     });
     if (calls.length === 0) break;
     scanned += calls.length;
 
     for (const c of calls) {
-      if (c.recordingUrl) await deleteTwilioRecording(c.recordingUrl);
+      // The row is cleared either way — leaving it would make this loop re-select the same
+      // batch forever. But a failed delete means the audio is STILL THERE on the provider
+      // while the CRM has stopped pointing at it, so it is logged with everything needed to
+      // find it by hand. Silence here would look identical to a successful erasure.
+      if (c.recordingUrl) {
+        const gone = await deleteRecording(c.recordingUrl, c.provider);
+        if (!gone) {
+          failed++;
+          logger.error(
+            `Retention: FAILED to erase the recording for call ${c.id} at ${c.provider} ` +
+              `(${c.recordingUrl}). The audio still exists and must be deleted by hand.`,
+          );
+        }
+      }
       await prisma.call.update({
         where: { id: c.id },
         data: { recordingUrl: null, transcript: null },
@@ -68,11 +82,16 @@ export async function runRetentionPurge(now: Date = new Date()): Promise<Retenti
   }
 
   if (purged > 0) {
-    logger.info(`Retention purge: redacted ${purged} call(s) older than ${months} month(s)`);
+    logger.info(
+      `Retention purge: redacted ${purged} call(s) older than ${months} month(s)` +
+        (failed > 0 ? ` — ${failed} recording(s) COULD NOT be erased at the provider` : ""),
+    );
+    // `failed` rides in the audit entry too: the CRM's own record of an erasure should say
+    // whether the audio actually went, not merely that we stopped pointing at it.
     await writeAudit({
       action: "data.retention.purge", entityType: "call",
       newValue: String(purged), reason: `Redacted recordings/transcripts older than ${months} months`,
-      meta: { months, cutoff: cutoff.toISOString(), purged },
+      meta: { months, cutoff: cutoff.toISOString(), purged, failedDeletes: failed },
     }).catch((err) => logger.error(`Retention purge audit failed: ${String(err)}`));
   }
 

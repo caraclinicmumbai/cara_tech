@@ -1,7 +1,9 @@
 # Indian telephony migration — scope
 
-> **Status:** planned, not started. Provider not yet chosen — **Plivo currently leads**, see
-> *Provider shortlist*. Blocked on provider KYC (commercial, not technical).
+> **Status:** **DECIDED 2026-10-01 — Plivo.** Approved by the business. Two tracks now run in
+> parallel: account + KYC (clinic) and the provider adapter (engineering). The Indian number
+> is gated on KYC; everything else is not.
+> **Provider decision pack:** [Indian Caller ID — Provider Decision](https://claude.ai/code/artifact/59f5e936-797f-4675-8776-a8714881e185).
 > **Why:** [deferred-todo.md](./deferred-todo.md) — Twilio cannot originate an Indian CLI
 > for us, proven 2026-09-21 with error 13247 on six consecutive calls.
 

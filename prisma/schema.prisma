@@ -315,8 +315,17 @@ model Call {
   // + n8n + Twilio all retry on timeout/5xx) can't create a second Call and
   // re-run the pipeline. NULLs are allowed and don't collide (Postgres).
   elevenlabsId String? @unique // ElevenLabs conversation/call id
-  recordingUrl String? // Twilio recording URL for human-handover calls (§3.1)
-  providerSid  String? @unique // Twilio CallSid (correlation)
+  recordingUrl String? // provider recording URL for human-handover calls (§3.1)
+  providerSid  String? @unique // provider call id (Twilio CallSid / Plivo CallUUID)
+  // WHICH provider owns `recordingUrl` and `providerSid`. Recordings live on the provider
+  // that made them, and fetching or DELETING one needs that provider's credentials — so a
+  // row cannot be read without knowing whose it is. Defaulted to "twilio" because every row
+  // that exists when this column lands was made by Twilio.
+  //
+  // This is not bookkeeping: deleting a recording is how a DPDP erasure request is honoured
+  // (§compliance C3). Without this column, erasure silently stops working for everything
+  // recorded before the provider switch, and stays broken until somebody exercises the right.
+  provider     String  @default("twilio") // twilio | plivo
   cqs          Int? // Conversation Quality Score 0–100, judged by Claude (§3.1)
   cqsBreakdown Json? // per-dimension scores + objection type + summary
 
