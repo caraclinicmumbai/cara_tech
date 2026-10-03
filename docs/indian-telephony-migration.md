@@ -197,6 +197,38 @@ prohibited; on a 140 number nobody answers.
    prohibited. Our leads arrive from web and Meta forms, so consent plausibly exists — but it
    must be *recorded and provable*, which is a CRM question, not a telephony one.
 
+## Plivo onboarding — the real timeline (checked 2026-10-03)
+
+**The KYC wait I budgeted weeks for does not exist for the number we want.** Per
+[Plivo's India number KYC docs](https://www.plivo.com/docs/numbers/rent-india-numbers), a
+022/080 landline compliance application is reviewed automatically and approved **typically
+within 5 minutes**. Only 140-series and 160-series numbers carry a longer SLA.
+
+So the critical path is not registration. It is whether the business document is prepared
+correctly on the first attempt.
+
+**The one requirement that actually blocks people:** *"Your first compliance application must
+be sealed and signed"* — the uploaded document needs a visible **company seal** and an
+**authorised signatory's signature**. An unsealed PDF straight from the GST portal is the
+common rejection, and a rejection is what turns five minutes into days.
+
+**Documents — any ONE of:**
+
+| Document | Must carry |
+|---|---|
+| GST Certificate | Active GSTIN |
+| Certificate of Incorporation | CIN |
+| Udyam Registration Certificate | Valid Udyam number |
+
+**Console path:** Phone Numbers → Compliance Application → Create Application → India → upload
+the sealed and signed document → business type **Direct Brand** → submit. After approval:
+Buy Phone Numbers → India → the approved application links automatically.
+
+**Pick a 022 (Mumbai) landline.** It is the fastest to approve and it is the series permitted
+for service and transactional calls — which is our enquiry follow-up. It is *not* permitted
+for promotional calls, so the win-back question in *The number-series trap* stays open and is
+now the only unresolved commercial item.
+
 ## Onboarding runbook (the commercial path)
 
 > Exotel's exact process may have changed — confirm each step with them rather than
