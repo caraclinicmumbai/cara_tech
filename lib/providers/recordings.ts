@@ -12,7 +12,7 @@
 // at any more — the CRM reporting success while the PII it was asked to destroy is still
 // there. Deletion returning `false` is therefore meaningful and callers must not ignore it.
 import { fetchTwilioRecording, deleteTwilioRecording } from "@/lib/providers/twilio";
-import { logger } from "@/lib/logger";
+import { fetchPlivoRecording, deletePlivoRecording } from "@/lib/providers/plivo";
 
 /// Providers that can hold a recording. Matches `Call.provider`.
 export type CallProvider = "twilio" | "plivo";
@@ -32,11 +32,7 @@ export async function fetchRecording(
     case "twilio":
       return fetchTwilioRecording(recordingUrl);
     case "plivo":
-      logger.error(
-        `Recording fetch: the Plivo adapter is not wired up yet (${recordingUrl}). ` +
-          `A Plivo recording should not exist before it is.`,
-      );
-      return null;
+      return fetchPlivoRecording(recordingUrl);
   }
 }
 
@@ -51,10 +47,8 @@ export async function deleteRecording(
     case "twilio":
       return deleteTwilioRecording(recordingUrl);
     case "plivo":
-      logger.error(
-        `Recording delete: the Plivo adapter is not wired up yet (${recordingUrl}) — ` +
-          `the audio has NOT been erased. This blocks a DPDP erasure request.`,
-      );
-      return false;
+      // Plivo deletes its own recordings after 30 days, so an erasure request for an older
+      // call finds nothing — a 404 counts as success, not as a failed erasure.
+      return deletePlivoRecording(recordingUrl);
   }
 }

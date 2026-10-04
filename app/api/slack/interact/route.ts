@@ -1,12 +1,12 @@
 // Slack interactivity endpoint (§3.1). Handles the "Call & record" button on a
 // handover alert: when a rep clicks it, Twilio rings THEIR phone, then dials the
-// lead and records (lib/providers/twilio.clickToCall). Verified via the Slack
+// lead and records (lib/providers/calling.startClickToCall). Verified via the Slack
 // signing secret (the route is public — Slack calls it — so the signature is the
 // gate). Acks fast, then posts the result back via the message's response_url.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifySlackSignature } from "@/lib/slack";
-import { clickToCall, isTwilioConfigured } from "@/lib/providers/twilio";
+import { startClickToCall, isCallingConfigured } from "@/lib/providers/calling";
 import { beginConsultation } from "@/lib/presence";
 import { logger } from "@/lib/logger";
 
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
   // Do the work after acking (Slack wants a 200 within 3s); report via response_url.
   void (async () => {
     try {
-      if (!isTwilioConfigured()) {
+      if (!isCallingConfigured()) {
         await replyToSlack(responseUrl, "⚠️ Calling isn't configured yet.");
         return;
       }
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
         await replyToSlack(responseUrl, "⚠️ Lead not found.");
         return;
       }
-      const res = await clickToCall(rep.phone, leadId, rep.id);
+      const res = await startClickToCall(rep.phone, leadId, rep.id);
       // §presence auto-detect: rep is now on a call → mark In-Consultation (reverted
       // by the recording webhook when the call ends). Best-effort.
       if (res.ok) void beginConsultation(rep.id);

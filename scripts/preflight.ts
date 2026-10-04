@@ -334,6 +334,83 @@ async function slack() {
 
 /// Backups (§backups). Deliberately noisy: this is the check whose failure nobody
 /// notices until the day it matters, so "off" reads as ❌ rather than a skip.
+/// Plivo, checked the way September taught us to check a provider.
+///
+/// The Twilio failure was not that a variable was unset. It was that the variable named a
+/// number the provider would not put on the wire, and nothing said so until a patient's
+/// handset did. So this asks Plivo three questions in order of how badly a wrong answer
+/// hurts: can we reach the account, is the caller ID a number this account actually RENTS,
+/// and is the compliance application that permits it still accepted.
+async function plivo() {
+  const id = process.env.PLIVO_AUTH_ID;
+  const token = process.env.PLIVO_AUTH_TOKEN;
+  const active = (process.env.CALL_PROVIDER ?? "twilio").trim().toLowerCase() === "plivo";
+  if (!id || !token) {
+    return active
+      ? line(BAD, "Plivo", "CALL_PROVIDER=plivo but PLIVO_AUTH_ID/TOKEN are unset — every call will be refused")
+      : line(SKIP, "Plivo", "not configured");
+  }
+  const auth = { username: id, password: token };
+  const base = `https://api.plivo.com/v1/Account/${id}`;
+  try {
+    const acct = await axios.get(`${base}/`, { auth, timeout: 15_000, validateStatus: () => true });
+    if (acct.status !== 200) return line(BAD, "Plivo", `HTTP ${acct.status} — credentials rejected`);
+    const credits = Number(acct.data?.cash_credits ?? NaN);
+    const icon = Number.isFinite(credits) && credits < 5 ? WARN : OK;
+    line(
+      icon,
+      "Plivo",
+      `${acct.data?.name ?? "?"} (${acct.data?.account_type ?? "?"}) · credits ${Number.isFinite(credits) ? credits.toFixed(2) : "?"}` +
+        (active ? " · ACTIVE provider" : " · configured, not active"),
+    );
+
+    const caller = process.env.PLIVO_CALLER_ID?.trim();
+    if (!caller) {
+      return line(active ? BAD : WARN, "Plivo caller ID", "PLIVO_CALLER_ID unset — click-to-call will be refused");
+    }
+
+    // The check that matters. On India domestic routes the caller ID must be a number this
+    // account RENTS; there is no "verify your own number" route as there was on Twilio, and
+    // a number we do not rent is the exact shape of the bug that cost six weeks.
+    const owned = await axios.get(`${base}/Number/?limit=100`, { auth, timeout: 15_000, validateStatus: () => true });
+    const last10 = (n: string) => n.replace(/\D/g, "").slice(-10);
+    const numbers: { number?: string; voice_enabled?: boolean }[] = owned.data?.objects ?? [];
+    const match = numbers.find((n) => n.number && last10(n.number) === last10(caller));
+    if (!match) {
+      line(
+        BAD,
+        "Plivo caller ID",
+        `${caller} is NOT a number this account rents (${numbers.length} rented). Plivo will refuse to ` +
+          `originate with it and patients will keep seeing whatever it falls back to. Rent it, or point ` +
+          `PLIVO_CALLER_ID at one of the numbers above.`,
+      );
+    } else if (match.voice_enabled === false) {
+      line(BAD, "Plivo caller ID", `${caller} is rented but NOT voice-enabled — it cannot place calls.`);
+    } else {
+      line(OK, "Plivo caller ID", `${caller} is rented by this account and voice-enabled`);
+    }
+
+    if (!caller.startsWith("+91")) {
+      line(
+        WARN,
+        "Plivo caller ID region",
+        `${caller} is not an Indian (+91) number — the entire reason for this provider was an Indian CLI.`,
+      );
+    }
+
+    // The number only keeps working while the compliance application behind it stands.
+    const comp = await axios.get(`${base}/PhoneNumber/Compliance/`, { auth, timeout: 15_000, validateStatus: () => true });
+    const apps: { status?: string; alias?: string }[] = comp.data?.compliances ?? [];
+    const accepted = apps.filter((a) => a.status === "accepted");
+    if (apps.length === 0) line(WARN, "Plivo compliance", "no compliance application found");
+    else if (accepted.length === 0)
+      line(BAD, "Plivo compliance", `no ACCEPTED application (${apps.map((a) => a.status).join(", ")}) — the number may stop working`);
+    else line(OK, "Plivo compliance", `${accepted.length} accepted (${accepted.map((a) => a.alias).join(", ")})`);
+  } catch (err) {
+    line(BAD, "Plivo", axios.isAxiosError(err) ? err.message : String(err));
+  }
+}
+
 async function backups() {
   if (!isBackupConfigured()) {
     line(BAD, "Backups", "OFF — BACKUP_S3_* unset, nothing is copied off Railway");
@@ -402,6 +479,7 @@ async function main() {
   await elevenlabs();
   await elevenlabsAgent();
   await twilio();
+  await plivo();
   await whatsapp();
   await anthropic();
   await slack();

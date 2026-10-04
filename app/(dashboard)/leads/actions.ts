@@ -13,7 +13,8 @@ import { runStageChange } from "@/lib/chatbotRuntime";
 import { applyStageChangeToRoadmap } from "@/lib/followups";
 import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
 import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
-import { clickToCall, isTwilioConfigured, deleteTwilioRecording } from "@/lib/providers/twilio";
+import { startClickToCall, isCallingConfigured } from "@/lib/providers/calling";
+import { deleteRecording } from "@/lib/providers/recordings";
 import { toDialable } from "@/lib/phone";
 import { beginConsultation } from "@/lib/presence";
 import { cancelScheduledCalls } from "@/lib/queue";
@@ -137,7 +138,7 @@ export async function callLeadAndRecord(
   leadId: string,
 ): Promise<{ ok: boolean; error?: string; repName?: string }> {
   const user = await requireCapability("leads.call");
-  if (!isTwilioConfigured()) return { ok: false, error: "Calling is not configured yet" };
+  if (!isCallingConfigured()) return { ok: false, error: "Calling is not configured yet" };
 
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
@@ -173,7 +174,7 @@ export async function callLeadAndRecord(
   const leadDial = toDialable(lead.phone);
   if (!leadDial.ok) return { ok: false, error: `This lead's number ${leadDial.reason}` };
 
-  const res = await clickToCall(repDial.e164, leadId, rep.id);
+  const res = await startClickToCall(repDial.e164, leadId, rep.id);
   if (!res.ok) return { ok: false, error: res.error };
   // §presence auto-detect: the rep is now on a call on their work number — mark them
   // In-Consultation without asking. The Twilio recording webhook reverts them when
@@ -428,15 +429,23 @@ export async function permanentlyDeleteLead(leadId: string): Promise<{ ok: boole
   if (!lead) return { ok: false, error: "Lead not found" };
   if (!lead.deletedAt) return { ok: false, error: "Move the lead to trash first" };
 
-  // Right-to-erasure (§compliance C3): delete the actual call recordings from Twilio
+  // Right-to-erasure (§compliance C3): delete the actual call recordings at the provider
   // BEFORE we drop the DB rows — otherwise the audio lingers on the provider with no
   // reference to clean it up. Best-effort; the DB delete proceeds regardless.
   const recordings = await prisma.call.findMany({
     where: { leadId, recordingUrl: { not: null } },
-    select: { recordingUrl: true },
+    select: { id: true, recordingUrl: true, provider: true },
   });
   for (const c of recordings) {
-    if (c.recordingUrl) await deleteTwilioRecording(c.recordingUrl);
+    // Dispatch on the row's OWN provider, not the one calling today: audio made on Twilio
+    // stays on Twilio after the switch, and erasing it needs Twilio's credentials.
+    if (c.recordingUrl && !(await deleteRecording(c.recordingUrl, c.provider))) {
+      logger.error(
+        `Erasure: FAILED to delete the recording for call ${c.id} at ${c.provider} ` +
+          `(${c.recordingUrl}). The lead row is being deleted anyway — that audio must be ` +
+          `removed by hand.`,
+      );
+    }
   }
 
   await prisma.lead.delete({ where: { id: leadId } });
