@@ -171,7 +171,12 @@ export function dialFailedTwiML(status: string): string {
       : status === "no-answer"
         ? "The patient did not answer."
         : status === "failed"
-          ? "That number could not be reached. Please check it on the lead."
+          ? // Deliberately does NOT say "check the number". A failed leg is just as
+            // likely to be OUR caller ID being refused, in which case every call fails
+            // and checking the lead is wasted effort — so it points at the one thing
+            // that distinguishes them: whether it is happening to everyone.
+            "The call could not be placed. If this is happening on every call, it is the " +
+            "clinic's caller ID setting, not this number — please tell an admin."
           : status === "completed" || status === "answered"
             ? null
             : "The call has ended.";

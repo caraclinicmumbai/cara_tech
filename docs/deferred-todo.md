@@ -13,15 +13,52 @@
 
 ## Open
 
+### 🟠 Plivo deletes recordings after 30 days — download them to our own storage
+Found 2026-10-04 while building the Plivo adapter. Plivo keeps a recording for **30 days**,
+then deletes it; Twilio kept them indefinitely, which is what the CRM assumes. Transcripts and
+CQS are unaffected (transcription runs within seconds), but **the in-CRM audio player will 404
+for any Plivo call older than 30 days**.
+
+Nothing is broken yet — no Plivo call is 30 days old. It will start failing silently about a
+month after cutover, and the symptom ("the recording won't play") looks like a bug rather than
+a retention policy.
+
+**The fix:** on the recording callback, download the audio and store it ourselves rather than
+keeping a provider URL. The R2 bucket the backups use is the natural home. Then
+`Call.recordingUrl` points at us and stops depending on a vendor's retention window.
+_Added 2026-10-04; see [indian-telephony-migration.md](./indian-telephony-migration.md)._
+
+
 ### 🔴 Indian caller ID — code is ready, PRODUCTION ENV IS NOT SET
 From the 2026-09-03 test run: calls from the CRM go unanswered; the same patients answer a
 Neodove call minutes later. Cause: an **unknown +1 caller** gets a Truecaller spam warning
 and is ignored.
 
-**Verified 2026-09-08 from Twilio's call log — production is still dialling as
-`+18104280484`.** Every call up to 08 Sep 06:51 used it. The local `.env.local` was changed
-on 4 Sep; **Railway has its own copy and was never updated**, so nothing changed for a
-patient. This is the whole of the remaining problem.
+**Re-verified 2026-09-18 from Twilio's call log — production is STILL dialling as
+`+18104280484`.** Every call in the account's history, through the most recent on 14 Sep
+11:03 UTC, put `+18104280484` on *both* legs. The local `.env.local` was changed on 4 Sep;
+**Railway has its own copy and was never updated**, so nothing has changed for a patient.
+This is the whole of the remaining problem.
+
+**"But it works when Mandira calls" — it doesn't, and this is worth understanding.** The
+Indian caller ID is live for *nobody*. The 14 Sep log shows her own click-to-call going out
+to the patient as `+1`:
+```
+10:56:02  rep leg      +18104280484 → +917710070566   ← ringing MANDIRA
+10:56:27  patient leg  +18104280484 → …               ← what the patient sees: +1
+```
+What is special about Mandira is that `+917710070566` **is her handset** — the very number
+we intend to *use* as the patient-facing caller ID. So a lead who sees an Indian number from
+her is seeing her phone, because she dialled it directly rather than through the CRM button.
+Nothing in the code branches on who is calling: `dialLeadTwiML` always uses
+`TWILIO_CALLER_ID`, identically for every counsellor. There is no per-rep bug to fix — there
+is one unset production variable.
+
+**Why nobody noticed for six weeks.** A `<Dial callerId>` Twilio doesn't accept is not an
+error: it silently substitutes the parent leg's `From`. The call connects, the counsellor
+hears nothing unusual, the CRM logs a success, and no alert is raised (confirmed — zero
+`13214` alerts on the account). `preflight.ts` now asks Twilio directly whether the caller ID
+is owned-or-verified, which turns this from invisible into a red line.
 
 **Do this:** on Railway, on **both the web and the worker** services, set
 ```
@@ -47,13 +84,45 @@ phone.
 *(An earlier note here claimed `+917710070566` matched no rep. That check ran against the
 LOCAL database; production has different reps. Wrong database, wrong conclusion.)*
 
-**Then still test on a handset.** India's DoT directs carriers to block incoming
-international calls displaying an Indian CLI — the signature of spoofed scam calls — and a
-Twilio call from outside India showing `+91` fits it. Three outcomes, only a test tells
-them apart: the `+91` shows (solved); the CLI is replaced or reads unknown (no better); the
-call is blocked (worse — revert). **If it fails, the durable answer is an Indian provider**
-(Exotel, Knowlarity, Ozonetel) that originates the call inside India, which is what Neodove
-uses; that also settles the TRAI DND gap in `gaps-and-roadmap.md`.
+### ANSWERED 2026-09-21 — Twilio cannot do this. The test was run and it failed.
+
+The variables were set on Railway and the `+91` went out exactly as designed. **Twilio then
+refused every patient leg**, six for six, with error **13247** — *"From number (caller ID)
+must be valid and not on the do-not-originate (DNO) list"*:
+
+```
+07:29:24  rep leg      +1810…        -> +917506452977   completed   ← counsellor answers
+07:29:28  patient leg  +917710070566 -> …               FAILED 0s   ← refused at Twilio
+```
+
+The counsellor's leg still connected, so the failure wore a disguise: the rep answered,
+heard *"that number could not be reached"*, and went to check a lead number that was never
+wrong. Reverted to `+18104280484` at 08:14 and calling resumed the same minute.
+
+**Why no Twilio setting fixes it.** The account owns exactly one number — `+18104280484`
+(US). `+917710070566` is only a *verified caller ID*. Twilio accepts a verified number as
+the `From` on a REST call, which is why the rep leg worked throughout, but it will not
+**originate** into India presenting a CLI it never issued. Owning the number is the only
+thing that qualifies, and an Indian number we own is not something Twilio will sell us for
+this purpose.
+
+**Twilio Support confirmed this in writing on 2026-09-21**: Indian local and mobile numbers
+cannot be bought or ported on Twilio at all, a verified non-Twilio Indian number is expressly
+not supported as CLI into India, and the one exception — Indian toll-free — *requires the
+business to be outside India*, which a Mumbai clinic is not. Their own closing line is that we
+"will need to consider alternative providers". Recorded in
+[indian-telephony-migration.md](./indian-telephony-migration.md); the question is closed.
+
+**So the durable answer is an Indian provider** — Exotel, Knowlarity, Ozonetel — that
+originates the call inside India on an Exophone we control. That is what Neodove uses. It
+also collects three other open problems in one move: patients ringing back reach the CRM
+instead of a counsellor's handset (below), `TWILIO_INBOUND_NUMBER` stops being unset, and
+the TRAI DND gap in `gaps-and-roadmap.md` is settled.
+
+**Interim, worth doing this week:** register `+18104280484` with **Truecaller Business** so
+it presents as *Cara Clinic* rather than an unknown foreign number. It does not make the
+number Indian, but it removes the spam flag, and it costs nothing to try while procurement
+runs.
 
 **Register whichever number dials with Truecaller Business** and let it warm up.
 

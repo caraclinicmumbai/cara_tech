@@ -7,6 +7,73 @@ Format: newest first.
 
 ---
 
+## 2026-10-04 — Calling moves to Plivo, and the clinic gets an Indian number
+
+Flow doc added: **[indian-telephony-migration.md](indian-telephony-migration.md)** — the
+decision, the provider comparison, the TRAI number-series trap, the onboarding runbook.
+Files: `lib/providers/{plivo,calling,recordings}.ts` (new), `app/api/plivo/*` (new),
+`app/api/webhooks/plivo/recording/` (new), `prisma/schema.prisma` (`Call.provider`),
+`lib/{dataRetention,callTranscription}.ts`, `app/(dashboard)/leads/actions.ts`,
+`app/api/slack/interact/route.ts`, `scripts/preflight.ts`, `.env.example`.
+
+Six weeks of "the Indian caller ID is nearly working" ended with Twilio confirming in writing
+that it cannot be done on their network: they do not sell Indian local or mobile numbers, a
+merely *verified* Indian number is refused with error 13247, and the one exception — Indian
+toll-free — requires the business to be **outside** India, which a Mumbai clinic is not.
+
+Plivo rents Indian numbers to India-registered businesses, which is the same rule read the
+other way round: our Mumbai registration is what *qualifies* us. `+91 22 6423 1017` is rented,
+voice-enabled, and its compliance application accepted. The whole KYC took about fifteen
+minutes once the certificates carried a company seal — against the weeks that had been
+budgeted for it.
+
+`Call.provider` landed first and separately, because it had to exist *before* the switch
+rather than after: a recording lives on the provider that made it, and erasing one is how a
+DPDP request is honoured. Dispatching an erasure at the wrong provider fails silently — row
+cleared, success reported, audio still sitting there.
+
+**Worth knowing generally:** two providers, two different traps, same shape. Twilio's was that
+*verified* and *usable* are different words. Plivo's is that `<Dial>` cannot record at all and
+its signature algorithm has an edge case the prose docs gloss. Both were only ever going to be
+caught by asking the provider rather than reading about it — which is now what
+`scripts/preflight.ts` does for each: not "is the variable set" but "will you put this number
+on the wire".
+
+---
+
+## 2026-09-19 — The Indian caller ID works for nobody, and nothing said so
+
+Files: `scripts/preflight.ts`. Flow doc updated:
+**[flows/04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**.
+Also corrects the open item in [deferred-todo.md](deferred-todo.md).
+
+Reported as: the Indian number shows for Mandira but an international one for Jatin —
+so something branches on who is calling. Nothing does. `dialLeadTwiML` uses
+`TWILIO_CALLER_ID` identically for every counsellor, and Twilio's call log shows every
+call in the account's history, through the latest on 14 Sep, putting `+18104280484` on
+*both* legs. Hers included:
+
+```
+10:56:02  rep leg      +1810… -> +917710070566   ringing MANDIRA
+10:56:27  patient leg  +1810… -> …               the patient sees +1
+```
+
+What is special about Mandira is that `+917710070566` **is her handset** — the number
+we intend to *use* as the patient-facing caller ID — so a lead seeing `+91` from her is
+seeing her phone, dialled directly rather than through the CRM. The production variable
+was still unset, which is the item that has been open in `deferred-todo.md` since
+3 September.
+
+**Worth knowing generally:** the reason this survived being "fixed" twice is that the
+failure is silent by design. A `<Dial callerId>` Twilio doesn't accept raises no error
+and no alert (confirmed — zero `13214`s on the account); Twilio just substitutes the
+parent leg's `From`, so the call connects normally and the CRM files a success. A caller
+ID is only usable if the account **owns** the number or has **verified** it. `preflight.ts`
+now asks Twilio which, and fails loudly when the answer is neither — where the old check
+printed a cheerful "Indian number" for a number Twilio would never put on the wire.
+
+---
+
 ## 2026-09-17 — The Next-lead button stops vanishing under the cursor
 
 Files: `components/LeadQueueNav.tsx`, `components/Icon.tsx`. No flow doc change.

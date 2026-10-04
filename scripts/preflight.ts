@@ -126,10 +126,38 @@ async function twilio() {
     const type = acct.data?.type ?? "?"; // Trial | Full
     const icon = acct.data?.status !== "active" ? BAD : Number.isFinite(balance) && balance < 5 ? WARN : OK;
     line(icon, "Twilio", `${acct.data?.status} (${type}) · balance ${Number.isFinite(balance) ? money(balance, cur) : "?"} · caller ${process.env.TWILIO_CALLER_ID ?? "unset"}`);
-    await callerIdRegion();
+    await callerIdRegion(auth);
   } catch (err) {
     line(BAD, "Twilio", axios.isAxiosError(err) ? err.message : String(err));
   }
+}
+
+/// Ask Twilio whether a number is one it will actually put on the wire.
+///
+/// A `<Dial callerId>` Twilio doesn't recognise is NOT an error you will notice. It
+/// doesn't fail the call or raise an alert — Twilio quietly substitutes the parent
+/// leg's From, so the patient sees the number that rang the counsellor, the
+/// counsellor hears a perfectly normal call, and the CRM files a success. The only
+/// place the truth appears is Twilio's own call log.
+///
+/// That silence is exactly how a caller ID that was "fixed" twice went on dialling
+/// patients as +1 for six weeks. A number is usable only if we OWN it or it is a
+/// VERIFIED caller ID, so ask the account rather than trusting the variable.
+async function callerIdStatus(
+  auth: { username: string; password: string },
+  number: string,
+): Promise<"owned" | "verified" | "unusable"> {
+  const base = `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}`;
+  const last10 = (n: string) => n.replace(/\D/g, "").slice(-10);
+  const [owned, verified] = await Promise.all([
+    axios.get(`${base}/IncomingPhoneNumbers.json?PageSize=100`, { auth, timeout: 15_000 }),
+    axios.get(`${base}/OutgoingCallerIds.json?PageSize=100`, { auth, timeout: 15_000 }),
+  ]);
+  const match = (rows: { phone_number?: string }[] | undefined) =>
+    (rows ?? []).some((r) => r.phone_number && last10(r.phone_number) === last10(number));
+  if (match(owned.data?.incoming_phone_numbers)) return "owned";
+  if (match(verified.data?.outgoing_caller_ids)) return "verified";
+  return "unusable";
 }
 
 /// Warn when the outbound caller ID isn't an Indian number.
@@ -140,9 +168,51 @@ async function twilio() {
 /// which most of the country runs. Observed in a test run where the same patients
 /// answered an Indian dialler minutes later. Worth surfacing here because the symptom
 /// ("nobody picks up") looks like a lead-quality problem, not a phone-number problem.
-async function callerIdRegion() {
+async function callerIdRegion(auth: { username: string; password: string }) {
   const caller = process.env.TWILIO_CALLER_ID?.trim();
   if (!caller) return line(WARN, "Caller ID", "TWILIO_CALLER_ID unset — click-to-call will fail");
+
+  // Can Twilio even use it? This is the check that outranks every other line here:
+  // a caller ID Twilio rejects doesn't break anything visibly, it just keeps showing
+  // patients the old number.
+  try {
+    const patient = await callerIdStatus(auth, caller);
+    if (patient === "unusable") {
+      line(
+        BAD,
+        "Caller ID on Twilio",
+        `${caller} is NEITHER a number on this account NOR a verified caller ID — Twilio will ` +
+          `silently ignore it and dial patients from the number that rings the counsellor instead. ` +
+          `Verify it (Console → Phone Numbers → Manage → Verified Caller IDs) or buy an Indian number.`,
+      );
+    } else if (patient === "verified") {
+      // Verified is NOT the same as usable, and this check said it was — which is how
+      // the +91 went live and broke every call on 21 Sep with error 13247, "From number
+      // (caller ID) must be valid and not on the do-not-originate list". Twilio will
+      // accept a verified number as the From on a REST call, but it refuses to
+      // ORIGINATE to India presenting a CLI it hasn't issued. Only a number the account
+      // OWNS is safe on the patient leg.
+      line(
+        WARN,
+        "Caller ID on Twilio",
+        `${caller} is only a VERIFIED caller ID, not a number this account owns. Twilio may ` +
+          `refuse to originate with it (error 13247, do-not-originate) — which fails the patient ` +
+          `leg of every call while the counsellor's leg still connects. Test one real call before ` +
+          `trusting it; the durable fix is a number we own, or an Indian provider.`,
+      );
+    } else {
+      line(OK, "Caller ID on Twilio", `${caller} is a number this account owns — Twilio will use it`);
+    }
+
+    // The rep leg is a REST `From`, which Twilio validates strictly (error 21210) —
+    // an unusable value fails the call outright rather than degrading quietly.
+    const repFrom = process.env.TWILIO_REP_CALLER_ID?.trim() || process.env.TWILIO_OWNED_NUMBER?.trim();
+    if (repFrom && (await callerIdStatus(auth, repFrom)) === "unusable") {
+      line(BAD, "Rep caller ID", `${repFrom} isn't owned or verified — Twilio will reject the leg that rings the counsellor.`);
+    }
+  } catch (err) {
+    line(WARN, "Caller ID on Twilio", `could not verify: ${axios.isAxiosError(err) ? err.message : String(err)}`);
+  }
 
   // The patient-facing caller ID must not be a counsellor's own handset: a
   // click-to-call rings the counsellor first, and Twilio refuses From == To. The
@@ -264,6 +334,83 @@ async function slack() {
 
 /// Backups (§backups). Deliberately noisy: this is the check whose failure nobody
 /// notices until the day it matters, so "off" reads as ❌ rather than a skip.
+/// Plivo, checked the way September taught us to check a provider.
+///
+/// The Twilio failure was not that a variable was unset. It was that the variable named a
+/// number the provider would not put on the wire, and nothing said so until a patient's
+/// handset did. So this asks Plivo three questions in order of how badly a wrong answer
+/// hurts: can we reach the account, is the caller ID a number this account actually RENTS,
+/// and is the compliance application that permits it still accepted.
+async function plivo() {
+  const id = process.env.PLIVO_AUTH_ID;
+  const token = process.env.PLIVO_AUTH_TOKEN;
+  const active = (process.env.CALL_PROVIDER ?? "twilio").trim().toLowerCase() === "plivo";
+  if (!id || !token) {
+    return active
+      ? line(BAD, "Plivo", "CALL_PROVIDER=plivo but PLIVO_AUTH_ID/TOKEN are unset — every call will be refused")
+      : line(SKIP, "Plivo", "not configured");
+  }
+  const auth = { username: id, password: token };
+  const base = `https://api.plivo.com/v1/Account/${id}`;
+  try {
+    const acct = await axios.get(`${base}/`, { auth, timeout: 15_000, validateStatus: () => true });
+    if (acct.status !== 200) return line(BAD, "Plivo", `HTTP ${acct.status} — credentials rejected`);
+    const credits = Number(acct.data?.cash_credits ?? NaN);
+    const icon = Number.isFinite(credits) && credits < 5 ? WARN : OK;
+    line(
+      icon,
+      "Plivo",
+      `${acct.data?.name ?? "?"} (${acct.data?.account_type ?? "?"}) · credits ${Number.isFinite(credits) ? credits.toFixed(2) : "?"}` +
+        (active ? " · ACTIVE provider" : " · configured, not active"),
+    );
+
+    const caller = process.env.PLIVO_CALLER_ID?.trim();
+    if (!caller) {
+      return line(active ? BAD : WARN, "Plivo caller ID", "PLIVO_CALLER_ID unset — click-to-call will be refused");
+    }
+
+    // The check that matters. On India domestic routes the caller ID must be a number this
+    // account RENTS; there is no "verify your own number" route as there was on Twilio, and
+    // a number we do not rent is the exact shape of the bug that cost six weeks.
+    const owned = await axios.get(`${base}/Number/?limit=100`, { auth, timeout: 15_000, validateStatus: () => true });
+    const last10 = (n: string) => n.replace(/\D/g, "").slice(-10);
+    const numbers: { number?: string; voice_enabled?: boolean }[] = owned.data?.objects ?? [];
+    const match = numbers.find((n) => n.number && last10(n.number) === last10(caller));
+    if (!match) {
+      line(
+        BAD,
+        "Plivo caller ID",
+        `${caller} is NOT a number this account rents (${numbers.length} rented). Plivo will refuse to ` +
+          `originate with it and patients will keep seeing whatever it falls back to. Rent it, or point ` +
+          `PLIVO_CALLER_ID at one of the numbers above.`,
+      );
+    } else if (match.voice_enabled === false) {
+      line(BAD, "Plivo caller ID", `${caller} is rented but NOT voice-enabled — it cannot place calls.`);
+    } else {
+      line(OK, "Plivo caller ID", `${caller} is rented by this account and voice-enabled`);
+    }
+
+    if (!caller.startsWith("+91")) {
+      line(
+        WARN,
+        "Plivo caller ID region",
+        `${caller} is not an Indian (+91) number — the entire reason for this provider was an Indian CLI.`,
+      );
+    }
+
+    // The number only keeps working while the compliance application behind it stands.
+    const comp = await axios.get(`${base}/PhoneNumber/Compliance/`, { auth, timeout: 15_000, validateStatus: () => true });
+    const apps: { status?: string; alias?: string }[] = comp.data?.compliances ?? [];
+    const accepted = apps.filter((a) => a.status === "accepted");
+    if (apps.length === 0) line(WARN, "Plivo compliance", "no compliance application found");
+    else if (accepted.length === 0)
+      line(BAD, "Plivo compliance", `no ACCEPTED application (${apps.map((a) => a.status).join(", ")}) — the number may stop working`);
+    else line(OK, "Plivo compliance", `${accepted.length} accepted (${accepted.map((a) => a.alias).join(", ")})`);
+  } catch (err) {
+    line(BAD, "Plivo", axios.isAxiosError(err) ? err.message : String(err));
+  }
+}
+
 async function backups() {
   if (!isBackupConfigured()) {
     line(BAD, "Backups", "OFF — BACKUP_S3_* unset, nothing is copied off Railway");
@@ -332,6 +479,7 @@ async function main() {
   await elevenlabs();
   await elevenlabsAgent();
   await twilio();
+  await plivo();
   await whatsapp();
   await anthropic();
   await slack();
