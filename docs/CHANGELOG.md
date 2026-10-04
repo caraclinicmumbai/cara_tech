@@ -7,6 +7,40 @@ Format: newest first.
 
 ---
 
+## 2026-10-04 — Calling moves to Plivo, and the clinic gets an Indian number
+
+Flow doc added: **[indian-telephony-migration.md](indian-telephony-migration.md)** — the
+decision, the provider comparison, the TRAI number-series trap, the onboarding runbook.
+Files: `lib/providers/{plivo,calling,recordings}.ts` (new), `app/api/plivo/*` (new),
+`app/api/webhooks/plivo/recording/` (new), `prisma/schema.prisma` (`Call.provider`),
+`lib/{dataRetention,callTranscription}.ts`, `app/(dashboard)/leads/actions.ts`,
+`app/api/slack/interact/route.ts`, `scripts/preflight.ts`, `.env.example`.
+
+Six weeks of "the Indian caller ID is nearly working" ended with Twilio confirming in writing
+that it cannot be done on their network: they do not sell Indian local or mobile numbers, a
+merely *verified* Indian number is refused with error 13247, and the one exception — Indian
+toll-free — requires the business to be **outside** India, which a Mumbai clinic is not.
+
+Plivo rents Indian numbers to India-registered businesses, which is the same rule read the
+other way round: our Mumbai registration is what *qualifies* us. `+91 22 6423 1017` is rented,
+voice-enabled, and its compliance application accepted. The whole KYC took about fifteen
+minutes once the certificates carried a company seal — against the weeks that had been
+budgeted for it.
+
+`Call.provider` landed first and separately, because it had to exist *before* the switch
+rather than after: a recording lives on the provider that made it, and erasing one is how a
+DPDP request is honoured. Dispatching an erasure at the wrong provider fails silently — row
+cleared, success reported, audio still sitting there.
+
+**Worth knowing generally:** two providers, two different traps, same shape. Twilio's was that
+*verified* and *usable* are different words. Plivo's is that `<Dial>` cannot record at all and
+its signature algorithm has an edge case the prose docs gloss. Both were only ever going to be
+caught by asking the provider rather than reading about it — which is now what
+`scripts/preflight.ts` does for each: not "is the variable set" but "will you put this number
+on the wire".
+
+---
+
 ## 2026-09-19 — The Indian caller ID works for nobody, and nothing said so
 
 Files: `scripts/preflight.ts`. Flow doc updated:
