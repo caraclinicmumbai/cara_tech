@@ -102,6 +102,30 @@ Backfill is free — every existing row is Twilio by definition — and `fetchRe
 `deleteRecording` dispatch on it. Skipping this silently breaks erasure for historical calls,
 which is the kind of thing that stays broken until somebody exercises a DPDP request.
 
+## Plivo deletes recordings after 30 days — we do not
+
+Found while building the adapter, and it is not a detail. **Plivo retains a recording for 30
+days and then deletes it.** Twilio keeps them until told otherwise, which is the behaviour
+every part of this CRM was built against.
+
+What that changes:
+
+| | Effect |
+|---|---|
+| **Transcripts and CQS** | **Safe.** Transcription runs within seconds of the callback, from the live URL |
+| **The in-CRM audio player** | **Breaks past 30 days.** `Call.recordingUrl` will 404 for older calls |
+| **DPDP erasure of old audio** | Moot — Plivo has already deleted it. A 404 on delete is a pass, not a failure |
+| **Retention purge** | Still correct, just mostly a no-op for the audio half |
+
+So after the switch, a counsellor opening a two-month-old call sees a transcript and a CQS
+score but cannot play the recording. Nobody has hit this yet because no Plivo call is 30 days
+old, which is exactly why it should be written down now rather than discovered in November.
+
+**The durable fix is to download recordings into our own storage** on the recording callback,
+rather than storing a provider URL and trusting it to still resolve. The R2 bucket that
+backups use (`BACKUP_S3_*`) is the obvious home. That is a real piece of work and it is NOT
+in the adapter — tracked in [deferred-todo.md](./deferred-todo.md).
+
 ## Inbound: the part that carries real risk
 
 Our ladder is driven by returning fresh TwiML per leg — sticky owner → same-speciality

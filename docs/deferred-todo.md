@@ -13,6 +13,22 @@
 
 ## Open
 
+### 🟠 Plivo deletes recordings after 30 days — download them to our own storage
+Found 2026-10-04 while building the Plivo adapter. Plivo keeps a recording for **30 days**,
+then deletes it; Twilio kept them indefinitely, which is what the CRM assumes. Transcripts and
+CQS are unaffected (transcription runs within seconds), but **the in-CRM audio player will 404
+for any Plivo call older than 30 days**.
+
+Nothing is broken yet — no Plivo call is 30 days old. It will start failing silently about a
+month after cutover, and the symptom ("the recording won't play") looks like a bug rather than
+a retention policy.
+
+**The fix:** on the recording callback, download the audio and store it ourselves rather than
+keeping a provider URL. The R2 bucket the backups use is the natural home. Then
+`Call.recordingUrl` points at us and stops depending on a vendor's retention window.
+_Added 2026-10-04; see [indian-telephony-migration.md](./indian-telephony-migration.md)._
+
+
 ### 🔴 Indian caller ID — code is ready, PRODUCTION ENV IS NOT SET
 From the 2026-09-03 test run: calls from the CRM go unanswered; the same patients answer a
 Neodove call minutes later. Cause: an **unknown +1 caller** gets a Truecaller spam warning
