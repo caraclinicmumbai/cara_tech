@@ -26,7 +26,15 @@ import {
 import { istDateKey, istInstant, MINUTE_MS } from "@/lib/scheduling/time";
 import { messagePatient } from "@/lib/scheduling/notify";
 
-export type ConflictCause = "leave" | "emergency" | "roster" | "exception" | "downtime" | "contract" | "closure";
+export type ConflictCause =
+  | "leave"
+  | "emergency"
+  | "roster"
+  | "exception"
+  | "downtime"
+  | "contract"
+  | "closure"
+  | "patient_request";
 
 /// Statuses an appointment can be in and still need a doctor/room in the future.
 const LIVE = ["tentative", "booked", "confirmed"];
@@ -150,6 +158,13 @@ export async function detectClosure(params: {
   return opened;
 }
 
+/// A patient asked to change an appointment inside its self-service cut-off (§2.4:
+/// "Patient requested change — call required"). Lands on the same worklist the
+/// patient-care team already works, as urgent, due within two hours.
+export async function openPatientRequest(appointmentId: string, reason: string): Promise<boolean> {
+  return openCase(appointmentId, "patient_request", reason, { urgent: true });
+}
+
 /// Re-check a resource over the coming window (roster edits, one-off changes, contract
 /// dates). 90 days covers anything a front desk would have booked.
 export async function detectForResource(resourceId: string, cause: ConflictCause, actor?: Actor) {
@@ -222,7 +237,7 @@ export async function recheckOpenCases(where: { resourceId?: string; timeOffId?:
       ...(where.timeOffId ? { timeOffId: where.timeOffId } : {}),
       ...(where.resourceId ? { appointment: { resources: { some: { resourceId: where.resourceId } } } } : {}),
     },
-    select: { id: true, appointmentId: true, appointment: { select: { status: true } } },
+    select: { id: true, cause: true, appointmentId: true, appointment: { select: { status: true } } },
   });
   let closed = 0;
   for (const c of cases) {
@@ -234,7 +249,9 @@ export async function recheckOpenCases(where: { resourceId?: string; timeOffId?:
       closed++;
       continue;
     }
-    if (!(await appointmentProblems(c.appointmentId))) {
+    // A patient's own request isn't a conflict that can "go away" — only a person
+    // closes it.
+    if (c.cause !== "patient_request" && !(await appointmentProblems(c.appointmentId))) {
       await prisma.rebookingCase.update({
         where: { id: c.id },
         data: { status: "dismissed", resolvedAt: new Date(), resolutionNote: "No longer conflicts" },

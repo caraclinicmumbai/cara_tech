@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/password";
 import { getClientIp } from "@/lib/rateLimit";
 import { isLoginLocked, recordLoginFailure, clearLoginFailures } from "@/lib/loginThrottle";
+import { isPublicPath } from "@/lib/publicPaths";
 import { can, routeCapability, landingPath, NO_ACCESS_PATH } from "@/lib/rbac";
 import { ensurePermissions } from "@/lib/permissions";
 import { writeAudit } from "@/lib/audit";
@@ -67,6 +68,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // Returning false redirects unauthenticated users to `pages.signIn` (/login)
     // with a callbackUrl; returning a Response performs an explicit redirect.
     async authorized({ auth: session, request: { nextUrl } }) {
+      // Patient-facing pages (an appointment link) carry their own signed token.
+      if (isPublicPath(nextUrl.pathname)) return true;
       const isLoggedIn = !!session?.user;
       const isOnLogin = nextUrl.pathname === "/login";
       const role = (session?.user as { role?: string } | undefined)?.role;

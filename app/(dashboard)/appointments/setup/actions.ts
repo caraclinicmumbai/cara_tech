@@ -17,6 +17,7 @@ import { isResourceKind, RESOURCE_KIND_LABELS } from "@/lib/scheduling/status";
 import { dateColumn, hhmmToMinutes, istInstant as istInstantOf } from "@/lib/scheduling/time";
 import { parseIstDateTimeLocal } from "@/lib/datetime";
 import { FLAG_ICONS, FLAG_TONES } from "@/lib/scheduling/flags";
+import { REMINDER_PRESETS } from "@/lib/scheduling/messageText";
 import { detectClosure, detectConflicts, detectForResource, recheckOpenCases } from "@/lib/scheduling/conflicts";
 
 type Result = { ok: boolean; error?: string; info?: string; id?: string };
@@ -705,4 +706,126 @@ export async function setFlagActive(id: string, active: boolean): Promise<Result
   } catch (err) {
     return fail("setFlagActive", err, "Could not update the flag");
   }
+}
+
+// ── Messages & reminders (§2.4) ──────────────────────────────────────────────
+
+export type MessageTemplateInput = {
+  name: string;
+  body: string;
+  whatsappTemplateName?: string | null;
+  whatsappLanguage?: string | null;
+  whatsappParams?: string; // comma-separated placeholder names, in {{1}}, {{2}} order
+  smsDltTemplateId?: string | null;
+  emailSubject?: string | null;
+};
+
+const PLACEHOLDER = /^[a-z_]+$/;
+
+export async function saveMessageTemplate(id: string | null, input: MessageTemplateInput): Promise<Result> {
+  const actor = await requireCapability("appointments.configure");
+  const name = clean(input.name);
+  const body = (input.body ?? "").trim();
+  if (!name) return { ok: false, error: "Give the message a name" };
+  if (!body) return { ok: false, error: "Write the message" };
+  const params = (input.whatsappParams ?? "")
+    .split(",")
+    .map((p) => p.trim().replace(/^\{|\}$/g, ""))
+    .filter(Boolean);
+  if (params.some((p) => !PLACEHOLDER.test(p))) return { ok: false, error: "WhatsApp parameters are placeholder names, e.g. patient_name, date, time" };
+  const data = {
+    name,
+    body,
+    whatsappTemplateName: clean(input.whatsappTemplateName),
+    whatsappLanguage: clean(input.whatsappLanguage) ?? "en",
+    whatsappParams: params,
+    smsDltTemplateId: clean(input.smsDltTemplateId),
+    emailSubject: clean(input.emailSubject),
+    updatedById: actor.id ?? null,
+  };
+  try {
+    const row = id
+      ? await prisma.appointmentMessageTemplate.update({ where: { id }, data, select: { id: true } })
+      : await prisma.appointmentMessageTemplate.create({
+          data: { ...data, key: `${name.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 40)}_${Date.now().toString(36)}` },
+          select: { id: true },
+        });
+    await audit(actor, id ? "scheduling.message.update" : "scheduling.message.create", row.id, name);
+    revalidatePath(PATH);
+    return { ok: true, id: row.id, info: "Saved" };
+  } catch (err) {
+    return fail("saveMessageTemplate", err, "Could not save the message");
+  }
+}
+
+export type ReminderRuleInput = {
+  kind: string; // on_booking | before | morning_of
+  hoursBefore?: number | null; // for "before"
+  at?: string | null; // HH:MM for "morning_of"
+  templateId: string;
+  channels: string[];
+  smsFallback: boolean;
+  quietExempt: boolean;
+};
+
+export async function saveReminderSettings(typeId: string, cutoffHours: number, rules: ReminderRuleInput[]): Promise<Result> {
+  const actor = await requireCapability("appointments.configure");
+  const cutoff = Math.round(Number(cutoffHours));
+  if (!Number.isFinite(cutoff) || cutoff < 0 || cutoff > 24 * 30) return { ok: false, error: "Self-service cut-off must be 0–720 hours" };
+  const parsed = [];
+  for (const [i, r] of rules.entries()) {
+    if (!["on_booking", "before", "morning_of"].includes(r.kind)) return { ok: false, error: "Pick when each reminder goes" };
+    if (!r.templateId) return { ok: false, error: "Pick a message for each reminder" };
+    const channels = r.channels.filter((c) => ["whatsapp", "sms", "email"].includes(c));
+    if (!channels.length) return { ok: false, error: "Each reminder needs at least one channel" };
+    let minutesBefore: number | null = null;
+    let atMin: number | null = null;
+    if (r.kind === "before") {
+      const h = Number(r.hoursBefore);
+      if (!Number.isFinite(h) || h <= 0 || h > 24 * 60) return { ok: false, error: "Hours before must be more than 0" };
+      minutesBefore = Math.round(h * 60);
+    }
+    if (r.kind === "morning_of") {
+      atMin = hhmmToMinutes(r.at ?? "");
+      if (atMin === null) return { ok: false, error: "Morning-of reminders need a time (HH:MM)" };
+    }
+    parsed.push({ typeId, kind: r.kind, minutesBefore, atMin, templateId: r.templateId, channels, smsFallback: !!r.smsFallback, quietExempt: !!r.quietExempt, sortOrder: i });
+  }
+  try {
+    await prisma.$transaction([
+      prisma.appointmentType.update({ where: { id: typeId }, data: { selfServiceCutoffHours: cutoff } }),
+      prisma.reminderRule.deleteMany({ where: { typeId } }),
+      prisma.reminderRule.createMany({ data: parsed }),
+    ]);
+    await audit(actor, "scheduling.reminders.update", typeId, `${parsed.length} reminder(s), cut-off ${cutoff} h`, { meta: { rules: parsed } });
+    revalidatePath(PATH);
+    // Only NEW bookings pick up a changed timeline; appointments already booked keep the
+    // reminders they were given.
+    return { ok: true, info: "Saved — applies to appointments booked from now on" };
+  } catch (err) {
+    return fail("saveReminderSettings", err, "Could not save the reminders");
+  }
+}
+
+export async function applyReminderPreset(typeId: string, presetKey: string): Promise<Result> {
+  await requireCapability("appointments.configure");
+  const preset = REMINDER_PRESETS[presetKey];
+  if (!preset) return { ok: false, error: "Unknown preset" };
+  const templates = await prisma.appointmentMessageTemplate.findMany({ where: { key: { in: preset.rules.map((r) => r.templateKey) } }, select: { id: true, key: true } });
+  const byKey = new Map(templates.map((t) => [t.key, t.id]));
+  const missing = preset.rules.find((r) => !byKey.has(r.templateKey));
+  if (missing) return { ok: false, error: `The "${missing.templateKey}" message is missing — check Messages` };
+  return saveReminderSettings(
+    typeId,
+    preset.cutoffHours,
+    preset.rules.map((r) => ({
+      kind: r.kind,
+      hoursBefore: r.minutesBefore ? r.minutesBefore / 60 : null,
+      at: r.atMin != null ? `${String(Math.floor(r.atMin / 60)).padStart(2, "0")}:${String(r.atMin % 60).padStart(2, "0")}` : null,
+      templateId: byKey.get(r.templateKey)!,
+      channels: r.channels,
+      smsFallback: true,
+      quietExempt: !!r.quietExempt,
+    })),
+  );
 }

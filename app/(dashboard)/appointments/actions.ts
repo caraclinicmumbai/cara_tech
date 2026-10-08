@@ -31,6 +31,7 @@ import {
 import { mayActAtBranch, viewerFor } from "@/lib/scheduling/calendar";
 import { STATUS_TRANSITIONS, isAppointmentStatus } from "@/lib/scheduling/status";
 import type { Issue } from "@/lib/scheduling/engine";
+import { appointmentLink } from "@/lib/scheduling/links";
 
 const PATH = "/appointments";
 
@@ -340,6 +341,10 @@ export type AppointmentDetail = {
   canAct: boolean;
   canRunDay: boolean;
   canSeeLead: boolean;
+  /// §2.4 — what was (or will be) sent, and how each channel went.
+  reminders: { id: string; name: string; dueAt: string; status: string; whatsapp: string | null; sms: string | null; email: string | null; note: string | null }[];
+  /// The patient's self-service link, for staff to send by hand. Null when not visible.
+  patientLink: string | null;
 };
 
 export async function getAppointmentDetail(id: string): Promise<AppointmentDetail | null> {
@@ -353,6 +358,7 @@ export async function getAppointmentDetail(id: string): Promise<AppointmentDetai
       lead: { select: { id: true, name: true, phone: true, flags: { select: { flagId: true } } } },
       resources: { select: { resource: { select: { id: true, name: true, kind: true } } } },
       rescheduledFrom: { select: { startAt: true } },
+      reminders: { orderBy: { dueAt: "asc" }, include: { template: { select: { name: true } } } },
     },
   });
   if (!a) return null;
@@ -388,6 +394,19 @@ export async function getAppointmentDetail(id: string): Promise<AppointmentDetai
     canAct: visible && viewer.canBook && mayAct,
     canRunDay: visible && viewer.canCheckin && (mayAct || own),
     canSeeLead: visible && can(user.role, "leads.view"),
+    reminders: visible
+      ? a.reminders.map((r) => ({
+          id: r.id,
+          name: r.template.name,
+          dueAt: r.dueAt.toISOString(),
+          status: r.status,
+          whatsapp: r.whatsapp,
+          sms: r.sms,
+          email: r.email,
+          note: r.status === "sent" ? null : r.lastError,
+        }))
+      : [],
+    patientLink: visible && ["tentative", "booked", "confirmed"].includes(a.status) ? appointmentLink(a.id, a.endAt) : null,
   };
 }
 

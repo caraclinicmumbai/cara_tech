@@ -25,7 +25,9 @@ import { istInstant, MINUTE_MS } from "../lib/scheduling/time";
 
 let passed = 0;
 function check(name: string, fn: () => void | Promise<void>) {
-  return Promise.resolve(fn()).then(
+  return Promise.resolve()
+    .then(fn)
+    .then(
     () => {
       passed++;
       console.log(`  ok   ${name}`);
@@ -455,6 +457,49 @@ async function spec29Checks() {
   });
 }
 
+async function spec24Checks() {
+  console.log("Spec 2.4 — reminders (pure)");
+  const { dueTime } = await import("../lib/scheduling/reminders");
+  const { fillTemplate } = await import("../lib/scheduling/messageText");
+  const { appointmentToken, verifyAppointmentToken } = await import("../lib/scheduling/links");
+  const q = { start: 21 * 60, end: 8 * 60 };
+  const now = istInstant("2030-01-10", 10 * 60);
+  const start = istInstant(DAY, 9 * 60); // 15 Jan 09:00
+
+  await check("24 h-before reminder landing at 09:00 goes at 09:00", () => {
+    const d = dueTime({ kind: "before", minutesBefore: 24 * 60, atMin: null, quietExempt: false }, start, now, q);
+    assert.equal(d?.getTime(), istInstant("2030-01-14", 9 * 60).getTime());
+  });
+  await check("a reminder falling in quiet hours waits until 08:00", () => {
+    const d = dueTime({ kind: "before", minutesBefore: 12 * 60, atMin: null, quietExempt: false }, start, now, q); // 21:00 the night before
+    assert.equal(d?.getTime(), istInstant(DAY, 8 * 60).getTime());
+  });
+  await check("the quiet-exempt morning-of reminder goes at 06:30", () => {
+    const d = dueTime({ kind: "morning_of", minutesBefore: null, atMin: 6 * 60 + 30, quietExempt: true }, start, now, q);
+    assert.equal(d?.getTime(), istInstant(DAY, 6 * 60 + 30).getTime());
+  });
+  await check("a reminder whose moment already passed (booked late) is not created", () => {
+    const lateNow = istInstant(DAY, 8 * 60);
+    assert.equal(dueTime({ kind: "before", minutesBefore: 24 * 60, atMin: null, quietExempt: false }, start, lateNow, q), null);
+  });
+  await check("held by quiet hours past the appointment → not sent", () => {
+    const early = istInstant(DAY, 7 * 60 + 30);
+    const d = dueTime({ kind: "before", minutesBefore: 60, atMin: null, quietExempt: false }, early, now, q); // 06:30 → held to 08:00, after start
+    assert.equal(d, null);
+  });
+  await check("templates fill placeholders and drop lines left empty", () => {
+    const out = fillTemplate("Hi {patient_name},\n{prep}\nSee you {time}. {unknown}", { patient_name: "Priya", prep: "", time: "4 PM" });
+    assert.equal(out, "Hi Priya,\nSee you 4 PM. {unknown}");
+  });
+  await check("patient links verify, and refuse tampering and expiry", () => {
+    const t = appointmentToken("appt123", new Date(Date.now() + 3600_000));
+    assert.equal(verifyAppointmentToken(t)?.appointmentId, "appt123");
+    assert.equal(verifyAppointmentToken(t.replace("appt123", "appt124")), null);
+    const old = appointmentToken("appt123", new Date(Date.now() - 1000));
+    assert.equal(verifyAppointmentToken(old), null);
+  });
+}
+
 // ── Part 2: database ─────────────────────────────────────────────────────────
 
 async function dbChecks() {
@@ -702,6 +747,97 @@ async function dbChecks() {
       assert.equal(c.cause, "closure");
     });
 
+    // §2.4 — reminders against the database. WhatsApp is blanked for this process so
+    // no check can ever message a real number.
+    process.env.WHATSAPP_TOKEN = "";
+    process.env.WHATSAPP_PHONE_NUMBER_ID = "";
+    const reminders = await import("../lib/scheduling/reminders");
+    const { setBoolSetting } = await import("../lib/settings");
+    const tpl = await prisma.appointmentMessageTemplate.findUniqueOrThrow({ where: { key: "reminder_24h" } });
+    const conf = await prisma.appointmentMessageTemplate.findUniqueOrThrow({ where: { key: "confirmation" } });
+    const remType = await prisma.appointmentType.create({
+      data: {
+        name: `${tag} reminded consult`,
+        durationMin: 30,
+        selfServiceCutoffHours: 72,
+        requirements: { create: [{ kind: "doctor" }, { kind: "room", subtype: "consult2" }] },
+        reminderRules: {
+          create: [
+            { kind: "on_booking", templateId: conf.id, channels: ["whatsapp"] },
+            { kind: "before", minutesBefore: 60, templateId: tpl.id, channels: ["whatsapp"] },
+          ],
+        },
+      },
+    });
+    extraTypes.push(remType.id);
+    const drR = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} reminder doctor` } });
+    extraResources.push(drR.id);
+    const rb = { leadId: lead.id, branchId: branch.id, typeId: remType.id, resourceIds: [drR.id], acknowledgeWarnings: true };
+    const first = await bookAppointment({ ...rb, startAt: at(12 * 60) }, actor);
+    const firstId = first.ok ? first.appointmentId : "";
+
+    await check("booking creates the type's reminders (confirmation now, 1 h before)", async () => {
+      assert.ok(first.ok);
+      const rows = await prisma.appointmentReminder.findMany({ where: { appointmentId: firstId }, orderBy: { dueAt: "asc" } });
+      assert.equal(rows.length, 2);
+      assert.equal(rows[1].dueAt.getTime(), at(11 * 60).getTime());
+    });
+
+    let movedRemId = "";
+    await check("rescheduling cancels the old reminders and makes new ones (no second confirmation)", async () => {
+      const r = await rescheduleAppointment(firstId, { startAt: at(13 * 60) }, actor);
+      assert.ok(r.ok, !r.ok ? r.error : "");
+      movedRemId = r.ok ? r.appointmentId : "";
+      const old = await prisma.appointmentReminder.findMany({ where: { appointmentId: firstId } });
+      assert.ok(old.filter((x) => x.status === "pending").length === 0);
+      const fresh = await prisma.appointmentReminder.findMany({ where: { appointmentId: movedRemId } });
+      assert.equal(fresh.length, 1);
+      assert.equal(fresh[0].templateId, tpl.id);
+    });
+
+    await check("while reminders are switched off, due ones are skipped — never saved up", async () => {
+      await setBoolSetting("scheduling.remindersEnabled", false);
+      await prisma.appointmentReminder.updateMany({ where: { appointmentId: movedRemId }, data: { dueAt: new Date(Date.now() - 1000) } });
+      await reminders.processDueReminders();
+      const r = await prisma.appointmentReminder.findFirstOrThrow({ where: { appointmentId: movedRemId } });
+      assert.equal(r.status, "skipped");
+      assert.match(r.lastError ?? "", /switched off/);
+    });
+
+    await check("switched on, an unconfigured channel is skipped and said so (never silent)", async () => {
+      await setBoolSetting("scheduling.remindersEnabled", true);
+      await prisma.appointmentReminder.updateMany({ where: { appointmentId: movedRemId }, data: { status: "pending" } });
+      await reminders.processDueReminders();
+      const r = await prisma.appointmentReminder.findFirstOrThrow({ where: { appointmentId: movedRemId } });
+      assert.equal(r.status, "skipped");
+      assert.match(r.whatsapp ?? "", /not configured/);
+      await setBoolSetting("scheduling.remindersEnabled", false);
+    });
+
+    await check("a reply of 1 confirms the appointment", async () => {
+      await prisma.appointmentReminder.updateMany({ where: { appointmentId: movedRemId }, data: { status: "sent", sentAt: new Date() } });
+      const handled = await reminders.handleAppointmentReply(lead.id, "1");
+      assert.equal(handled, true);
+      const a = await prisma.appointment.findUniqueOrThrow({ where: { id: movedRemId } });
+      assert.equal(a.status, "confirmed");
+    });
+
+    await check("a reply of 2 inside the 72 h cut-off opens a call-required case", async () => {
+      const handled = await reminders.handleAppointmentReply(lead.id, "2");
+      assert.equal(handled, true);
+      const c = await prisma.rebookingCase.findFirstOrThrow({ where: { appointmentId: movedRemId, cause: "patient_request" } });
+      assert.equal(c.urgent, true);
+    });
+
+    await check("cancelling the appointment cancels its pending reminders", async () => {
+      const x = await bookAppointment({ ...rb, startAt: at(15 * 60) }, actor);
+      assert.ok(x.ok);
+      const id = x.ok ? x.appointmentId : "";
+      await changeAppointmentStatus(id, "cancelled", { reason: "test", cancelledBy: "patient" }, actor);
+      const pending = await prisma.appointmentReminder.count({ where: { appointmentId: id, status: "pending" } });
+      assert.equal(pending, 0);
+    });
+
     await check("every write left an audit row", async () => {
       const ids = (await prisma.appointment.findMany({ where: { typeId: type.id }, select: { id: true } })).map((a) => a.id);
       const n = await prisma.auditLog.count({ where: { entityType: "appointment", entityId: { in: ids } } });
@@ -722,6 +858,7 @@ async function dbChecks() {
   await spec21Checks();
   await spec22Checks();
   await spec29Checks();
+  await spec24Checks();
   if (process.env.CHECK_DB !== "0") await dbChecks();
   console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);
   // The messaging modules (WhatsApp/Redis) keep sockets open; exit explicitly so the

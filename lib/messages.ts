@@ -196,7 +196,8 @@ type SendOpts = {
   /// messages are governed by CLINICAL consent, so they are exempt from the
   /// `optedOut` marketing suppression — a patient who unsubscribed from promotions
   /// still gets their day-7 post-op check-in. An explicit `consentClinical === false`
-  /// still refuses. Only lib/postSales/ sets this; nothing else should.
+  /// still refuses. Set by lib/postSales/ (care check-ins) and lib/scheduling/
+  /// (appointment reminders and changes — transactional, §3.2 2.4); nothing else.
   clinical?: boolean;
 };
 
@@ -227,7 +228,13 @@ export async function sendLeadText(
 ): Promise<{ ok: true; message: Message } | { ok: false; error: string }> {
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) return { ok: false, error: "Lead not found" };
-  if (lead.optedOut) return { ok: false, error: "Lead has opted out of messaging" };
+  // Same rule as templates: a care / appointment message follows CLINICAL consent,
+  // not the marketing opt-out (§post-sales, §3.2 2.4).
+  if (opts.clinical) {
+    if (lead.consentClinical === false) return { ok: false, error: "Clinical consent withheld — care messages are not permitted" };
+  } else if (lead.optedOut) {
+    return { ok: false, error: "Lead has opted out of messaging" };
+  }
   if (!(await isServiceWindowOpen(leadId))) {
     return logBlocked(leadId, "text", body, "Outside the 24h window — needs an approved template", opts);
   }

@@ -20,6 +20,8 @@ export const ENFORCE_STAFF_ROSTERS = "scheduling.enforceStaffRosters";
 export const REQUIRE_SUPPORT_STAFF = "scheduling.requireSupportStaff";
 export const BLOCK_EQUIPMENT = "scheduling.blockEquipment";
 export const PATIENT_FLAGS_ENABLED = "scheduling.patientFlags";
+export const REMINDERS_ENABLED = "scheduling.remindersEnabled";
+export const SELF_SERVICE_LINKS = "scheduling.selfServiceLinks";
 
 export const SCHEDULING_TOGGLES: SchedulingToggle[] = [
   {
@@ -65,6 +67,20 @@ export const SCHEDULING_TOGGLES: SchedulingToggle[] = [
     default: true,
   },
   {
+    key: REMINDERS_ENABLED,
+    label: "Send appointment reminders",
+    description:
+      "Off until the WhatsApp templates are approved and the clinic is ready (§2.4). While off, nothing is sent to patients, and reminders that fall due are marked skipped rather than saved up — switching on never sends a backlog.",
+    default: false,
+  },
+  {
+    key: SELF_SERVICE_LINKS,
+    label: "Patient self-service link",
+    description:
+      "Reminders carry a secure link where the patient can confirm, reschedule or cancel, within each appointment type's self-service cut-off. Off: the link page only shows the appointment and asks them to call.",
+    default: true,
+  },
+  {
     key: PATIENT_FLAGS_ENABLED,
     label: "Patient flags",
     description: "Show flags such as ★ Priority on patient cards, and let staff set them.",
@@ -93,6 +109,8 @@ export type SchedulingNumber = {
 };
 
 export const DEFAULT_TRAVEL_MINUTES = "scheduling.defaultTravelMinutes";
+export const QUIET_START_HOUR = "scheduling.quietStartHour";
+export const QUIET_END_HOUR = "scheduling.quietEndHour";
 
 export const SCHEDULING_NUMBERS: SchedulingNumber[] = [
   {
@@ -104,6 +122,24 @@ export const SCHEDULING_NUMBERS: SchedulingNumber[] = [
     default: 90,
     min: 0,
     max: 600,
+  },
+  {
+    key: QUIET_START_HOUR,
+    label: "Reminder quiet hours start",
+    description: "No reminders from this hour (IST, 24h clock) — except those marked quiet-exempt, like the morning-of-surgery reminder (§2.4.f).",
+    unit: "h",
+    default: 21,
+    min: 0,
+    max: 23,
+  },
+  {
+    key: QUIET_END_HOUR,
+    label: "Reminder quiet hours end",
+    description: "Reminders held overnight go out from this hour (IST).",
+    unit: "h",
+    default: 8,
+    min: 0,
+    max: 23,
   },
 ];
 

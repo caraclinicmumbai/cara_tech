@@ -226,6 +226,21 @@ export type BookingInput = {
   journeyId?: string | null;
 };
 
+/// Reminders follow the appointment (§2.4): best-effort, after the commit, and never
+/// able to fail the booking itself. Imported lazily — reminders.ts imports this file.
+async function remindersAfter(action: "booked" | "moved" | "ended", appointmentId: string, oldId?: string) {
+  try {
+    const r = await import("@/lib/scheduling/reminders");
+    if (action === "booked") await r.scheduleReminders(appointmentId);
+    else if (action === "moved") {
+      if (oldId) await r.cancelReminders(oldId, "Appointment moved");
+      await r.scheduleReminders(appointmentId, { skipOnBooking: true });
+    } else await r.cancelReminders(appointmentId, "Appointment ended or cancelled");
+  } catch (err) {
+    logger.error(`Reminder scheduling for ${appointmentId} failed: ${String(err)}`);
+  }
+}
+
 /// Turn a refused evaluation into the answer the form needs. `before` is the same
 /// evaluation run BEFORE taking the locks: if that was fine and the locked one isn't,
 /// somebody else booked those resources in the meantime — say so plainly (§2.1 "the
@@ -358,6 +373,7 @@ export async function bookAppointment(input: BookingInput, actor: Actor): Promis
         warningsAcknowledged: outcome.result.issues.filter((i) => i.severity === "warn").map((i) => i.message),
       },
     });
+    if (!input.holdMinutes) await remindersAfter("booked", outcome.id);
     return { ok: true, appointmentId: outcome.id, warnings: outcome.result.issues };
   } catch (err) {
     logger.error(`bookAppointment failed: ${String(err)}`);
@@ -475,6 +491,7 @@ export async function rescheduleAppointment(id: string, input: RescheduleInput, 
       reason: input.reason?.trim() || null,
       meta: { newAppointmentId: outcome.id, branchId, resourceIds: outcome.result.resourceIds },
     });
+    await remindersAfter("moved", outcome.id, id);
     return { ok: true, appointmentId: outcome.id, warnings: outcome.result.issues };
   } catch (err) {
     logger.error(`rescheduleAppointment failed: ${String(err)}`);
@@ -538,6 +555,8 @@ export async function changeAppointmentStatus(
       reason,
       meta: opts.cancelledBy ? { cancelledBy: opts.cancelledBy } : null,
     });
+    if (["cancelled", "no_show", "completed", "checked_in", "in_progress"].includes(to)) await remindersAfter("ended", id);
+    else if (appt.status === "tentative" && to === "booked") await remindersAfter("booked", id);
     return { ok: true };
   } catch (err) {
     logger.error(`changeAppointmentStatus failed: ${String(err)}`);

@@ -34,6 +34,7 @@ import { runPostSalesSlaScan, reconcileMissingJourneys } from "@/lib/postSales/s
 import { campaignsEnabled } from "@/lib/campaigns/types";
 import { expireHolds } from "@/lib/scheduling/booking";
 import { escalateOverdueCases } from "@/lib/scheduling/conflicts";
+import { processDueReminders } from "@/lib/scheduling/reminders";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -241,6 +242,16 @@ const runHoldSweep = () =>
     .catch((err) => logger.error(`Appointment hold sweep error: ${String(err)}`));
 setInterval(runHoldSweep, HOLD_SWEEP_MS);
 logger.info("Appointment hold sweep active (every 1 min)");
+
+// Appointment reminders (§3.2 2.4) — every minute, send what has come due. While the
+// module's reminders switch is off the tick marks due ones skipped instead, so turning
+// it on never sends a backlog.
+const runReminders = () =>
+  processDueReminders()
+    .then((t) => (t.sent || t.failed) && logger.info(`Reminders: ${t.sent} sent, ${t.failed} failed, ${t.skipped} skipped`))
+    .catch((err) => logger.error(`Reminder tick error: ${String(err)}`));
+setInterval(runReminders, 60_000);
+logger.info("Appointment reminder tick active (every 1 min)");
 
 // Rebooking escalation (§3.2 2.9) — an appointment stranded by leave or a roster change
 // that nobody has rebooked by its due time escalates once to the owner, admins and the

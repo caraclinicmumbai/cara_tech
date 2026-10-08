@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyMetaSignature } from "@/lib/providers/meta";
 import { optOutLeadsByPhone } from "@/lib/leadIntake";
+import { handleAppointmentReply, onWhatsAppStatus } from "@/lib/scheduling/reminders";
 import { findLeadByPhone, findOrCreateLeadByPhone, recordInbound, updateMessageStatus } from "@/lib/messages";
 import { stopEnrollmentForLead } from "@/lib/campaigns/engine";
 import { runChatbot } from "@/lib/chatbotRuntime";
@@ -169,7 +170,13 @@ export async function POST(req: Request) {
             // Drive the chatbot flow — but not for opt-out messages, only once
             // per message id (dedup above) so retries don't double-fire, and only
             // for actionable types (never voice notes / media — see set above).
-            if (!isOptOut && !alreadySeen && AI_ACTIONABLE_TYPES.has(type)) {
+            // A reply to an appointment reminder ("1" confirm / "2" reschedule, §3.2 2.4)
+            // is handled here and never reaches the chatbot.
+            const apptReply =
+              !isOptOut && !alreadySeen ? await handleAppointmentReply(lead.id, body, interactiveId).catch(() => false) : false;
+            if (apptReply) {
+              logger.info(`WhatsApp reply from lead ${lead.id} handled as an appointment response`);
+            } else if (!isOptOut && !alreadySeen && AI_ACTIONABLE_TYPES.has(type)) {
               await runChatbot(lead.id, { text: body, interactiveId, interactiveTitle });
             } else if (!isOptOut && !alreadySeen && !AI_ACTIONABLE_TYPES.has(type)) {
               logger.info(`WhatsApp ${type} from lead ${lead.id} — stored, AI reply skipped (non-actionable)`);
@@ -183,6 +190,8 @@ export async function POST(req: Request) {
           // Link the delivery receipt back to the outbound message we logged.
           if (st.id && st.status) {
             await updateMessageStatus(st.id, st.status, st.errors?.[0]?.title);
+            // Appointment reminders: delivered / read on the log, SMS fallback on failure.
+            await onWhatsAppStatus(st.id, st.status).catch((err) => logger.error(`Reminder status hook: ${String(err)}`));
           }
         }
       }

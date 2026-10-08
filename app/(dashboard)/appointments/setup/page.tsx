@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/authz";
 import { getBoolSetting, getNumberSetting } from "@/lib/settings";
-import { SCHEDULING_TOGGLES, DEFAULT_TRAVEL_MINUTES } from "@/lib/scheduling/toggles";
+import { SCHEDULING_TOGGLES, DEFAULT_TRAVEL_MINUTES, QUIET_END_HOUR, QUIET_START_HOUR } from "@/lib/scheduling/toggles";
 import { branchWeek } from "@/lib/scheduling/hours";
 import { keyOfDateColumn, minutesToHhmm } from "@/lib/scheduling/time";
 import { istDateTimeLocal } from "@/lib/datetime";
@@ -11,6 +11,10 @@ import { BranchHoursEditor, ClosuresEditor, TravelSetup } from "@/components/sch
 import { ResourcesSetup } from "@/components/scheduling/ResourcesSetup";
 import { TypesSetup } from "@/components/scheduling/TypesSetup";
 import { FlagsSetup } from "@/components/scheduling/FlagsSetup";
+import { MessagesSetup } from "@/components/scheduling/MessagesSetup";
+import { isWhatsAppConfigured } from "@/lib/providers/whatsapp";
+import { isSmsConfigured } from "@/lib/providers/sms";
+import { isEmailConfigured } from "@/lib/providers/email";
 import { setSchedulingToggle } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +29,7 @@ const TABS = [
   { key: "hours", label: "Hours, holidays & travel" },
   { key: "resources", label: "Resources & rosters" },
   { key: "types", label: "Appointment types" },
+  { key: "messages", label: "Messages & reminders" },
   { key: "flags", label: "Patient flags" },
 ] as const;
 
@@ -72,6 +77,7 @@ export default async function SchedulingSetupPage({
       {tab === "hours" && <HoursTab branches={branches} />}
       {tab === "resources" && <ResourcesTab branches={branches} />}
       {tab === "types" && <TypesTab branches={branches} />}
+      {tab === "messages" && <MessagesTab />}
       {tab === "flags" && <FlagsTab />}
     </div>
   );
@@ -275,6 +281,50 @@ async function FlagsTab() {
         tone: f.tone,
         active: f.active,
         patients: f._count.leadFlags,
+      }))}
+    />
+  );
+}
+
+async function MessagesTab() {
+  const [templates, types, qStart, qEnd] = await Promise.all([
+    prisma.appointmentMessageTemplate.findMany({ where: { active: true }, orderBy: { createdAt: "asc" } }),
+    prisma.appointmentType.findMany({
+      where: { active: true },
+      orderBy: [{ category: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, selfServiceCutoffHours: true, reminderRules: { orderBy: { sortOrder: "asc" } } },
+    }),
+    getNumberSetting(QUIET_START_HOUR),
+    getNumberSetting(QUIET_END_HOUR),
+  ]);
+  return (
+    <MessagesSetup
+      providers={{ whatsapp: isWhatsAppConfigured(), sms: isSmsConfigured(), email: isEmailConfigured() }}
+      quiet={{ start: qStart, end: qEnd }}
+      templates={templates.map((t) => ({
+        id: t.id,
+        key: t.key,
+        name: t.name,
+        body: t.body,
+        whatsappTemplateName: t.whatsappTemplateName ?? "",
+        whatsappLanguage: t.whatsappLanguage,
+        whatsappParams: t.whatsappParams.join(", "),
+        smsDltTemplateId: t.smsDltTemplateId ?? "",
+        emailSubject: t.emailSubject ?? "",
+      }))}
+      types={types.map((t) => ({
+        id: t.id,
+        name: t.name,
+        cutoffHours: t.selfServiceCutoffHours,
+        rules: t.reminderRules.map((r) => ({
+          kind: r.kind,
+          hoursBefore: r.minutesBefore != null ? r.minutesBefore / 60 : null,
+          at: r.atMin != null ? minutesToHhmm(r.atMin) : null,
+          templateId: r.templateId,
+          channels: r.channels,
+          smsFallback: r.smsFallback,
+          quietExempt: r.quietExempt,
+        })),
       }))}
     />
   );

@@ -178,6 +178,40 @@ export function AppointmentCard({ id, onClose }: { id: string; onClose: () => vo
                 </div>
               )}
 
+              {/* Messages (§2.4) */}
+              {(d.reminders.length > 0 || d.patientLink) && (
+                <div className="space-y-1.5 border-t border-cara-rule pt-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-cara-muted">Messages to patient</div>
+                    {d.patientLink && (
+                      <button
+                        className="text-[12px] tone-link"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(d.patientLink!).catch(() => undefined);
+                          setMsg({ ok: true, info: "Patient link copied — they can confirm, reschedule or cancel with it." });
+                        }}
+                      >
+                        Copy patient link
+                      </button>
+                    )}
+                  </div>
+                  {d.reminders.length === 0 && <div className="text-[12px] text-cara-faint">No reminders for this appointment type.</div>}
+                  {d.reminders.map((r) => (
+                    <div key={r.id} className="text-[12px]">
+                      <span className={`tag tag-${r.status === "sent" ? "aqua" : r.status === "pending" ? "blue" : r.status === "failed" ? "tangerine" : "neutral"}`}>{r.status}</span>{" "}
+                      <span className="font-medium">{r.name}</span>{" "}
+                      <span className="text-cara-muted">{fmtDay(keyOf(r.dueAt))} {fmtTime(r.dueAt)}</span>
+                      {(r.whatsapp || r.sms || r.email) && (
+                        <div className="pl-1 text-[11.5px] text-cara-muted">
+                          {[r.whatsapp && `WhatsApp: ${r.whatsapp}`, r.sms && `SMS: ${r.sms}`, r.email && `Email: ${r.email}`].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
+                      {r.note && !r.whatsapp && <div className="pl-1 text-[11.5px] text-cara-faint">{r.note}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Status moves */}
               {(d.canAct || d.canRunDay) && d.nextStatuses.length > 0 && !cancelling && !moving && (
                 <div className="flex flex-wrap gap-2 border-t border-cara-rule pt-3">

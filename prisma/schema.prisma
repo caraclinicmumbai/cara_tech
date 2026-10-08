@@ -1455,27 +1455,32 @@ model BranchTravelTime {
 /// What is being booked (§3.2 1.4) — "Hair Transplant Consultation", "FUE Surgery –
 /// Day 1", "PRP Session". Optionally tied to the catalog item it bills as.
 model AppointmentType {
-  id               String       @id @default(cuid())
-  name             String       @unique
-  code             String?
-  category         String? // e.g. Hair | Skin | Surgery — groups the picker
-  durationMin      Int
+  id                     String       @id @default(cuid())
+  name                   String       @unique
+  code                   String?
+  category               String? // e.g. Hair | Skin | Surgery — groups the picker
+  durationMin            Int
   /// Turnover time after the appointment (cleaning an OT, resetting a laser). The
   /// resources stay blocked for it; the patient's slot doesn't include it.
-  bufferAfterMin   Int          @default(0)
-  catalogItemId    String?
-  catalogItem      CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
-  onlineBookable   Boolean      @default(false)
-  prepInstructions String?
-  color            String?
-  active           Boolean      @default(true)
-  sortOrder        Int          @default(0)
+  bufferAfterMin         Int          @default(0)
+  catalogItemId          String?
+  catalogItem            CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  onlineBookable         Boolean      @default(false)
+  prepInstructions       String?
+  /// §2.4.b — the patient can reschedule / cancel themselves from the reminder link up
+  /// to this many hours before; inside it the link says "please call" and the request
+  /// lands on the patient-care worklist. Consultation 4, procedures 24, surgery 72.
+  selfServiceCutoffHours Int          @default(4)
+  color                  String?
+  active                 Boolean      @default(true)
+  sortOrder              Int          @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  requirements AppointmentTypeRequirement[]
-  appointments Appointment[]
+  requirements  AppointmentTypeRequirement[]
+  appointments  Appointment[]
+  reminderRules ReminderRule[]
 
   @@index([active])
 }
@@ -1562,6 +1567,7 @@ model Appointment {
 
   resources      AppointmentResource[]
   rebookingCases RebookingCase[]
+  reminders      AppointmentReminder[]
 
   @@index([branchId, startAt])
   @@index([leadId])
@@ -1662,4 +1668,94 @@ model RebookingCase {
   @@index([status, dueAt])
   @@index([branchId, status])
   @@index([appointmentId])
+}
+
+/// A reusable appointment message (§2.4 "message-template engine with variables").
+/// `body` is plain English with {placeholders} — {patient_name}, {date}, {time},
+/// {branch}, {branch_phone}, {map_link}, {doctor}, {service}, {prep}, {link},
+/// {clinic}. The same text drives every channel, with each channel's own constraint
+/// recorded beside it:
+///   WhatsApp — outside the 24h window Meta only delivers PRE-APPROVED templates:
+///              `whatsappTemplateName` + the placeholders that fill its {{1}}, {{2}}…
+///   SMS      — India's DLT rules require a registered template id per message.
+///   Email    — subject (+ the body).
+model AppointmentMessageTemplate {
+  id                   String   @id @default(cuid())
+  key                  String   @unique
+  name                 String
+  body                 String
+  whatsappTemplateName String?
+  whatsappLanguage     String   @default("en")
+  whatsappParams       String[] @default([])
+  smsDltTemplateId     String?
+  emailSubject         String?
+  active               Boolean  @default(true)
+
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rules     ReminderRule[]
+  reminders AppointmentReminder[]
+}
+
+/// When to message, per appointment type (§2.4.a — head office edits these).
+///   kind: on_booking (straight away) | before (minutesBefore the start) |
+///         morning_of (at atMin, IST, on the appointment day)
+///   channels: whatsapp | sms | email — WhatsApp first; SMS when WhatsApp can't
+///             deliver (if smsFallback); email in parallel when listed.
+///   quietExempt: may go out inside quiet hours (the morning-of-surgery reminder).
+model ReminderRule {
+  id            String                     @id @default(cuid())
+  typeId        String
+  type          AppointmentType            @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  kind          String
+  minutesBefore Int?
+  atMin         Int?
+  templateId    String
+  template      AppointmentMessageTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  channels      String[]                   @default(["whatsapp"])
+  smsFallback   Boolean                    @default(true)
+  quietExempt   Boolean                    @default(false)
+  sortOrder     Int                        @default(0)
+
+  reminders AppointmentReminder[]
+
+  @@index([typeId])
+}
+
+/// One scheduled message for one appointment — generated from the type's rules when
+/// it's booked, cancelled when it moves or ends (a moved appointment gets fresh ones),
+/// and the log of what actually happened on each channel (§2.4 "all messages logged").
+model AppointmentReminder {
+  id            String                     @id @default(cuid())
+  appointmentId String
+  appointment   Appointment                @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  ruleId        String?
+  rule          ReminderRule?              @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  templateId    String
+  template      AppointmentMessageTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  dueAt         DateTime
+  channels      String[]
+  smsFallback   Boolean                    @default(true)
+  quietExempt   Boolean                    @default(false)
+
+  /// pending | sent | failed | skipped | cancelled
+  status    String    @default("pending")
+  sentAt    DateTime?
+  attempts  Int       @default(0)
+  lastError String?
+  /// Per-channel outcome: "sent" | "delivered" | "read" | "failed: …" | "skipped: …"
+  whatsapp  String?
+  waId      String?
+  sms       String?
+  smsRef    String?
+  email     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, dueAt])
+  @@index([appointmentId])
+  @@index([waId])
 }
