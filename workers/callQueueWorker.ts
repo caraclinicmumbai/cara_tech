@@ -32,6 +32,7 @@ import { runRetentionPurge, retentionMonths } from "@/lib/dataRetention";
 import { runCheckInTick, checkInsEnabled } from "@/lib/postSales/checkins";
 import { runPostSalesSlaScan, reconcileMissingJourneys } from "@/lib/postSales/sla";
 import { campaignsEnabled } from "@/lib/campaigns/types";
+import { expireHolds } from "@/lib/scheduling/booking";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -228,6 +229,17 @@ setInterval(runRetention, RETENTION_SCAN_MS);
 logger.info(
   `Data-retention purge ${retentionMonths() ? `active (>${retentionMonths()}mo, scan every ${RETENTION_SCAN_MS / 3_600_000}h)` : "idle (DATA_RETENTION_MONTHS unset)"}`,
 );
+
+// Appointment holds (§3.2) — a tentative slot (online booking in progress) lapses
+// after its hold window and frees the room/doctor. Polled every minute; holds are
+// minutes long, so a coarser tick would keep a slot locked noticeably past expiry.
+const HOLD_SWEEP_MS = 60_000;
+const runHoldSweep = () =>
+  expireHolds()
+    .then((n) => n && logger.info(`Expired ${n} appointment hold(s)`))
+    .catch((err) => logger.error(`Appointment hold sweep error: ${String(err)}`));
+setInterval(runHoldSweep, HOLD_SWEEP_MS);
+logger.info("Appointment hold sweep active (every 1 min)");
 
 // Branch Manager daily digest — a repeatable (cron) job fires once a day at
 // DIGEST_HOUR_IST; this worker registers it and processes it (§3.1).

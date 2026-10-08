@@ -85,6 +85,15 @@ export const CAPABILITIES = [
   "postsales.manage",
   "postsales.checkins",
   "postsales.policy",
+  // Appointments & scheduling (§3.2). `view` = see the calendar and appointments;
+  // `book` = book / reschedule / cancel (front desk, call centre); `checkin` = run the
+  // day — check in, start, complete, mark no-show; `configure` = branch hours and
+  // holidays, resources and rosters, appointment types, patient flags, the module's
+  // switches.
+  "appointments.view",
+  "appointments.book",
+  "appointments.checkin",
+  "appointments.configure",
   "calls.view",
   "analytics.view",
   // Reports (§reports) — the management read-outs, split in two because they answer to
@@ -175,6 +184,16 @@ export const CAPABILITY_GROUPS: {
     ],
   },
   {
+    key: "appointments",
+    label: "Appointments",
+    capabilities: [
+      { key: "appointments.view", label: "View calendar & appointments" },
+      { key: "appointments.book", label: "Book / reschedule / cancel" },
+      { key: "appointments.checkin", label: "Check in / start / complete / no-show" },
+      { key: "appointments.configure", label: "Configure hours, resources, types & flags" },
+    ],
+  },
+  {
     key: "calls",
     label: "Calls",
     capabilities: [{ key: "calls.view", label: "View call history" }],
@@ -233,6 +252,9 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     // close out care check-ins they made by phone, but they don't move clinical stages.
     "postsales.view",
     "postsales.checkins",
+    "appointments.view",
+    "appointments.book",
+    "appointments.checkin",
   ],
   telecaller: [
     "leads.view",
@@ -256,6 +278,8 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     // clinical stages — "The Post-Sales team owns these stages. Sales counsellors
     // can't edit them." (§post-sales)
     "postsales.view",
+    "appointments.view",
+    "appointments.book",
   ],
   telecalling_head: [
     "leads.view",
@@ -283,6 +307,8 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "campaigns.winback",
     "campaigns.manage",
     "postsales.view",
+    "appointments.view",
+    "appointments.book",
   ],
   branch_manager: [
     "leads.view",
@@ -321,6 +347,10 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "postsales.manage",
     "postsales.checkins",
     "postsales.policy",
+    "appointments.view",
+    "appointments.book",
+    "appointments.checkin",
+    "appointments.configure",
   ],
   sales_head: [
     "leads.view",
@@ -357,6 +387,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     // Oversight of the clinical pipeline, but not editing it — the post-sales team owns
     // those stages.
     "postsales.view",
+    "appointments.view",
   ],
 
   // ── The post-sales / clinical roles (§post-sales). Note what is ABSENT from all
@@ -367,16 +398,21 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "postsales.view",
     "postsales.manage",
     "postsales.checkins",
+    "appointments.view",
+    "appointments.checkin",
   ],
   ot_team: [
     "postsales.view",
     // The OT team drives Pre-Op → Surgery Done and records the surgery date.
     "postsales.manage",
+    "appointments.view",
   ],
   post_sales_consultant: [
     "postsales.view",
     "postsales.manage",
     "postsales.checkins",
+    "appointments.view",
+    "appointments.book",
   ],
 };
 
@@ -460,6 +496,8 @@ export function routeCapability(pathname: string): Capability | null {
   if (pathname.startsWith("/reports")) return "reports.view";
   if (pathname.startsWith("/post-sales/policies")) return "postsales.policy";
   if (pathname.startsWith("/post-sales")) return "postsales.view";
+  if (pathname.startsWith("/appointments/setup")) return "appointments.configure";
+  if (pathname.startsWith("/appointments")) return "appointments.view";
   if (pathname.startsWith("/templates")) return "templates.manage";
   if (pathname.startsWith("/chatbot")) return "chatbot.manage";
   if (pathname.startsWith("/settings")) return "settings.manage";

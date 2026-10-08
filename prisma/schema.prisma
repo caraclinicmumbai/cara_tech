@@ -107,7 +107,7 @@ model Lead {
   //    explicitly recorded, which for a patient with a converted quote is treated as
   //    consenting (they are under the clinic's care). Only an explicit `false` blocks
   //    care messages. See lib/postSales/checkins.ts. ──
-  consentClinical Boolean?
+  consentClinical   Boolean?
   // The language the patient is comfortable in, e.g. "Hindi", "Marathi" (§post-sales
   // handover summary). Carried into the handover so post-sales never has to guess.
   preferredLanguage String?
@@ -169,6 +169,8 @@ model Lead {
   postSalesCheckIns   PostSalesCheckIn[]
   notifications       Notification[]
   chatReads           ChatRead[]
+  appointments        Appointment[]
+  flags               LeadFlag[]
 
   @@index([status])
   @@index([phone])
@@ -220,11 +222,11 @@ model SalesRep {
   branchId String?
   branch   Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
-  leads        Lead[]             @relation("LeadAssignee")
-  handledCalls Call[]             @relation("CallHandler")
-  ownedQuotes  Quote[]            @relation("QuoteOwner")
+  leads         Lead[]             @relation("LeadAssignee")
+  handledCalls  Call[]             @relation("CallHandler")
+  ownedQuotes   Quote[]            @relation("QuoteOwner")
   followUpSteps LeadFollowUpStep[] @relation("FollowUpOwner")
-  user         User? // the login account linked to this rep (§3.1 RBAC)
+  user          User? // the login account linked to this rep (§3.1 RBAC)
 
   @@index([active, lastAssignedAt])
   // Fast lookup for the round-robin (available reps) and the idle-sweep.
@@ -413,6 +415,12 @@ model User {
   doctorJourneys     PostSalesJourney[] @relation("JourneyDoctor")
   otJourneys         PostSalesJourney[] @relation("JourneyOtLead")
   consultantJourneys PostSalesJourney[] @relation("JourneyConsultant")
+
+  // ── Scheduling (§3.2) — the doctor/staff resource this login IS (if any), and the
+  //    appointments this login booked. ──
+  schedulingResource Resource?
+  appointmentsBooked Appointment[] @relation("AppointmentBookedBy")
+  flagsSet           LeadFlag[]    @relation("LeadFlagSetBy")
 }
 
 /// A temporary grant of access to a lead (§handover) — lets a counsellor act on a
@@ -560,8 +568,8 @@ model QuoteCreditDispute {
   /// open | upheld | rejected. `upheld` moves the credit to the claimant.
   status String @default("open")
 
-  decidedById String?
-  decidedAt   DateTime?
+  decidedById  String?
+  decidedAt    DateTime?
   /// The Sales Head's reasoning. Mandatory on a decision — this is the record that
   /// settles the argument.
   decisionNote String?
@@ -649,6 +657,8 @@ model CatalogItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  appointmentTypes AppointmentType[]
 
   @@unique([type, name])
   @@index([active])
@@ -791,18 +801,25 @@ model Branch {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  leads            Lead[]
-  reps             SalesRep[]
-  users            User[]            @relation("UserHomeBranch")
-  quotes           Quote[]           @relation("QuoteBranch")
-  invoicedQuotes   Quote[]           @relation("QuoteInvoicedBranch")
-  invoicesRaised   Invoice[]         @relation("InvoiceBranch")
-  creditDisputesRaised   QuoteCreditDispute[] @relation("DisputeClaimant")
-  creditDisputesAgainst  QuoteCreditDispute[] @relation("DisputeCredited")
-  chatbotFlows     ChatbotFlow[]
-  campaignSettings CampaignSetting[]
-  postSalesJourneys PostSalesJourney[] @relation("JourneyBranch")
-  adSpend          AdSpend[]          @relation("AdSpendBranch")
+  leads                 Lead[]
+  reps                  SalesRep[]
+  users                 User[]               @relation("UserHomeBranch")
+  quotes                Quote[]              @relation("QuoteBranch")
+  invoicedQuotes        Quote[]              @relation("QuoteInvoicedBranch")
+  invoicesRaised        Invoice[]            @relation("InvoiceBranch")
+  creditDisputesRaised  QuoteCreditDispute[] @relation("DisputeClaimant")
+  creditDisputesAgainst QuoteCreditDispute[] @relation("DisputeCredited")
+  chatbotFlows          ChatbotFlow[]
+  campaignSettings      CampaignSetting[]
+  postSalesJourneys     PostSalesJourney[]   @relation("JourneyBranch")
+  adSpend               AdSpend[]            @relation("AdSpendBranch")
+
+  // ── Scheduling (§3.2) ──
+  hours             BranchHours[]
+  closures          BranchClosure[]
+  resources         Resource[]
+  resourceSchedules ResourceSchedule[]
+  appointments      Appointment[]
 
   @@index([active])
 }
@@ -925,7 +942,7 @@ model Quote {
   // Quote lifecycle — independent of the lead's person-track stage.
   // drafted | sent | viewed | accepted | awaiting_payment | converted |
   // in_treatment | completed | rejected | expired | replaced | withdrawn
-  status       String  @default("drafted")
+  status String @default("drafted")
 
   // Cycle: 1 = first time we've quoted this person for this treatment, 2 = repeat, …
   cycle Int @default(1)
@@ -979,15 +996,16 @@ model Quote {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  versions QuoteVersion[]
+  versions      QuoteVersion[]
+  appointments  Appointment[]
   /// Invoices raised against THIS quote (§billing). Its existence is what makes the
   /// quote "converted"; the invoicing branch earns the credit.
-  invoices Invoice[]
+  invoices      Invoice[]
   /// The one credit dispute this quote may carry (§branch credit).
   creditDispute QuoteCreditDispute?
   // The post-sales journey this quote opened on conversion (§post-sales) — at most
   // one per quote. Two converted treatments = two journeys, running independently.
-  journey  PostSalesJourney?
+  journey       PostSalesJourney?
 
   @@index([leadId])
   @@index([status])
@@ -1065,7 +1083,7 @@ model PostSalesJourney {
 
   /// When surgery actually happened. Set on the move to `surgery_done` and it is
   /// the ANCHOR for the whole check-in schedule (day 1 / 7 / 30 / 90 after this).
-  surgeryAt DateTime?
+  surgeryAt           DateTime?
   /// Set once the check-in rows have been generated for `surgeryAt`, so re-entering
   /// the stage doesn't duplicate them. Cleared when the surgery date is corrected.
   checkInsScheduledAt DateTime?
@@ -1090,8 +1108,9 @@ model PostSalesJourney {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  checkIns PostSalesCheckIn[]
-  notes    PostSalesNote[]
+  checkIns     PostSalesCheckIn[]
+  appointments Appointment[]
+  notes        PostSalesNote[]
 
   @@index([stage])
   @@index([stageDueAt])
@@ -1124,7 +1143,7 @@ model PostSalesCheckIn {
 
   /// Days after surgery this check-in is for: 1 | 7 | 30 | 90 (per-treatment override
   /// possible via TreatmentStagePolicy.checkInDays).
-  dayOffset Int
+  dayOffset    Int
   /// When it should go out (may be pushed by coordination / quiet hours).
   scheduledFor DateTime
   /// The un-nudged surgeryAt + dayOffset, so the UI can show that it was moved.
@@ -1136,17 +1155,17 @@ model PostSalesCheckIn {
   /// failed — send errored after retries.
   status String @default("pending")
 
-  sentAt        DateTime?
+  sentAt         DateTime?
   /// The Message row this produced, so the check-in links into the patient's thread.
-  messageId     String?
-  attempts      Int       @default(0)
-  lastError     String?
+  messageId      String?
+  attempts       Int       @default(0)
+  lastError      String?
   /// Why it can't be automated (status=blocked) — shown to the consultant as a task.
-  blockedReason String?
+  blockedReason  String?
   /// Why the date moved (coordination clash / quiet hours), for the UI + audit.
   deferredReason String?
   /// How many times it has been pushed — a safety valve so a clash can't push forever.
-  deferrals      Int      @default(0)
+  deferrals      Int       @default(0)
 
   /// Who marked it done/skipped by hand (User.id), mirroring the audit convention.
   completedById String?
@@ -1234,4 +1253,301 @@ model AuditLog {
   @@index([actorId])
   @@index([at])
   @@index([action])
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Module 3.2 — Appointment, Scheduling & Front Desk
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// The rule the whole module exists for: a ROOM, a piece of EQUIPMENT or a member of
+// SUPPORT STAFF is never in two places at once. Doctors may be double-booked (the
+// clinic's decision), but only with a warning someone acknowledged, which is audited.
+//
+// The guarantee is enforced in lib/scheduling/booking.ts, not here: every booking
+// takes a Postgres advisory lock per resource, re-checks overlaps inside the lock,
+// then inserts — so two receptionists clicking the same OT slot at the same second
+// cannot both win. AppointmentResource rows are what that check reads.
+//
+// Times are stored as UTC instants; weekly patterns (branch hours, doctor rosters)
+// are IST wall-clock minutes-from-midnight, because "Andheri opens at 10" is a
+// wall-clock fact, not an instant.
+
+/// Weekly opening hours for a branch (§3.2 1.C). One row per weekday per branch.
+/// A branch with NO rows uses the built-in default (lib/scheduling/hours.ts), so a
+/// fresh branch is bookable before anyone has configured it. Once configured, a
+/// weekday is either open between [openMin, closeMin) or `closed`.
+model BranchHours {
+  id       String  @id @default(cuid())
+  branchId String
+  branch   Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  weekday  Int // 0 = Sunday … 6 = Saturday (IST)
+  openMin  Int // minutes from IST midnight, e.g. 600 = 10:00
+  closeMin Int // exclusive, e.g. 1200 = 20:00
+  closed   Boolean @default(false)
+
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([branchId, weekday])
+}
+
+/// A holiday, blackout or partial closure (§3.2 1.C) — "no slots on Diwali". A null
+/// branch means EVERY branch (a chain-wide holiday). Dates are IST calendar dates,
+/// inclusive. A partial closure (startMin/endMin set) blocks only that part of each day.
+model BranchClosure {
+  id        String   @id @default(cuid())
+  branchId  String?
+  branch    Branch?  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  startMin  Int? // partial-day closure: null = the whole day
+  endMin    Int?
+  reason    String
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([startDate, endDate])
+  @@index([branchId])
+}
+
+/// Anything that must be free for an appointment to happen (§3.2 1.4, 1.D).
+///   kind    : doctor | room | equipment | staff
+///   subtype : narrows a kind so an appointment type can ask for "any OT room" or
+///             "two technicians" rather than a named one — room: consultation | ot |
+///             procedure; staff: technician | nurse | anaesthetist | …; free text.
+///   branchId: rooms and equipment live in ONE branch. Doctors and staff may move
+///             between branches — leave it null, and say where they are on which day
+///             with ResourceSchedule.
+model Resource {
+  id        String  @id @default(cuid())
+  kind      String
+  subtype   String?
+  name      String
+  branchId  String?
+  branch    Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  /// The staff login this doctor / staff member signs in as — so a doctor sees their
+  /// own schedule. Unique: one person is one resource.
+  userId    String? @unique
+  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  color     String?
+  notes     String?
+  active    Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  schedules    ResourceSchedule[]
+  timeOff      ResourceTimeOff[]
+  bookings     AppointmentResource[]
+  requirements AppointmentTypeRequirement[]
+
+  @@index([kind, active])
+  @@index([branchId])
+}
+
+/// When a doctor / staff member works, and WHERE (§3.2 "doctor availability"). Dr X
+/// at Andheri Mon/Wed 10–2 is two rows. A person with NO rows is available whenever
+/// the branch is open (so setup isn't a prerequisite for booking); once they have
+/// rows, they are bookable only inside them. Rooms/equipment don't use this — they
+/// follow their branch's hours.
+model ResourceSchedule {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  branchId   String
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  weekday    Int // 0 = Sunday … 6 = Saturday (IST)
+  startMin   Int
+  endMin     Int
+
+  createdAt DateTime @default(now())
+
+  @@index([resourceId, weekday])
+  @@index([branchId, weekday])
+}
+
+/// A block of time a resource is unavailable — leave, a conference, a machine under
+/// maintenance. `source` says who put it there: `manual` today; `leave` (3.8 HR) and
+/// `maintenance` (3.9 Assets) when those modules feed it.
+model ResourceTimeOff {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  startAt    DateTime
+  endAt      DateTime
+  reason     String?
+  source     String   @default("manual")
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([resourceId, startAt])
+}
+
+/// What is being booked (§3.2 1.4) — "Hair Transplant Consultation", "FUE Surgery –
+/// Day 1", "PRP Session". Optionally tied to the catalog item it bills as.
+model AppointmentType {
+  id               String       @id @default(cuid())
+  name             String       @unique
+  code             String?
+  category         String? // e.g. Hair | Skin | Surgery — groups the picker
+  durationMin      Int
+  /// Turnover time after the appointment (cleaning an OT, resetting a laser). The
+  /// resources stay blocked for it; the patient's slot doesn't include it.
+  bufferAfterMin   Int          @default(0)
+  catalogItemId    String?
+  catalogItem      CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  onlineBookable   Boolean      @default(false)
+  prepInstructions String?
+  color            String?
+  active           Boolean      @default(true)
+  sortOrder        Int          @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requirements AppointmentTypeRequirement[]
+  appointments Appointment[]
+
+  @@index([active])
+}
+
+/// One resource need of an appointment type: "1 doctor", "1 room of subtype ot",
+/// "2 staff of subtype technician", or a SPECIFIC resource ("the Sapphire machine").
+model AppointmentTypeRequirement {
+  id         String          @id @default(cuid())
+  typeId     String
+  type       AppointmentType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  kind       String // doctor | room | equipment | staff
+  subtype    String?
+  resourceId String?
+  resource   Resource?       @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  quantity   Int             @default(1)
+
+  @@index([typeId])
+}
+
+/// A booking of a patient into a slot (§3.2 1.5). The patient is the Lead — Cara has
+/// no separate patient table; the lead record is the person.
+///
+/// status: tentative | booked | confirmed | checked_in | in_progress | completed |
+///         rescheduled | cancelled | no_show — keys and allowed moves in
+///         lib/scheduling/status.ts.
+///
+/// A reschedule never edits the time in place: the old row becomes `rescheduled` and
+/// a NEW row points back at it (rescheduledFromId), so "when was I told my slot
+/// changed" is a chain of rows, not a lost overwrite (§3.2 1.E).
+model Appointment {
+  id       String          @id @default(cuid())
+  leadId   String
+  lead     Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  branchId String
+  branch   Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  typeId   String
+  type     AppointmentType @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  startAt  DateTime
+  endAt    DateTime // the patient's end; resources may be held longer (bufferAfterMin)
+
+  status          String   @default("booked")
+  statusChangedAt DateTime @default(now())
+  /// front_desk | call_centre | online | walk_in | series | import
+  source          String   @default("front_desk")
+  notes           String?
+
+  bookedById String?
+  bookedBy   User?   @relation("AppointmentBookedBy", fields: [bookedById], references: [id], onDelete: SetNull)
+
+  /// A tentative hold (online booking) lapses at this instant if not completed.
+  holdExpiresAt DateTime?
+
+  confirmedAt  DateTime?
+  checkedInAt  DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+  noShowAt     DateTime?
+  cancelReason String?
+  /// patient | clinic — who called it off.
+  cancelledBy  String?
+
+  /// Booked onto a doctor who already had someone at that time, with the warning
+  /// acknowledged. Kept on the row (not only in the audit log) so utilisation and
+  /// "how often do we overbook Dr X" are a query.
+  doctorOverbooked Boolean @default(false)
+
+  rescheduledFromId String?      @unique
+  rescheduledFrom   Appointment? @relation("AppointmentReschedule", fields: [rescheduledFromId], references: [id], onDelete: SetNull)
+  rescheduledTo     Appointment? @relation("AppointmentReschedule")
+
+  quoteId   String?
+  quote     Quote?            @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  journeyId String?
+  journey   PostSalesJourney? @relation(fields: [journeyId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  resources AppointmentResource[]
+
+  @@index([branchId, startAt])
+  @@index([leadId])
+  @@index([status])
+  @@index([startAt])
+  @@index([holdExpiresAt])
+}
+
+/// Which resources an appointment holds, and for exactly how long (startAt..endAt
+/// INCLUDING the type's turnover buffer). This is the table the double-booking check
+/// reads. `blocking` goes false when the appointment is cancelled, rescheduled away
+/// or marked no-show — the row stays for history, the time is freed.
+model AppointmentResource {
+  id            String      @id @default(cuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  resourceId    String
+  resource      Resource    @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  startAt       DateTime
+  endAt         DateTime
+  blocking      Boolean     @default(true)
+
+  @@unique([appointmentId, resourceId])
+  @@index([resourceId, startAt])
+}
+
+/// A kind of flag that can be pinned to a patient and shown on their appointment card
+/// (★ Priority, medical alert, …). Admin-defined, so the clinic can add one without a
+/// code change. `icon` is a key from components/Icon.tsx (no emoji — see the design
+/// system); `tone` is a tag colour from the tag palette.
+model FlagDefinition {
+  id          String  @id @default(cuid())
+  key         String  @unique
+  label       String
+  description String?
+  icon        String  @default("star")
+  tone        String  @default("citric")
+  active      Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leadFlags LeadFlag[]
+}
+
+/// A flag pinned to a patient. One of each kind per patient; removing it deletes the
+/// row (the audit log keeps who set and cleared it).
+model LeadFlag {
+  id      String         @id @default(cuid())
+  leadId  String
+  lead    Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  flagId  String
+  flag    FlagDefinition @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  note    String?
+  setById String?
+  setBy   User?          @relation("LeadFlagSetBy", fields: [setById], references: [id], onDelete: SetNull)
+  setAt   DateTime       @default(now())
+
+  @@unique([leadId, flagId])
+  @@index([flagId])
 }

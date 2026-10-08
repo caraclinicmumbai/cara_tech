@@ -128,3 +128,40 @@ export const IconClose = (p: IconProps) => (
     <path d="M4 4l8 8M12 4l-8 8" />
   </Svg>
 );
+
+/// A five-point star — a ★ Priority patient (§3.2 patient flags).
+export const IconStar = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m8 1.9 1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.3l-3.7 2.1.8-4.2L2 6.3l4.2-.5L8 1.9Z" />
+  </Svg>
+);
+
+/// An exclamation in a circle — a medical or safety alert on a patient.
+export const IconAlert = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="8" cy="8" r="6" />
+    <path d="M8 4.8v3.6M8 11h.01" />
+  </Svg>
+);
+
+/// A heart — a patient-care flag.
+export const IconHeart = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M8 13.4S2.2 10 2.2 6a3 3 0 0 1 5.8-1.2A3 3 0 0 1 13.8 6c0 4-5.8 7.4-5.8 7.4Z" />
+  </Svg>
+);
+
+/// A filled dot — a generic flag.
+export const IconDot = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="8" cy="8" r="3.2" fill="currentColor" />
+  </Svg>
+);
+
+/// The icon for a patient-flag definition's `icon` key (lib/scheduling/flags.ts).
+export function FlagGlyph({ icon, ...p }: IconProps & { icon: string }) {
+  if (icon === "star") return <IconStar {...p} />;
+  if (icon === "alert") return <IconAlert {...p} />;
+  if (icon === "heart") return <IconHeart {...p} />;
+  return <IconDot {...p} />;
+}

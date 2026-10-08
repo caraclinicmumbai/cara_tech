@@ -68,6 +68,7 @@ export default async function DashboardLayout({
       items: [
         can(role, "users.manage") && { href: "/users", label: "Users" },
         can(role, "branches.manage") && { href: "/branches", label: "Branches" },
+        can(role, "appointments.configure") && { href: "/appointments/setup", label: "Scheduling setup" },
         can(role, "hierarchy.manage") && { href: "/hierarchy", label: "Hierarchy" },
         can(role, "audit.view") && { href: "/audit", label: "Audit log" },
         can(role, "leads.restore") && { href: "/leads/deleted", label: "Deleted" },

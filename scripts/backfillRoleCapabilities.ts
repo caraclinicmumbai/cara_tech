@@ -46,6 +46,11 @@ const NEW_CAPABILITIES: Capability[] = [
   "postsales.manage",
   "postsales.checkins",
   "postsales.policy",
+  // Appointments & scheduling (§3.2), 2026-10-08.
+  "appointments.view",
+  "appointments.book",
+  "appointments.checkin",
+  "appointments.configure",
 ];
 
 /// Every capability that now gates a top-level route. A customised role missing one of

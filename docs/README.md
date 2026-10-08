@@ -31,6 +31,7 @@ data model, integrations), then dip into the flow you care about.
 | 10 | [Quote lifecycle](flows/10-quote-lifecycle.md) | The commercial track: raise → price → revise → send → accept → convert, the money maths, the Open Quotes desk, and what locks on conversion |
 | 11 | [Inbound call routing](flows/11-inbound-call-routing.md) | Patients calling the published clinic number: sticky routing to their own counsellor, cover ladder, hold, voicemail |
 | 12 | [Reports](flows/12-reports.md) | The ten management read-outs: inflow, AI contact, handoff speed, counsellors, cost per lead/consultation/surgery, lost leads, treatment mix, lost quotes, multi-quote, repeat treatment — and the ad-spend import behind the cost figures |
+| 15 | [Appointments & scheduling](flows/15-appointments-scheduling.md) | Module 3.2: resources (doctor/room/equipment/staff), branch hours and holidays, appointment types, the no-double-booking engine and its locks, status lifecycle, setup screen. Phase A (foundation); calendar UI next |
 
 **Also:** [ElevenLabs agent ↔ CRM integration contract](elevenlabs-agent-integration.md) —
 what the AI first-call agent must emit (outcome, handover keys, callback time, tag,
@@ -66,6 +67,10 @@ Each flow lists its own limitations; the cross-cutting ones worth knowing up fro
 - **Post-sales care check-ins send nothing yet.** The engine, schedule and coordination are
   live, but the four WhatsApp templates aren't approved, so every check-in lands as a task
   for a person. `POSTSALES_CHECKINS_ENABLED` is also off by default. See flow 9.
+
+- **Appointments have an engine but no calendar yet.** Module 3.2 Phase A (data model,
+  conflict engine, booking service, setup screen) is built and tested. The front-desk
+  calendar that books through it is Phase B. See flow 15.
 
 ## Maintenance convention
 

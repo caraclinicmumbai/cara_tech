@@ -9,6 +9,7 @@
 // rows at all, and a key nobody has touched can't be in an undefined state.
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { SCHEDULING_TOGGLE_DEFAULTS } from "@/lib/scheduling/toggles";
 
 /// Allow a quote to be marked Converted without an invoice behind it.
 ///
@@ -27,6 +28,8 @@ export const ALLOW_UNINVOICED_CONVERSION = "quotes.allowUninvoicedConversion";
 /// invoice rule takes over.
 const DEFAULTS: Record<string, unknown> = {
   [ALLOW_UNINVOICED_CONVERSION]: true,
+  // Appointments & scheduling (§3.2) — declared alongside their labels.
+  ...SCHEDULING_TOGGLE_DEFAULTS,
 };
 
 // Settings are read on hot paths (every quote transition), change rarely, and are
