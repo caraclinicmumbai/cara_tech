@@ -17,6 +17,7 @@ import type { SessionUser } from "@/lib/authz";
 import { dateColumn, istInstant, istMinutes, weekdayOfKey } from "@/lib/scheduling/time";
 import { branchDay } from "@/lib/scheduling/hours";
 import { isResourceKind, type ResourceKind } from "@/lib/scheduling/status";
+import { intakeStatus } from "@/lib/scheduling/intake/service";
 
 export type Viewer = {
   id: string | null;
@@ -71,6 +72,8 @@ export type CalendarAppointment = {
   doctorOverbooked: boolean;
   overridden: boolean;
   resources: { id: string; name: string; kind: string }[];
+  /// §2.7 — intake form status (visible appointments only): none | pending | complete.
+  intake: { state: "none" | "pending" | "complete"; redFlags: number } | null;
 };
 
 export type CalendarFilters = {
@@ -113,6 +116,7 @@ export async function loadAppointments(
     },
   });
 
+  const intake = await intakeStatus(rows.map((a) => a.id));
   return rows.map((a) => {
     const res = a.resources.map((r) => r.resource);
     const visible =
@@ -141,6 +145,7 @@ export async function loadAppointments(
       // A masked appointment still says WHO is busy (doctor/room), so free/busy is
       // honest; it never says for whom.
       resources: res,
+      intake: visible ? (intake.get(a.id) ?? null) : null,
     };
   });
 }

@@ -165,3 +165,10 @@ export function FlagGlyph({ icon, ...p }: IconProps & { icon: string }) {
   if (icon === "heart") return <IconHeart {...p} />;
   return <IconDot {...p} />;
 }
+
+/// A tick — something is done (an intake form completed, §3.2 2.7).
+export const IconCheck = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m3.2 8.4 3 3 6.6-6.8" />
+  </Svg>
+);

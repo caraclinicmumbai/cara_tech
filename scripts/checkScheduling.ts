@@ -500,6 +500,35 @@ async function spec24Checks() {
   });
 }
 
+async function spec27Checks() {
+  console.log("Spec 2.7 — intake forms (pure)");
+  const { isVisible, redFlagsOf, validateAnswers, checkSchema, STARTER_HAIR_LOSS } = await import("../lib/scheduling/intake/schema");
+  const all = STARTER_HAIR_LOSS.sections.flatMap((x) => x.fields);
+  const field = (k: string) => all.find((f) => f.key === k)!;
+
+  await check("the starter hair-loss form is a valid schema", () => {
+    assert.deepEqual(checkSchema(STARTER_HAIR_LOSS), []);
+  });
+  await check("conditional question: medication shown only when thyroid = yes", () => {
+    assert.equal(isVisible(field("thyroid_medication"), { thyroid: "no" }), false);
+    assert.equal(isVisible(field("thyroid_medication"), { thyroid: "yes" }), true);
+  });
+  await check("guardian section only for under-18s", () => {
+    const adult = new Date().getFullYear() - 30;
+    const minor = new Date().getFullYear() - 15;
+    assert.equal(isVisible(field("guardian_name"), { dob: `${adult}-01-01` }), false);
+    assert.equal(isVisible(field("guardian_name"), { dob: `${minor}-01-01` }), true);
+  });
+  await check("a 'yes' to blood thinners is a red flag; hidden questions never are", () => {
+    assert.deepEqual(redFlagsOf(STARTER_HAIR_LOSS, { blood_thinners: "yes", bleeding_disorder: "no" }), ["blood_thinners"]);
+  });
+  await check("required visible questions must be answered; hidden ones needn't", () => {
+    const base = { dob: "1990-01-01", thyroid: "yes", diabetes: "no", blood_thinners: "no", bleeding_disorder: "no", keloid: "no", allergies: "None", concern: "Thinning", consent_data: true };
+    assert.ok(validateAnswers(STARTER_HAIR_LOSS, base).some((e) => e.includes("Medication")));
+    assert.deepEqual(validateAnswers(STARTER_HAIR_LOSS, { ...base, thyroid_medication: "Thyronorm 50 mcg" }), []);
+  });
+}
+
 // ── Part 2: database ─────────────────────────────────────────────────────────
 
 async function dbChecks() {
@@ -955,6 +984,75 @@ async function dbChecks() {
       assert.equal(r.ok, false);
     });
 
+    // §2.7 — intake against the database.
+    const intake = await import("../lib/scheduling/intake/service");
+    const { STARTER_HAIR_LOSS } = await import("../lib/scheduling/intake/schema");
+    const form = await prisma.intakeForm.create({ data: { name: `${tag} hair loss`, key: `${tag}-intake` } });
+    const ver = await prisma.intakeFormVersion.create({ data: { formId: form.id, version: 1, schema: STARTER_HAIR_LOSS as object } });
+    await prisma.intakeForm.update({ where: { id: form.id }, data: { currentVersionId: ver.id } });
+    const ixType = await prisma.appointmentType.create({
+      data: { name: `${tag} intake consult`, durationMin: 30, intakeFormId: form.id, requirements: { create: [{ kind: "doctor" }, { kind: "room", subtype: "consult2" }] } },
+    });
+    extraTypes.push(ixType.id);
+    const ixDr = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} intake doctor` } });
+    extraResources.push(ixDr.id);
+    const ixLead = await prisma.lead.create({ data: { name: `${tag} intake patient`, phone: `+91988${String(Date.now()).slice(-7)}`, source: "manual" } });
+    extraLeads.push(ixLead.id);
+    const ixAppt = await bookAppointment({ leadId: ixLead.id, branchId: branch.id, typeId: ixType.id, resourceIds: [ixDr.id], startAt: at(20 * 60 - 60), acknowledgeWarnings: true }, actor);
+    const ixId = ixAppt.ok ? ixAppt.appointmentId : "";
+    const ixA = await prisma.appointment.findUniqueOrThrow({ where: { id: ixId } });
+    const formToken = intake.intakeToken(ixId, ixA.startAt);
+    const goodAnswers = {
+      dob: "1992-05-01", thyroid: "yes", thyroid_medication: "Thyronorm 50 mcg", diabetes: "no", blood_thinners: "yes",
+      bleeding_disorder: "no", keloid: "no", allergies: "No known allergies", concern: "Thinning at the crown",
+      consent_data: true, consent_treatment_photos: true, consent_marketing_photos: false,
+    };
+
+    await check("the {intake_link} is there while the form is due", async () => {
+      assert.ok(ixAppt.ok);
+      assert.match(await intake.intakeLinkFor(ixId), /\/f\//);
+    });
+
+    await check("a different phone than the patient's is refused", async () => {
+      const r = await intake.submitIntake({ token: formToken, verifiedPhone: "+919111111111", answers: goodAnswers, photos: [] });
+      assert.equal(r.ok, false);
+    });
+
+    await check("missing conditional answer is refused (thyroid yes, no medication)", async () => {
+      const r = await intake.submitIntake({ token: formToken, verifiedPhone: ixLead.phone, answers: { ...goodAnswers, thyroid_medication: "" }, photos: [] });
+      assert.equal(r.ok, false);
+    });
+
+    await check("submit: red flag recorded, one consent row per purpose, photos stored", async () => {
+      const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+      const r = await intake.submitIntake({ token: formToken, verifiedPhone: ixLead.phone, answers: goodAnswers, photos: [{ field: "photos", slot: "crown", mime: "image/jpeg", bytes: jpeg }] });
+      assert.ok(r.ok, !r.ok ? r.errors.join("; ") : "");
+      const resp = await prisma.intakeResponse.findFirstOrThrow({ where: { appointmentId: ixId }, include: { photos: true } });
+      assert.deepEqual(resp.redFlags, ["blood_thinners"]);
+      assert.equal(resp.photos.length, 1);
+      const consents = await prisma.consentRecord.findMany({ where: { leadId: ixLead.id, source: "intake_form" } });
+      const byPurpose = Object.fromEntries(consents.map((c) => [c.purpose, c.granted]));
+      assert.deepEqual(byPurpose, { data_processing: true, treatment_photos: true, marketing_photos: false });
+    });
+
+    await check("after submitting, the link line drops out and a second submit is refused", async () => {
+      assert.equal(await intake.intakeLinkFor(ixId), "");
+      const r = await intake.submitIntake({ token: formToken, verifiedPhone: ixLead.phone, answers: goodAnswers, photos: [] });
+      assert.equal(r.ok, false);
+    });
+
+    await check("a returning patient's prefill carries answers but never consents", async () => {
+      const pre = await intake.prefillFor(ixLead.id, form.id, STARTER_HAIR_LOSS);
+      assert.equal(pre.thyroid_medication, "Thyronorm 50 mcg");
+      assert.equal(pre.consent_data, undefined);
+    });
+
+    await check("intake status shows complete with its red-flag count", async () => {
+      const st = (await intake.intakeStatus([ixId])).get(ixId);
+      assert.equal(st?.state, "complete");
+      assert.equal(st?.redFlags, 1);
+    });
+
     await check("every write left an audit row", async () => {
       const ids = (await prisma.appointment.findMany({ where: { typeId: type.id }, select: { id: true } })).map((a) => a.id);
       const n = await prisma.auditLog.count({ where: { entityType: "appointment", entityId: { in: ids } } });
@@ -963,6 +1061,7 @@ async function dbChecks() {
   } finally {
     await prisma.appointment.deleteMany({ where: { typeId: { in: [type.id, ...extraTypes] } } });
     await prisma.appointmentType.deleteMany({ where: { id: { in: [type.id, ...extraTypes] } } });
+    await prisma.intakeForm.deleteMany({ where: { key: `${tag}-intake` } });
     await prisma.resource.deleteMany({ where: { id: { in: [room.id, doctor.id, ...extraResources] } } });
     await prisma.lead.deleteMany({ where: { id: { in: [lead.id, ...extraLeads] } } });
     await prisma.branch.deleteMany({ where: { id: { in: [branch.id, ...extraBranches] } } });
@@ -976,6 +1075,7 @@ async function dbChecks() {
   await spec22Checks();
   await spec29Checks();
   await spec24Checks();
+  await spec27Checks();
   if (process.env.CHECK_DB !== "0") await dbChecks();
   console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);
   // The messaging modules (WhatsApp/Redis) keep sockets open; exit explicitly so the

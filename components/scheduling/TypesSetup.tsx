@@ -45,12 +45,14 @@ function TypeForm({
   resources,
   subtypes,
   catalog,
+  intakeForms,
 }: {
   data: AppointmentTypeInput;
   set: (p: Partial<AppointmentTypeInput>) => void;
   resources: ResourceOpt[];
   subtypes: { kind: string; subtype: string }[];
   catalog: { id: string; label: string }[];
+  intakeForms: { id: string; name: string }[];
 }) {
   const setReq = (i: number, p: Partial<RequirementInput>) =>
     set({ requirements: data.requirements.map((r, j) => (j === i ? { ...r, ...p } : r)) });
@@ -146,6 +148,15 @@ function TypeForm({
         </button>
       </div>
 
+      <label className="flex flex-wrap items-center gap-2 text-[12.5px] text-cara-muted">
+        Intake form sent with bookings
+        <select className="cara-select w-auto!" value={data.intakeFormId ?? ""} onChange={(e) => set({ intakeFormId: e.target.value })} aria-label="Intake form">
+          <option value="">None</option>
+          {intakeForms.map((f) => (
+            <option key={f.id} value={f.id}>{f.name}</option>
+          ))}
+        </select>
+      </label>
       <textarea
         className="cara-textarea w-full!"
         rows={2}
@@ -163,12 +174,14 @@ export function TypesSetup({
   subtypes,
   catalog,
   types,
+  intakeForms,
 }: {
   hasBranches: boolean;
   resources: ResourceOpt[];
   subtypes: { kind: string; subtype: string }[];
   catalog: { id: string; label: string }[];
   types: TypeView[];
+  intakeForms: { id: string; name: string }[];
 }) {
   const [form, setForm] = useState<AppointmentTypeInput>(EMPTY);
   const [adding, setAdding] = useState(types.length === 0);
@@ -184,7 +197,7 @@ export function TypesSetup({
       {adding ? (
         <div className="cara-card space-y-3 p-5">
           <div className="font-medium text-cara-ink">New appointment type</div>
-          <TypeForm data={form} set={(p) => setForm({ ...form, ...p })} resources={resources} subtypes={subtypes} catalog={catalog} />
+          <TypeForm data={form} set={(p) => setForm({ ...form, ...p })} resources={resources} subtypes={subtypes} catalog={catalog} intakeForms={intakeForms} />
           <div className="flex items-center gap-3">
             <button className="cara-btn cara-btn-primary" disabled={pending} onClick={() => run(() => createAppointmentType(form), () => { setForm(EMPTY); setAdding(false); })}>
               Add type
@@ -199,7 +212,7 @@ export function TypesSetup({
 
       <div className="space-y-3">
         {types.map((t) => (
-          <TypeCard key={t.id} t={t} resources={resources} subtypes={subtypes} catalog={catalog} />
+          <TypeCard key={t.id} t={t} resources={resources} subtypes={subtypes} catalog={catalog} intakeForms={intakeForms} />
         ))}
       </div>
     </div>
@@ -211,11 +224,13 @@ function TypeCard({
   resources,
   subtypes,
   catalog,
+  intakeForms,
 }: {
   t: TypeView;
   resources: ResourceOpt[];
   subtypes: { kind: string; subtype: string }[];
   catalog: { id: string; label: string }[];
+  intakeForms: { id: string; name: string }[];
 }) {
   const [editing, setEditing] = useState(false);
   const [data, setData] = useState<AppointmentTypeInput>({
@@ -223,6 +238,7 @@ function TypeCard({
     code: t.code ?? "",
     category: t.category ?? "",
     catalogItemId: t.catalogItemId ?? "",
+    intakeFormId: t.intakeFormId ?? "",
     prepInstructions: t.prepInstructions ?? "",
     requirements: t.requirements.map((r) => ({ ...r, subtype: r.subtype ?? "", resourceId: r.resourceId ?? "" })),
   });
@@ -254,7 +270,7 @@ function TypeCard({
       </div>
       {editing && (
         <div className="space-y-3">
-          <TypeForm data={data} set={(p) => setData({ ...data, ...p })} resources={resources} subtypes={subtypes} catalog={catalog} />
+          <TypeForm data={data} set={(p) => setData({ ...data, ...p })} resources={resources} subtypes={subtypes} catalog={catalog} intakeForms={intakeForms} />
           <p className="cara-note text-[12px]">Changes apply to new bookings. Appointments already booked keep their resources.</p>
           <button className="cara-btn cara-btn-primary" disabled={pending} onClick={() => run(() => updateAppointmentType(t.id, data), () => setEditing(false))}>
             Save

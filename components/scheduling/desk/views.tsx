@@ -6,7 +6,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setAppointmentStatus } from "@/app/(dashboard)/appointments/actions";
-import { FlagGlyph, IconAlert } from "@/components/Icon";
+import { FlagGlyph, IconAlert, IconCheck } from "@/components/Icon";
 import type { CalendarAppointment, ColumnResource, WeekRosterDay } from "./types";
 import { STATUS_ACTION, STATUS_LABEL, STATUS_TONE, addDays, fmtDay, fmtRange, fmtTime, hhmm, istMin, keyOf } from "./ui";
 
@@ -19,6 +19,21 @@ function Flags({ a }: { a: CalendarAppointment }) {
           <FlagGlyph icon={f.icon} size={13} />
         </span>
       ))}
+    </span>
+  );
+}
+
+/// §2.7 — intake form done? (a tick, or a warning glyph when it carried red flags)
+function IntakeMark({ a }: { a: CalendarAppointment }) {
+  if (!a.intake || a.intake.state === "none") return null;
+  if (a.intake.state === "pending") return <span className="text-[11px] text-cara-faint" title="Intake form not done yet">form pending</span>;
+  return a.intake.redFlags ? (
+    <span className="inline-flex items-center gap-0.5 text-[11px] font-medium txt-bad" title={`Intake complete — ${a.intake.redFlags} red flag(s)`}>
+      <IconAlert size={12} /> intake
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-0.5 text-[11px] font-medium txt-good" title="Intake complete">
+      <IconCheck size={12} /> intake
     </span>
   );
 }
@@ -63,7 +78,7 @@ export function ListView({ appts, chain, onOpen }: { appts: CalendarAppointment[
               <tr key={a.id} className="cursor-pointer" onClick={() => onOpen(a.id)}>
                 <td className="whitespace-nowrap">
                   <span className={a.visible ? "font-medium text-[var(--accent,#3358E8)]" : "text-cara-muted"}>{a.patientName ?? "Booked"}</span>{" "}
-                  <Flags a={a} />
+                  <Flags a={a} /> <IntakeMark a={a} />
                 </td>
                 <td className="whitespace-nowrap">{fmtRange(a.startAt, a.endAt)}</td>
                 <td className="whitespace-nowrap">{doctorOf(a)}</td>
@@ -388,6 +403,7 @@ export function BoardView({
                         {chain ? ` · ${a.branchName}` : ""}
                       </div>
                       {a.typeName && <div className="truncate text-[11.5px]">{a.typeName}</div>}
+                      <IntakeMark a={a} />
                       {late && <div className="text-[11px] font-medium txt-warn">Running late</div>}
                     </button>
                     {canRunDay && a.visible && next && (

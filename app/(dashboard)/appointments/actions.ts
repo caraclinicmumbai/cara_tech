@@ -32,6 +32,7 @@ import { mayActAtBranch, viewerFor } from "@/lib/scheduling/calendar";
 import { STATUS_TRANSITIONS, isAppointmentStatus } from "@/lib/scheduling/status";
 import type { Issue } from "@/lib/scheduling/engine";
 import { appointmentLink } from "@/lib/scheduling/links";
+import { intakeLinkFor, intakeStatus } from "@/lib/scheduling/intake/service";
 
 const PATH = "/appointments";
 
@@ -348,6 +349,10 @@ export type AppointmentDetail = {
   source: string;
   /// §2.3.b — paid online at booking (so the desk doesn't charge again).
   payment: { status: string; amount: number; discountPct: number } | null;
+  /// §2.7 — intake form: status for everyone who sees the appointment; the answers link
+  /// only for `appointments.viewIntake`; the form link so the desk can hand the patient
+  /// a tablet if they haven't filled it in.
+  intake: { state: "none" | "pending" | "complete"; redFlags: number; responseId: string | null; canView: boolean; formLink: string | null };
 };
 
 export async function getAppointmentDetail(id: string): Promise<AppointmentDetail | null> {
@@ -412,6 +417,14 @@ export async function getAppointmentDetail(id: string): Promise<AppointmentDetai
       : [],
     patientLink: visible && ["tentative", "booked", "confirmed"].includes(a.status) ? appointmentLink(a.id, a.endAt) : null,
     source: a.source,
+    intake: await (async () => {
+      const st = (await intakeStatus([a.id])).get(a.id) ?? { state: "none" as const, redFlags: 0, responseId: null };
+      return {
+        ...st,
+        canView: visible && can(user.role, "appointments.viewIntake"),
+        formLink: visible && st.state === "pending" ? (await intakeLinkFor(a.id)) || null : null,
+      };
+    })(),
     payment: visible && a.payments[0] ? { status: a.payments[0].status, amount: a.payments[0].amountPaise / 100, discountPct: a.payments[0].discountPct } : null,
   };
 }

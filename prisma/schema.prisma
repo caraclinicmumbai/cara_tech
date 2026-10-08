@@ -172,6 +172,7 @@ model Lead {
   appointments        Appointment[]
   flags               LeadFlag[]
   consents            ConsentRecord[]
+  intakeResponses     IntakeResponse[]
 
   @@index([status])
   @@index([phone])
@@ -1483,6 +1484,9 @@ model AppointmentType {
   onlineFee              Int?
   /// Discount for paying online at booking, percent.
   prepayDiscountPct      Int?
+  /// §2.7 — the intake form sent with this type's bookings (null = none).
+  intakeFormId           String?
+  intakeForm             IntakeForm?  @relation(fields: [intakeFormId], references: [id], onDelete: SetNull)
   color                  String?
   active                 Boolean      @default(true)
   sortOrder              Int          @default(0)
@@ -1577,10 +1581,11 @@ model Appointment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  resources      AppointmentResource[]
-  rebookingCases RebookingCase[]
-  reminders      AppointmentReminder[]
-  payments       BookingPayment[]
+  resources       AppointmentResource[]
+  rebookingCases  RebookingCase[]
+  reminders       AppointmentReminder[]
+  payments        BookingPayment[]
+  intakeResponses IntakeResponse[]
 
   @@index([branchId, startAt])
   @@index([leadId])
@@ -1832,4 +1837,89 @@ model BookingPayment {
   createdAt     DateTime    @default(now())
 
   @@index([appointmentId])
+}
+
+/// A pre-consultation intake form (§2.7) — "hair loss consultation", "surgery pre-op".
+/// The questions live in versions: editing publishes a NEW version and old answers keep
+/// pointing at the exact version the patient saw (2.7 "version every form").
+model IntakeForm {
+  id               String   @id @default(cuid())
+  key              String   @unique
+  name             String
+  active           Boolean  @default(true)
+  /// The version new patients get. Null until first published.
+  currentVersionId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  versions         IntakeFormVersion[]
+  appointmentTypes AppointmentType[]
+  responses        IntakeResponse[]
+}
+
+/// One immutable published version of a form. `schema` is JSON (lib/scheduling/intake
+/// /schema.ts): sections of fields — text, textarea, number, date, yes/no, select,
+/// multi-select, photos, consent, info — with required, options (an option can be a RED
+/// FLAG), conditional display (showIf), and an EMR mapping hint for 3.3.
+model IntakeFormVersion {
+  id          String     @id @default(cuid())
+  formId      String
+  form        IntakeForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  version     Int
+  schema      Json
+  createdById String?
+  createdAt   DateTime   @default(now())
+
+  responses IntakeResponse[]
+
+  @@unique([formId, version])
+}
+
+/// A patient's answers (§2.7). Everything here is PATIENT-REPORTED until a clinician
+/// verifies it, field by field (`verifiedFields`) — the doctor confirming "thyroid,
+/// Thyronorm 50 mcg" turns that answer from "patient-reported" to "verified".
+model IntakeResponse {
+  id             String            @id @default(cuid())
+  leadId         String
+  lead           Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  appointmentId  String?
+  appointment    Appointment?      @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  formId         String
+  form           IntakeForm        @relation(fields: [formId], references: [id], onDelete: Cascade)
+  versionId      String
+  version        IntakeFormVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  /// submitted (patient finished) — partial answers are kept in the browser, not here.
+  status         String            @default("submitted")
+  answers        Json
+  /// Field keys whose answers are red flags (blood thinners, bleeding disorder…).
+  redFlags       String[]          @default([])
+  verifiedFields String[]          @default([])
+  reviewedById   String?
+  reviewedAt     DateTime?
+  /// The phone the OTP was sent to when the patient accepted (2.7.f).
+  verifiedPhone  String?
+  ip             String?
+  userAgent      String?
+  submittedAt    DateTime          @default(now())
+
+  photos IntakePhoto[]
+
+  @@index([leadId])
+  @@index([appointmentId])
+}
+
+/// A photo the patient uploaded with their intake (2.7.d) — front, top, crown, donor…
+/// Stored in the database for now (resized in the browser, size-capped); moves to the
+/// document store with 3.12. Served only through a staff-session-gated route.
+model IntakePhoto {
+  id         String         @id @default(cuid())
+  responseId String
+  response   IntakeResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  slot       String
+  mime       String
+  size       Int
+  bytes      Bytes
+  createdAt  DateTime       @default(now())
+
+  @@index([responseId])
 }

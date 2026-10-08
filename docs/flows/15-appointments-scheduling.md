@@ -23,6 +23,9 @@ recorded.
 >   types, any or a named doctor, slot hold, OTP, separate consents, UTM attribution,
 >   existing-patient follow-ups with their own surgeon, optional Razorpay prepay for
 >   consultations.
+> - **2.7 Intake forms:** a form builder with versions, conditional questions, red flags,
+>   the under-18 guardian section, guided photos and separate consents. Code-verified
+>   patient access, field-by-field clinician verification, status on the calendar.
 >
 > 2.5 (walk-in queue/tokens) and 2.6 (no-show tracking and waitlist) are **deferred**
 > by decision; see `docs/deferred-todo.md`.
@@ -66,6 +69,12 @@ recorded.
 | 2.3.d | Lead time | Minimum notice **3 h**, up to **90 days** ahead (editable) |
 | 2.3.e | Mobile app | Later, on the same service |
 | 2.3.f | Languages | English |
+| 2.7.a | Which forms | The clinic builds them (setup → Intake forms); question lists from the clinical lead (Jatin). A starter hair-loss form from the spec ships as a draft |
+| 2.7.b | Red flags | Marked per question in the builder ("Yes" is a red flag; options prefixed `!`). The appointment's doctor and the branch manager are alerted. The list comes from the clinical lead (Jatin) |
+| 2.7.c | Block booking until done | **No.** Reminders carry the link instead |
+| 2.7.d | Patient photo upload | Allowed (decided 2026-10-08). Guided angles, resized in the browser, size-capped, stored in the database until 3.12's document store, served only to `appointments.viewIntake` |
+| 2.7.e | Minors | A date-of-birth answer under 18 reveals required guardian details + guardian consent |
+| 2.7.f | Signature | The code to the patient's own mobile is their acceptance (OTP-based). Surgical consent stays physical/eSign (outside 3.2) |
 | — | Toggles | Global, not per branch |
 | — | Patient = ? | The **Lead**. Cara has no separate patient table |
 | — | Zenoti history | Not imported now. Build first, import after |
@@ -374,6 +383,51 @@ appointment or a treatment journey, and the slots shown are their surgeon's.
 **Abuse controls:** a honeypot field, IP rate limits on every step, signed tokens for
 the slot and the phone, and server-side re-checks of everything.
 
+## Feature 2.7: pre-consultation intake forms
+
+**Building** (setup → Intake forms, `lib/scheduling/intake/schema.ts`):
+- Sections of questions: short/long answer, number, date, yes/no, choose one / any,
+  guided photos, consent tick, information text.
+- Each question can be required, have help text, and be shown only when an earlier
+  answer matches ("Thyroid? → Yes → medication and dosage") or only for under-18s.
+- Consent ticks each record ONE purpose: health-data processing, treatment photos,
+  marketing photos, or guardian. Never bundled.
+- The editor checks the form before publishing. Publishing creates a **new immutable
+  version**; answers keep the version the patient saw.
+- Each appointment type picks its form (Appointment types → "Intake form sent with
+  bookings").
+
+**Sending:** the confirmation and day-before messages carry `{intake_link}`. The line
+disappears when the type has no form or it's already done. The desk can also hand the
+patient a tablet: the card's **Open form for patient**.
+
+**Filling in** (`/f/<token>`, public):
+- The link is signed and expires a day after the appointment.
+- Nothing personal shows until the patient enters a **code sent to the mobile on
+  file**. They never type a number, so a forwarded link is useless.
+- Returning patients get their last answers pre-filled; consents and photos are always
+  asked fresh.
+- Photos are taken per angle on the phone, shrunk to ≤1600 px JPEG in the browser, then
+  sent with the answers in one multipart request (`/api/intake-form/submit`). Up to 8 photos,
+  2.5 MB each, JPEG/PNG/WebP.
+
+**On submit** (`submitIntake`):
+- Answers are validated against that version (hidden questions are dropped and never
+  required).
+- The verified phone must be the patient's.
+- Red flags are computed, and one `ConsentRecord` row is written per consent question
+  (text + version + IP + device).
+- If any red flag fired, the doctor and branch manager get a bell entry linking to the
+  answers.
+
+**Reviewing** (`/appointments/intake/<id>`, `appointments.viewIntake`):
+- Red flags first, then every answer labelled **patient-reported** or **verified**.
+  Clinicians (`appointments.verifyIntake`) confirm answers one by one.
+- Also shows the photos and the consents given.
+- Opening it is audited as a record view.
+- The calendar list and board show *form pending* / *intake complete* (with a red-flag
+  marker). Front desk sees status only; answers are health data.
+
 ## Reschedule, status, holds
 
 - **Reschedule never edits the time in place.** The old row becomes `rescheduled`, its
@@ -426,6 +480,11 @@ Gated to `appointments.configure`. Every change is audited.
 | `lib/scheduling/online.ts`, `otp.ts`, `lib/providers/razorpay.ts` | Online booking service, OTP, Razorpay |
 | `app/(public)/book/` (+ `embed.js`) + `components/scheduling/BookingWidget.tsx` | The widget |
 | migration `20261008095433_scheduling_online_booking` | `OtpChallenge`, `ConsentRecord`, `BookingPayment`, online fields on `AppointmentType` |
+| `lib/scheduling/intake/schema.ts`, `intake/service.ts` | Form schema/logic (pure) + intake service |
+| `app/(public)/f/[token]/`, `app/api/intake-form/submit/`, `app/api/intake-form/photo/[id]/` | Patient form, submit, staff-only photos |
+| `app/(dashboard)/appointments/intake/[id]/` | Staff view + verification |
+| `components/scheduling/IntakeFormsSetup.tsx`, `IntakeFormView.tsx` | Builder, patient form |
+| migration `20261008101458_scheduling_intake_forms` | `IntakeForm`, `IntakeFormVersion`, `IntakeResponse`, `IntakePhoto`, `AppointmentType.intakeFormId`; adds `{intake_link}` to the seeded messages |
 | `lib/scheduling/leave.ts` | Request / approve / reject / withdraw leave, emergency |
 | `lib/scheduling/conflicts.ts` | Conflict detection, rebooking cases, suggestions, apply, escalation, closures |
 | `lib/scheduling/notify.ts` | Messaging a patient about a change (WhatsApp today; 2.4 extends it) |
@@ -472,6 +531,8 @@ Environment for 2.4 (all optional; each channel stays off without its own):
 | `appointments.viewAllBranches` | telecaller, telecalling head, branch manager, sales head (+ admin) |
 | `appointments.bookAnyBranch` | telecaller, telecalling head, branch manager, sales head (+ admin) |
 | `appointments.approveLeave` | sales head (+ admin) |
+| `appointments.viewIntake` | doctor, post-sales consultant, branch manager (+ admin) |
+| `appointments.verifyIntake` | doctor, post-sales consultant (+ admin) |
 
 > **Run `npm run backfill:capabilities` after deploying.** Roles customised in the
 > Hierarchy screen don't get new capabilities by themselves. Locally, `front_desk` was
@@ -491,7 +552,14 @@ Environment for 2.4 (all optional; each channel stays off without its own):
   appear.
 - **Prepayment doesn't reach billing (3.4) yet.** It's recorded on the appointment, not
   invoiced. Refunds happen in the Razorpay dashboard.
-- **The intake-form link (2.7) isn't sent at booking yet.**
+- **Intake forms are English only, and partial answers live only in the browser.** A
+  patient who closes the page halfway starts again; there's no autosave.
+- **No paper-scan upload** for a patient who filled in a paper form. The tablet route
+  works; a scan goes to 3.12.
+- **No EMR mapping yet.** Each question carries an `emr` hint (allergies / medications /
+  conditions) for 3.3, but nothing is written into an EMR.
+- **Photos are stored in the database** (≤8 × 2.5 MB per form) until 3.12's document
+  store exists.
 - **No PDF attachment.** The 7-day surgery email carries the checklist as text (the
   type's preparation instructions), not as a PDF.
 - **Rebooking messages (2.9) are still free text**, so they only reach a patient inside

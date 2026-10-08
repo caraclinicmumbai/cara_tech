@@ -106,6 +106,12 @@ export const CAPABILITIES = [
   // §2.9.a — approve / reject doctors' leave (head office; + admin). Anyone linked to a
   // doctor/staff resource can REQUEST their own leave without a capability.
   "appointments.approveLeave",
+  // §2.7 — intake answers are HEALTH DATA. `viewIntake` = read a patient's intake answers
+  // and photos (clinical team + branch managers); everyone else sees only "complete /
+  // pending" and the red-flag count. `verifyIntake` = mark a patient-reported answer
+  // verified (clinicians).
+  "appointments.viewIntake",
+  "appointments.verifyIntake",
   "calls.view",
   "analytics.view",
   // Reports (§reports) — the management read-outs, split in two because they answer to
@@ -207,6 +213,8 @@ export const CAPABILITY_GROUPS: {
       { key: "appointments.viewAllBranches", label: "See patient details at every branch" },
       { key: "appointments.bookAnyBranch", label: "Book at any branch (not just own)" },
       { key: "appointments.approveLeave", label: "Approve doctors' leave / mark emergency" },
+      { key: "appointments.viewIntake", label: "Read intake forms (health data)" },
+      { key: "appointments.verifyIntake", label: "Verify intake answers (clinical)" },
     ],
   },
   {
@@ -374,6 +382,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "appointments.override",
     "appointments.viewAllBranches",
     "appointments.bookAnyBranch",
+    "appointments.viewIntake",
   ],
   sales_head: [
     "leads.view",
@@ -427,6 +436,8 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "postsales.checkins",
     "appointments.view",
     "appointments.checkin",
+    "appointments.viewIntake",
+    "appointments.verifyIntake",
   ],
   ot_team: [
     "postsales.view",
@@ -440,6 +451,8 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "postsales.checkins",
     "appointments.view",
     "appointments.book",
+    "appointments.viewIntake",
+    "appointments.verifyIntake",
   ],
 };
 

@@ -18,6 +18,7 @@ import { dateColumn, hhmmToMinutes, istInstant as istInstantOf } from "@/lib/sch
 import { parseIstDateTimeLocal } from "@/lib/datetime";
 import { FLAG_ICONS, FLAG_TONES } from "@/lib/scheduling/flags";
 import { REMINDER_PRESETS } from "@/lib/scheduling/messageText";
+import { checkSchema, STARTER_HAIR_LOSS, type IntakeSchema } from "@/lib/scheduling/intake/schema";
 import { detectClosure, detectConflicts, detectForResource, recheckOpenCases } from "@/lib/scheduling/conflicts";
 
 type Result = { ok: boolean; error?: string; info?: string; id?: string };
@@ -564,6 +565,8 @@ export type AppointmentTypeInput = {
   onlineFee?: number | string | null;
   onlinePrepay?: boolean;
   prepayDiscountPct?: number | string | null;
+  /// §2.7 — the intake form sent with this type's bookings.
+  intakeFormId?: string | null;
 };
 
 function normaliseType(input: AppointmentTypeInput) {
@@ -598,6 +601,7 @@ function normaliseType(input: AppointmentTypeInput) {
   return {
     ok: true as const,
     data: {
+      intakeFormId: clean(input.intakeFormId),
       onlineAudience: audience,
       onlineFee: fee,
       onlinePrepay: !!input.onlinePrepay,
@@ -846,4 +850,57 @@ export async function applyReminderPreset(typeId: string, presetKey: string): Pr
       quietExempt: !!r.quietExempt,
     })),
   );
+}
+
+// ── Intake forms (§2.7) ──────────────────────────────────────────────────────
+
+/// Create a form — empty, or from the starter hair-loss form (a draft for the clinical
+/// lead to edit). Publishes version 1 straight away so it can be assigned.
+export async function createIntakeForm(name: string, fromStarter: boolean): Promise<Result> {
+  const actor = await requireCapability("appointments.configure");
+  const n = clean(name);
+  if (!n) return { ok: false, error: "Give the form a name" };
+  const schema: IntakeSchema = fromStarter ? STARTER_HAIR_LOSS : { sections: [{ id: "s1", title: "About you", fields: [{ key: "dob", label: "Date of birth", type: "date", required: true }] }] };
+  try {
+    const form = await prisma.intakeForm.create({
+      data: { name: n, key: `${n.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 40)}_${Date.now().toString(36)}` },
+    });
+    const v = await prisma.intakeFormVersion.create({ data: { formId: form.id, version: 1, schema: schema as object, createdById: actor.id ?? null } });
+    await prisma.intakeForm.update({ where: { id: form.id }, data: { currentVersionId: v.id } });
+    await audit(actor, "scheduling.intake.create", form.id, n);
+    revalidatePath(PATH);
+    return { ok: true, id: form.id, info: "Form created" };
+  } catch (err) {
+    return fail("createIntakeForm", err, "Could not create the form");
+  }
+}
+
+/// Publish an edited form as a NEW version. Earlier answers keep pointing at the version
+/// the patient actually saw.
+export async function publishIntakeVersion(formId: string, schema: IntakeSchema): Promise<Result> {
+  const actor = await requireCapability("appointments.configure");
+  const problems = checkSchema(schema);
+  if (problems.length) return { ok: false, error: problems.slice(0, 3).join(" · ") };
+  try {
+    const last = await prisma.intakeFormVersion.findFirst({ where: { formId }, orderBy: { version: "desc" }, select: { version: true } });
+    const v = await prisma.intakeFormVersion.create({ data: { formId, version: (last?.version ?? 0) + 1, schema: schema as object, createdById: actor.id ?? null } });
+    await prisma.intakeForm.update({ where: { id: formId }, data: { currentVersionId: v.id } });
+    await audit(actor, "scheduling.intake.publish", formId, `version ${v.version}`);
+    revalidatePath(PATH);
+    return { ok: true, info: `Published version ${v.version} — new links use it from now on` };
+  } catch (err) {
+    return fail("publishIntakeVersion", err, "Could not publish the form");
+  }
+}
+
+export async function setIntakeFormActive(formId: string, active: boolean): Promise<Result> {
+  const actor = await requireCapability("appointments.configure");
+  try {
+    const f = await prisma.intakeForm.update({ where: { id: formId }, data: { active }, select: { name: true } });
+    await audit(actor, active ? "scheduling.intake.activate" : "scheduling.intake.deactivate", formId, f.name);
+    revalidatePath(PATH);
+    return { ok: true };
+  } catch (err) {
+    return fail("setIntakeFormActive", err, "Could not update the form");
+  }
 }

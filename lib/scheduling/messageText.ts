@@ -15,6 +15,7 @@ export const TEMPLATE_VARIABLES = [
   "map_link",
   "prep",
   "link",
+  "intake_link",
   "clinic",
 ] as const;
 
@@ -31,6 +32,7 @@ export const SAMPLE_VARIABLES: Record<string, string> = {
   map_link: "https://maps.google.com/?q=Cara+Powai",
   prep: "Wash your hair the night before. No blood thinners for 7 days.",
   link: "https://crm.caraclinics.com/a/…",
+  intake_link: "https://crm.caraclinics.com/f/…",
   clinic: "Cara Clinic",
 };
 

@@ -189,6 +189,28 @@ export function AppointmentCard({ id, onClose }: { id: string; onClose: () => vo
                 </div>
               )}
 
+              {/* Intake form (§2.7) */}
+              {d.visible && d.intake.state !== "none" && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-cara-rule pt-3 text-[12.5px]">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-cara-muted">Intake form</span>
+                  {d.intake.state === "complete" ? (
+                    <span className={`tag ${d.intake.redFlags ? "tag-tangerine" : "tag-aqua"}`}>
+                      complete{d.intake.redFlags ? ` · ${d.intake.redFlags} red flag${d.intake.redFlags === 1 ? "" : "s"}` : ""}
+                    </span>
+                  ) : (
+                    <span className="tag tag-neutral">not filled in yet</span>
+                  )}
+                  {d.intake.canView && d.intake.responseId && (
+                    <Link href={`/appointments/intake/${d.intake.responseId}`} className="tone-link">View answers</Link>
+                  )}
+                  {d.intake.formLink && (
+                    <a href={d.intake.formLink} target="_blank" rel="noreferrer" className="tone-link" title="For the patient to fill in on a clinic tablet — a code goes to their phone">
+                      Open form for patient
+                    </a>
+                  )}
+                </div>
+              )}
+
               {/* Messages (§2.4) */}
               {(d.reminders.length > 0 || d.patientLink) && (
                 <div className="space-y-1.5 border-t border-cara-rule pt-3">

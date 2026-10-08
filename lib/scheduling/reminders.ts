@@ -26,6 +26,7 @@ import { appointmentLink } from "@/lib/scheduling/links";
 import { istDateKey, istInstant, istMinutes, MINUTE_MS } from "@/lib/scheduling/time";
 import { QUIET_END_HOUR, QUIET_START_HOUR, REMINDERS_ENABLED, SELF_SERVICE_LINKS } from "@/lib/scheduling/toggles";
 import { fillTemplate } from "@/lib/scheduling/messageText";
+import { intakeLinkFor } from "@/lib/scheduling/intake/service";
 
 export { fillTemplate, REMINDER_PRESETS, TEMPLATE_VARIABLES } from "@/lib/scheduling/messageText";
 
@@ -62,6 +63,8 @@ export async function appointmentVariables(appointmentId: string): Promise<Recor
     map_link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address || a.branch.name)}`,
     prep: a.type.prepInstructions ?? "",
     link: selfService ? appointmentLink(a.id, a.endAt) : "",
+    // "" when the type has no form or it's already done — its line drops out.
+    intake_link: await intakeLinkFor(a.id).catch(() => ""),
     clinic: "Cara Clinic",
   };
 }

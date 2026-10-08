@@ -12,6 +12,8 @@ import { ResourcesSetup } from "@/components/scheduling/ResourcesSetup";
 import { TypesSetup } from "@/components/scheduling/TypesSetup";
 import { FlagsSetup } from "@/components/scheduling/FlagsSetup";
 import { MessagesSetup } from "@/components/scheduling/MessagesSetup";
+import { IntakeFormsSetup } from "@/components/scheduling/IntakeFormsSetup";
+import type { IntakeSchema } from "@/lib/scheduling/intake/schema";
 import { isWhatsAppConfigured } from "@/lib/providers/whatsapp";
 import { isSmsConfigured } from "@/lib/providers/sms";
 import { isEmailConfigured } from "@/lib/providers/email";
@@ -30,6 +32,7 @@ const TABS = [
   { key: "resources", label: "Resources & rosters" },
   { key: "types", label: "Appointment types" },
   { key: "messages", label: "Messages & reminders" },
+  { key: "intake", label: "Intake forms" },
   { key: "flags", label: "Patient flags" },
 ] as const;
 
@@ -78,6 +81,7 @@ export default async function SchedulingSetupPage({
       {tab === "resources" && <ResourcesTab branches={branches} />}
       {tab === "types" && <TypesTab branches={branches} />}
       {tab === "messages" && <MessagesTab />}
+      {tab === "intake" && <IntakeTab />}
       {tab === "flags" && <FlagsTab />}
     </div>
   );
@@ -223,6 +227,7 @@ async function ResourcesTab({ branches }: { branches: BranchOpt[] }) {
 }
 
 async function TypesTab({ branches }: { branches: BranchOpt[] }) {
+  const intakeForms = await prisma.intakeForm.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } });
   const [types, resources, catalog] = await Promise.all([
     prisma.appointmentType.findMany({
       orderBy: [{ active: "desc" }, { category: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
@@ -242,6 +247,7 @@ async function TypesTab({ branches }: { branches: BranchOpt[] }) {
       resources={resources}
       subtypes={subtypes.map((s) => ({ kind: s.kind, subtype: s.subtype as string }))}
       catalog={catalog.map((c) => ({ id: c.id, label: `${c.category} — ${c.name}` }))}
+      intakeForms={intakeForms}
       types={types.map((t) => ({
         id: t.id,
         name: t.name,
@@ -252,6 +258,7 @@ async function TypesTab({ branches }: { branches: BranchOpt[] }) {
         catalogItemId: t.catalogItemId,
         catalogName: t.catalogItem?.name ?? null,
         onlineBookable: t.onlineBookable,
+        intakeFormId: t.intakeFormId,
         onlineAudience: t.onlineAudience,
         onlineFee: t.onlineFee,
         onlinePrepay: t.onlinePrepay,
@@ -330,6 +337,32 @@ async function MessagesTab() {
           quietExempt: r.quietExempt,
         })),
       }))}
+    />
+  );
+}
+
+async function IntakeTab() {
+  const forms = await prisma.intakeForm.findMany({
+    orderBy: [{ active: "desc" }, { name: "asc" }],
+    include: {
+      versions: { orderBy: { version: "desc" }, take: 1 },
+      appointmentTypes: { select: { name: true } },
+      _count: { select: { responses: true } },
+    },
+  });
+  return (
+    <IntakeFormsSetup
+      forms={forms
+        .filter((f) => f.versions[0])
+        .map((f) => ({
+          id: f.id,
+          name: f.name,
+          active: f.active,
+          version: f.versions[0].version,
+          schema: f.versions[0].schema as unknown as IntakeSchema,
+          usedBy: f.appointmentTypes.map((t) => t.name),
+          responses: f._count.responses,
+        }))}
     />
   );
 }
