@@ -84,6 +84,24 @@ function TypeForm({
           patients can book online
         </label>
       </div>
+      {data.onlineBookable && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--cara-surface-2)] p-2.5 text-[12.5px] text-cara-muted">
+          <select className="cara-select w-auto!" value={data.onlineAudience ?? "anyone"} onChange={(e) => set({ onlineAudience: e.target.value, ...(e.target.value === "existing" ? { onlinePrepay: false } : {}) })} aria-label="Who can book online">
+            <option value="anyone">Anyone (new patients)</option>
+            <option value="existing">Existing patients only (with their own doctor)</option>
+          </select>
+          <label className="flex items-center gap-1">
+            fee ₹
+            <input type="number" min={0} className="cara-input w-24!" value={data.onlineFee ?? ""} onChange={(e) => set({ onlineFee: e.target.value })} aria-label="Fee" />
+          </label>
+          <label className="flex items-center gap-1" title="Consultations only (§2.3.b). Needs Razorpay configured.">
+            <input type="checkbox" disabled={data.onlineAudience === "existing"} checked={!!data.onlinePrepay} onChange={(e) => set({ onlinePrepay: e.target.checked })} />
+            pay online at booking, discount
+          </label>
+          <input type="number" min={0} max={90} className="cara-input w-16!" value={data.prepayDiscountPct ?? ""} onChange={(e) => set({ prepayDiscountPct: e.target.value })} aria-label="Discount %" disabled={!data.onlinePrepay} />
+          %
+        </div>
+      )}
 
       <div className="space-y-2 rounded-lg border border-cara-rule p-3">
         <div className="text-[11px] font-semibold uppercase tracking-wide text-cara-muted">Needs, all free at once</div>
@@ -217,7 +235,8 @@ function TypeCard({
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-cara-ink">{t.name}</span>
             {t.category && <span className="tag tag-ink">{t.category}</span>}
-            {t.onlineBookable && <span className="tag tag-aqua">online</span>}
+            {t.onlineBookable && <span className="tag tag-aqua">online{t.onlineAudience === "existing" ? " · existing patients" : ""}</span>}
+            {t.onlinePrepay && <span className="tag tag-lime">prepay −{t.prepayDiscountPct ?? 0}%</span>}
             {!t.active && <span className="tag tag-neutral">inactive</span>}
           </div>
           <div className="text-[12px] text-cara-muted">

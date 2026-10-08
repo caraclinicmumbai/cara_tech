@@ -163,6 +163,17 @@ export function AppointmentCard({ id, onClose }: { id: string; onClose: () => vo
                   {d.resources.map((r) => r.name).join(" · ")}
                 </div>
               </div>
+              {(d.source === "online" || d.payment) && (
+                <div className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
+                  {d.source === "online" && <span className="tag tag-blue">booked online</span>}
+                  {d.payment && (
+                    <span className={`tag ${d.payment.status === "paid" ? "tag-aqua" : "tag-neutral"}`}>
+                      {d.payment.status === "paid" ? `paid ₹${d.payment.amount.toLocaleString("en-IN")} online` : `payment ${d.payment.status}`}
+                      {d.payment.discountPct ? ` (−${d.payment.discountPct}%)` : ""}
+                    </span>
+                  )}
+                </div>
+              )}
               {d.doctorOverbooked && (
                 <div className="flex items-center gap-1.5 text-[12.5px] txt-warn">
                   <IconAlert /> Doctor double-booked (acknowledged at booking)

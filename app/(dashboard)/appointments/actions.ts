@@ -345,6 +345,9 @@ export type AppointmentDetail = {
   reminders: { id: string; name: string; dueAt: string; status: string; whatsapp: string | null; sms: string | null; email: string | null; note: string | null }[];
   /// The patient's self-service link, for staff to send by hand. Null when not visible.
   patientLink: string | null;
+  source: string;
+  /// §2.3.b — paid online at booking (so the desk doesn't charge again).
+  payment: { status: string; amount: number; discountPct: number } | null;
 };
 
 export async function getAppointmentDetail(id: string): Promise<AppointmentDetail | null> {
@@ -359,6 +362,7 @@ export async function getAppointmentDetail(id: string): Promise<AppointmentDetai
       resources: { select: { resource: { select: { id: true, name: true, kind: true } } } },
       rescheduledFrom: { select: { startAt: true } },
       reminders: { orderBy: { dueAt: "asc" }, include: { template: { select: { name: true } } } },
+      payments: { orderBy: { createdAt: "desc" }, take: 1 },
     },
   });
   if (!a) return null;
@@ -407,6 +411,8 @@ export async function getAppointmentDetail(id: string): Promise<AppointmentDetai
         }))
       : [],
     patientLink: visible && ["tentative", "booked", "confirmed"].includes(a.status) ? appointmentLink(a.id, a.endAt) : null,
+    source: a.source,
+    payment: visible && a.payments[0] ? { status: a.payments[0].status, amount: a.payments[0].amountPaise / 100, discountPct: a.payments[0].discountPct } : null,
   };
 }
 

@@ -22,6 +22,7 @@ export const BLOCK_EQUIPMENT = "scheduling.blockEquipment";
 export const PATIENT_FLAGS_ENABLED = "scheduling.patientFlags";
 export const REMINDERS_ENABLED = "scheduling.remindersEnabled";
 export const SELF_SERVICE_LINKS = "scheduling.selfServiceLinks";
+export const ONLINE_BOOKING = "scheduling.onlineBooking";
 
 export const SCHEDULING_TOGGLES: SchedulingToggle[] = [
   {
@@ -81,6 +82,13 @@ export const SCHEDULING_TOGGLES: SchedulingToggle[] = [
     default: true,
   },
   {
+    key: ONLINE_BOOKING,
+    label: "Online booking widget",
+    description:
+      "The public booking page (/book) patients reach from the website. Only appointment types marked online-bookable appear; surgery never does (§2.3). Off: the page says to call the clinic.",
+    default: true,
+  },
+  {
     key: PATIENT_FLAGS_ENABLED,
     label: "Patient flags",
     description: "Show flags such as ★ Priority on patient cards, and let staff set them.",
@@ -111,6 +119,9 @@ export type SchedulingNumber = {
 export const DEFAULT_TRAVEL_MINUTES = "scheduling.defaultTravelMinutes";
 export const QUIET_START_HOUR = "scheduling.quietStartHour";
 export const QUIET_END_HOUR = "scheduling.quietEndHour";
+export const ONLINE_MIN_NOTICE_HOURS = "scheduling.onlineMinNoticeHours";
+export const ONLINE_MAX_DAYS = "scheduling.onlineMaxDays";
+export const ONLINE_HOLD_MINUTES = "scheduling.onlineHoldMinutes";
 
 export const SCHEDULING_NUMBERS: SchedulingNumber[] = [
   {
@@ -140,6 +151,33 @@ export const SCHEDULING_NUMBERS: SchedulingNumber[] = [
     default: 8,
     min: 0,
     max: 23,
+  },
+  {
+    key: ONLINE_MIN_NOTICE_HOURS,
+    label: "Online booking — minimum notice",
+    description: "Patients can't book online for a time sooner than this (§2.3.d).",
+    unit: "h",
+    default: 3,
+    min: 0,
+    max: 168,
+  },
+  {
+    key: ONLINE_MAX_DAYS,
+    label: "Online booking — how far ahead",
+    description: "Patients can book online up to this many days ahead (§2.3.d).",
+    unit: "days",
+    default: 90,
+    min: 1,
+    max: 365,
+  },
+  {
+    key: ONLINE_HOLD_MINUTES,
+    label: "Online booking — slot hold",
+    description: "A picked slot is held this long while the patient fills in their details (§2.3).",
+    unit: "min",
+    default: 10,
+    min: 3,
+    max: 30,
   },
 ];
 

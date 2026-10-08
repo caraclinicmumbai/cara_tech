@@ -171,6 +171,7 @@ model Lead {
   chatReads           ChatRead[]
   appointments        Appointment[]
   flags               LeadFlag[]
+  consents            ConsentRecord[]
 
   @@index([status])
   @@index([phone])
@@ -1471,6 +1472,17 @@ model AppointmentType {
   /// to this many hours before; inside it the link says "please call" and the request
   /// lands on the patient-care worklist. Consultation 4, procedures 24, surgery 72.
   selfServiceCutoffHours Int          @default(4)
+  /// §2.3.a — who may book this online: anyone (first consultation) | existing
+  /// (follow-ups, PRP for patients already treated — they verify their phone first and
+  /// get their own surgeon).
+  onlineAudience         String       @default("anyone")
+  /// §2.3.b — consultations only: pay online at booking, at a discount. Off until
+  /// Razorpay is configured AND switched on per type.
+  onlinePrepay           Boolean      @default(false)
+  /// Consultation fee in whole rupees (the price shown / charged online).
+  onlineFee              Int?
+  /// Discount for paying online at booking, percent.
+  prepayDiscountPct      Int?
   color                  String?
   active                 Boolean      @default(true)
   sortOrder              Int          @default(0)
@@ -1568,6 +1580,7 @@ model Appointment {
   resources      AppointmentResource[]
   rebookingCases RebookingCase[]
   reminders      AppointmentReminder[]
+  payments       BookingPayment[]
 
   @@index([branchId, startAt])
   @@index([leadId])
@@ -1758,4 +1771,65 @@ model AppointmentReminder {
   @@index([status, dueAt])
   @@index([appointmentId])
   @@index([waId])
+}
+
+/// A one-time code sent to a phone (§2.3 "mobile number verified by OTP"). Only a hash
+/// of the code is stored. Expires after 10 minutes and allows 5 attempts.
+model OtpChallenge {
+  id         String    @id @default(cuid())
+  phone      String
+  purpose    String // online_booking | intake_form
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  verifiedAt DateTime?
+  channel    String? // whatsapp | sms | dev
+  createdAt  DateTime  @default(now())
+
+  @@index([phone, purpose, createdAt])
+}
+
+/// What a person agreed to, exactly, and when (§2.3, §2.7, DPDP). Append-only: a
+/// withdrawal is a NEW row with granted = false. Every purpose is separate — consent to
+/// appointment messages is never bundled with marketing, and photo consent for treatment
+/// records is never bundled with marketing use of photos.
+///   purpose: appointment_messages | marketing | treatment_photos | marketing_photos |
+///            data_processing | guardian
+model ConsentRecord {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  purpose   String
+  granted   Boolean
+  /// The exact wording shown, and its version — "what did they actually agree to".
+  text      String
+  version   String
+  source    String // online_booking | intake_form | front_desk
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([leadId, purpose, createdAt])
+}
+
+/// A payment taken online at booking (§2.3.b — consultations, at a discount). Amounts
+/// are in paise. Ties to Billing (3.4) later; today it records what was paid and lets
+/// the desk see it.
+model BookingPayment {
+  id            String      @id @default(cuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  provider      String      @default("razorpay")
+  amountPaise   Int
+  listPaise     Int
+  discountPct   Int         @default(0)
+  currency      String      @default("INR")
+  orderId       String      @unique
+  paymentId     String?
+  /// created | paid | failed
+  status        String      @default("created")
+  paidAt        DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@index([appointmentId])
 }

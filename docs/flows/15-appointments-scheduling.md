@@ -19,6 +19,10 @@ recorded.
 >   quiet hours, the patient's signed link (confirm / reschedule / cancel within a
 >   cut-off), "1/2" replies, and a delivery log. **Sending is off** until the clinic
 >   switches it on.
+> - **2.3 Online booking widget** (`/book`, embeddable on caraclinics.com): online-only
+>   types, any or a named doctor, slot hold, OTP, separate consents, UTM attribution,
+>   existing-patient follow-ups with their own surgeon, optional Razorpay prepay for
+>   consultations.
 >
 > 2.5 (walk-in queue/tokens) and 2.6 (no-show tracking and waitlist) are **deferred**
 > by decision; see `docs/deferred-todo.md`.
@@ -56,6 +60,12 @@ recorded.
 | 2.4.e | Languages | English |
 | 2.4.f | Quiet hours | 21:00–08:00 IST (editable); the morning-of-surgery reminder is exempt |
 | — | Email provider | AWS SES (decided 2026-10-08), off until configured |
+| 2.3.a | What's bookable online | Types marked online-bookable. Audience: **anyone** (first consultations) or **existing patients** (follow-ups, PRP). Surgery never; the widget says "Surgery is planned after a consultation" |
+| 2.3.b | Online payment | **Razorpay** (decided 2026-10-08), consultations only (types open to new patients, with a fee), optional per type, with a prepay discount %. Off until keys are set |
+| 2.3.c | Doctor choice | New patients: "Any available doctor" (slots merged; booking lands on the slot's named doctor) or a specific one. Existing-patient services: hidden, their own surgeon |
+| 2.3.d | Lead time | Minimum notice **3 h**, up to **90 days** ahead (editable) |
+| 2.3.e | Mobile app | Later, on the same service |
+| 2.3.f | Languages | English |
 | — | Toggles | Global, not per branch |
 | — | Patient = ? | The **Lead**. Cara has no separate patient table |
 | — | Zenoti history | Not imported now. Build first, import after |
@@ -311,6 +321,59 @@ When a reminder is created:
   call-required case and answers "our patient-care team will call you".
 - Handled before the chatbot, so the bot never replies to them as well.
 
+## Feature 2.3: online booking widget
+
+**Where:** `/book` (public). The website embeds it with:
+
+```html
+<div id="cara-booking" data-branch="" data-service=""></div>
+<script src="https://<crm-host>/book/embed.js" async></script>
+```
+
+The script forwards the page's UTM tags into an iframe and resizes it. `/book` sends
+`Content-Security-Policy: frame-ancestors 'self' <BOOKING_EMBED_ORIGINS>`, so only the
+clinic's own site can embed it.
+
+**The flow** (`lib/scheduling/online.ts`, `components/scheduling/BookingWidget.tsx`):
+1. Service, then branch, then doctor ("any" or named; hidden for existing-patient
+   services).
+2. Day and time. Only types marked online-bookable, at least 3 h away and at most 90
+   days ahead. **A time that would overbook a doctor or machine is never offered
+   online.** That warning is for staff to acknowledge, not the public.
+3. **Hold:** the slot is held for 10 minutes (countdown) as a tentative appointment. The
+   patient isn't known yet, so the hold sits on one hidden, soft-deleted placeholder
+   lead and appears in no list. Same per-resource locks as the desk, so two people
+   can't hold one slot. The browser gets a signed hold token.
+4. Details and the two consent boxes, both unticked:
+   - *appointment messages* — required to book;
+   - *marketing* — optional.
+
+   Each is stored as a `ConsentRecord` with the exact text, version, time, IP and
+   device.
+5. **OTP** (`lib/scheduling/otp.ts`): a WhatsApp authentication template, else DLT SMS.
+   Only a hash is stored; it expires in 10 min, allows 5 tries, and 3 sends per phone
+   per 15 min. A correct code returns a signed "verified phone" token, valid for one
+   purpose for 30 min. The booking uses the phone from that token, never from the form.
+   In development only, with no channel configured, the code is shown on screen. In
+   production there's no such path: no channel means the widget says "call the clinic".
+6. Complete:
+   - Find the patient by phone (no duplicates), or create them. Source comes from UTM
+     (instagram / facebook / google, else web_form), with the campaign and ad content
+     recorded.
+   - Stage moves to *appointment scheduled*. The hold moves onto the patient.
+   - Status → booked, which starts the 2.4 reminders.
+7. **Pay online** (when the type allows it and Razorpay is configured): the patient
+   chooses "Pay now ₹X (save Y%)" or "pay at the clinic". Paying creates a Razorpay
+   order, opens Checkout, and verifies the signature server-side before
+   `BookingPayment` = paid and the appointment is **confirmed**. The appointment card
+   shows "paid ₹X online".
+
+Existing-patient services verify the phone first. "Existing" means a completed
+appointment or a treatment journey, and the slots shown are their surgeon's.
+
+**Abuse controls:** a honeypot field, IP rate limits on every step, signed tokens for
+the slot and the phone, and server-side re-checks of everything.
+
 ## Reschedule, status, holds
 
 - **Reschedule never edits the time in place.** The old row becomes `rescheduled`, its
@@ -360,6 +423,9 @@ Gated to `appointments.configure`. Every change is audited.
 | `app/(public)/a/[token]/` + `components/scheduling/PatientAppointment.tsx` | The patient's page + actions; `lib/publicPaths.ts` lets it past the login gate |
 | `components/scheduling/MessagesSetup.tsx` | Setup → Messages & reminders |
 | migration `20261008091247_scheduling_reminders` | `AppointmentMessageTemplate` (+ 7 seeded), `ReminderRule`, `AppointmentReminder`, `AppointmentType.selfServiceCutoffHours` |
+| `lib/scheduling/online.ts`, `otp.ts`, `lib/providers/razorpay.ts` | Online booking service, OTP, Razorpay |
+| `app/(public)/book/` (+ `embed.js`) + `components/scheduling/BookingWidget.tsx` | The widget |
+| migration `20261008095433_scheduling_online_booking` | `OtpChallenge`, `ConsentRecord`, `BookingPayment`, online fields on `AppointmentType` |
 | `lib/scheduling/leave.ts` | Request / approve / reject / withdraw leave, emergency |
 | `lib/scheduling/conflicts.ts` | Conflict detection, rebooking cases, suggestions, apply, escalation, closures |
 | `lib/scheduling/notify.ts` | Messaging a patient about a change (WhatsApp today; 2.4 extends it) |
@@ -386,6 +452,8 @@ Gated to `appointments.configure`. Every change is audited.
 | `scheduling.remindersEnabled` | **off** | Sending reminders at all |
 | `scheduling.selfServiceLinks` | on | The patient link can change the appointment |
 | `scheduling.quietStartHour` / `quietEndHour` | 21 / 8 | Reminder quiet hours (IST) |
+| `scheduling.onlineBooking` | on | The /book widget (nothing shows until a type is online-bookable) |
+| `scheduling.onlineMinNoticeHours` / `onlineMaxDays` / `onlineHoldMinutes` | 3 / 90 / 10 | Online lead time and hold |
 
 Environment for 2.4 (all optional; each channel stays off without its own):
 `APP_BASE_URL`, `PLIVO_SMS_SENDER` + `PLIVO_DLT_ENTITY_ID`, and `SES_REGION` +
@@ -416,6 +484,14 @@ Environment for 2.4 (all optional; each channel stays off without its own):
 - **Before go-live, reminders need:** approved WhatsApp templates for each message
   (Meta), DLT sender/entity/template ids for SMS (Jatin), and SES for email. Then the
   clinic switches "Send appointment reminders" on.
+- **Online booking needs an OTP channel in production:** `WHATSAPP_OTP_TEMPLATE` (a
+  Meta-approved authentication template), or DLT SMS. Until then `/book` says "call the
+  clinic".
+- **No CAPTCHA yet:** honeypot + rate limits + OTP only. Turnstile can be added if bots
+  appear.
+- **Prepayment doesn't reach billing (3.4) yet.** It's recorded on the appointment, not
+  invoiced. Refunds happen in the Razorpay dashboard.
+- **The intake-form link (2.7) isn't sent at booking yet.**
 - **No PDF attachment.** The 7-day surgery email carries the checklist as text (the
   type's preparation instructions), not as a PDF.
 - **Rebooking messages (2.9) are still free text**, so they only reach a patient inside

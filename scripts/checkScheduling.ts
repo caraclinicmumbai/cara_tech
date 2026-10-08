@@ -535,6 +535,7 @@ async function dbChecks() {
   const extraTypes: string[] = [];
   const extraResources: string[] = [];
   const extraBranches: string[] = [];
+  const extraLeads: string[] = [];
 
   try {
     await check("12 simultaneous bookings of one room → exactly one wins", async () => {
@@ -838,6 +839,122 @@ async function dbChecks() {
       assert.equal(pending, 0);
     });
 
+    // §2.3 — online booking end to end (dev OTP path; WhatsApp is blanked above).
+    const online = await import("../lib/scheduling/online");
+    const otp = await import("../lib/scheduling/otp");
+    const onType = await prisma.appointmentType.create({
+      data: {
+        name: `${tag} online consult`,
+        durationMin: 30,
+        onlineBookable: true,
+        requirements: { create: [{ kind: "doctor" }, { kind: "room", subtype: "online-room" }] },
+        reminderRules: { create: [{ kind: "on_booking", templateId: conf.id, channels: ["whatsapp"] }] },
+      },
+    });
+    extraTypes.push(onType.id);
+    const onRoom = await prisma.resource.create({ data: { kind: "room", subtype: "online-room", name: `${tag} online room`, branchId: branch.id } });
+    const onDr1 = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} online dr 1` } });
+    const onDr2 = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} online dr 2` } });
+    extraResources.push(onRoom.id, onDr1.id, onDr2.id);
+    const phone = `+91987${String(Date.now()).slice(-7)}`;
+
+    await check("'any doctor' merges slots and each carries its named doctor; overbooking times are never offered", async () => {
+      // Dr 1 busy 11:00 (same branch) — online must not offer Dr 1 at 11:00 (it'd need an ack).
+      await bookAppointment({ leadId: lead.id, branchId: branch.id, typeId: anyRoom.id, resourceIds: [onDr1.id], startAt: at(11 * 60), acknowledgeWarnings: true }, actor);
+      const slots = await online.onlineSlots({ typeId: onType.id, branchId: branch.id, doctorId: "any", dateKey });
+      assert.ok(slots.length > 0);
+      assert.ok(slots.every((x) => x.doctorId));
+      const eleven = slots.find((x) => x.startAt === at(11 * 60).toISOString());
+      assert.ok(!eleven || eleven.doctorId !== onDr1.id, "Dr 1 is busy at 11:00 and must not be offered then");
+      const only1 = await online.onlineSlots({ typeId: onType.id, branchId: branch.id, doctorId: onDr1.id, dateKey });
+      assert.ok(!only1.some((x) => x.startAt === at(11 * 60).toISOString()));
+    });
+
+    let holdTok = "";
+    await check("holding a slot creates a tentative booking on the hidden placeholder, not a patient", async () => {
+      const h = await online.holdSlot({ typeId: onType.id, branchId: branch.id, doctorId: onDr2.id, startAt: at(16 * 60).toISOString() });
+      assert.ok(h.ok, !h.ok ? h.error : "");
+      holdTok = h.ok ? h.holdToken : "";
+      const id = holdTok.split(".")[0];
+      const a = await prisma.appointment.findUniqueOrThrow({ where: { id }, include: { lead: true } });
+      assert.equal(a.status, "tentative");
+      assert.ok(a.lead.deletedAt, "the placeholder is hidden");
+      const again = await online.holdSlot({ typeId: onType.id, branchId: branch.id, doctorId: onDr2.id, startAt: at(16 * 60).toISOString() });
+      assert.equal(again.ok, false, "the same slot can't be held twice");
+    });
+
+    let verified = "";
+    await check("OTP: wrong code refused, right code gives a verified-phone token", async () => {
+      const sent = await otp.issueOtp(phone, "online_booking", "127.0.0.1");
+      assert.ok(sent.ok && sent.devCode, "dev channel returns the code outside production");
+      const bad = await otp.verifyOtp(phone, "online_booking", sent.ok && sent.devCode === "000000" ? "111111" : "000000");
+      assert.equal(bad.ok, false);
+      const good = await otp.verifyOtp(phone, "online_booking", sent.ok ? sent.devCode! : "");
+      assert.ok(good.ok);
+      verified = good.ok ? good.token : "";
+      assert.equal(otp.readVerified(verified, "online_booking"), phone.replace(/\s/g, ""));
+      assert.equal(otp.readVerified(verified, "intake_form"), null, "a token is only good for its purpose");
+    });
+
+    await check("completing creates the patient (UTM source + campaign), both consents, and starts reminders", async () => {
+      const r = await online.completeBooking({
+        holdToken: holdTok,
+        phone: otp.readVerified(verified, "online_booking")!,
+        name: "Priya Test",
+        email: "priya@example.com",
+        consentMessages: true,
+        consentMarketing: false,
+        utm: { source: "instagram", campaign: "Campaign X" },
+      });
+      assert.ok(r.ok && r.done, !r.ok ? r.error : "");
+      const a = await prisma.appointment.findUniqueOrThrow({ where: { id: holdTok.split(".")[0] }, include: { lead: { include: { consents: true } } } });
+      assert.equal(a.status, "booked");
+      assert.equal(a.lead.source, "instagram");
+      assert.equal(a.lead.campaign, "Campaign X");
+      assert.equal(a.lead.stage, "appointment_scheduled");
+      const consents = Object.fromEntries(a.lead.consents.map((c) => [c.purpose, c.granted]));
+      assert.deepEqual(consents, { appointment_messages: true, marketing: false });
+      assert.ok((await prisma.appointmentReminder.count({ where: { appointmentId: a.id } })) >= 1);
+      extraLeads.push(a.leadId);
+    });
+
+    await check("the same phone booking again links to the existing patient (no duplicate)", async () => {
+      const h = await online.holdSlot({ typeId: onType.id, branchId: branch.id, doctorId: onDr2.id, startAt: at(17 * 60).toISOString() });
+      assert.ok(h.ok);
+      const r = await online.completeBooking({ holdToken: h.ok ? h.holdToken : "", phone: otp.readVerified(verified, "online_booking")!, name: "Priya T", consentMessages: true, consentMarketing: false });
+      assert.ok(r.ok && r.done);
+      const n = await prisma.lead.count({ where: { phone: { contains: phone.slice(-10) }, deletedAt: null } });
+      assert.equal(n, 1);
+    });
+
+    await check("booking needs the appointment-messages consent", async () => {
+      const h = await online.holdSlot({ typeId: onType.id, branchId: branch.id, doctorId: onDr2.id, startAt: at(18 * 60).toISOString() });
+      assert.ok(h.ok);
+      const r = await online.completeBooking({ holdToken: h.ok ? h.holdToken : "", phone, name: "X", consentMessages: false, consentMarketing: true });
+      assert.equal(r.ok, false);
+      if (h.ok) await online.releaseHold(h.holdToken);
+    });
+
+    await check("existing-patients-only services refuse a phone with no history", async () => {
+      await prisma.appointmentType.update({ where: { id: onType.id }, data: { onlineAudience: "existing" } });
+      const h = await online.holdSlot({ typeId: onType.id, branchId: branch.id, doctorId: onDr2.id, startAt: at(18 * 60 + 30).toISOString() });
+      assert.ok(h.ok);
+      const r = await online.completeBooking({ holdToken: h.ok ? h.holdToken : "", phone: "+919000000999", name: "New Person", consentMessages: true, consentMarketing: false });
+      assert.equal(r.ok, false);
+      assert.match(!r.ok ? r.error : "", /existing patients/);
+      await prisma.appointmentType.update({ where: { id: onType.id }, data: { onlineAudience: "anyone" } });
+      if (h.ok) await online.releaseHold(h.holdToken);
+    });
+
+    await check("an expired hold can't be completed", async () => {
+      const h = await online.holdSlot({ typeId: onType.id, branchId: branch.id, doctorId: onDr2.id, startAt: at(19 * 60).toISOString() });
+      assert.ok(h.ok);
+      const id = h.ok ? h.holdToken.split(".")[0] : "";
+      await prisma.appointment.update({ where: { id }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
+      const r = await online.completeBooking({ holdToken: h.ok ? h.holdToken : "", phone, name: "Late", consentMessages: true, consentMarketing: false });
+      assert.equal(r.ok, false);
+    });
+
     await check("every write left an audit row", async () => {
       const ids = (await prisma.appointment.findMany({ where: { typeId: type.id }, select: { id: true } })).map((a) => a.id);
       const n = await prisma.auditLog.count({ where: { entityType: "appointment", entityId: { in: ids } } });
@@ -847,7 +964,7 @@ async function dbChecks() {
     await prisma.appointment.deleteMany({ where: { typeId: { in: [type.id, ...extraTypes] } } });
     await prisma.appointmentType.deleteMany({ where: { id: { in: [type.id, ...extraTypes] } } });
     await prisma.resource.deleteMany({ where: { id: { in: [room.id, doctor.id, ...extraResources] } } });
-    await prisma.lead.delete({ where: { id: lead.id } });
+    await prisma.lead.deleteMany({ where: { id: { in: [lead.id, ...extraLeads] } } });
     await prisma.branch.deleteMany({ where: { id: { in: [branch.id, ...extraBranches] } } });
     await prisma.$disconnect();
   }

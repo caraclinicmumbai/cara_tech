@@ -219,12 +219,36 @@ export type BookingInput = {
   /// Create as a tentative hold (online booking) that lapses after `holdMinutes`.
   holdMinutes?: number | null;
   allowPast?: boolean;
+  /// An online hold (§2.3): placed BEFORE the patient is known, so it's held against
+  /// the hidden placeholder lead (onlineHoldLeadId) and moved to the real patient when
+  /// they verify their phone. Requires holdMinutes.
+  onlineHold?: boolean;
   /// Book over a clash on a consultation room (§2.1.c). The CALLER must have checked
   /// `appointments.override`; a reason is required and recorded.
   override?: { reason: string } | null;
   quoteId?: string | null;
   journeyId?: string | null;
 };
+
+/// The one hidden lead every online hold is parked on until the patient is known
+/// (§2.3). Soft-deleted, so it never appears in a list, a report or a call queue.
+export async function onlineHoldLeadId(): Promise<string> {
+  const existing = await prisma.lead.findFirst({ where: { externalId: "system:online-hold", source: "web_form" }, select: { id: true } });
+  if (existing) return existing.id;
+  const created = await prisma.lead.create({
+    data: {
+      name: "Online booking (slot held)",
+      phone: "+910000000000",
+      source: "web_form",
+      externalId: "system:online-hold",
+      status: "manual_followup",
+      deletedAt: new Date(),
+      deletedBy: "system",
+    },
+    select: { id: true },
+  });
+  return created.id;
+}
 
 /// Reminders follow the appointment (§2.4): best-effort, after the commit, and never
 /// able to fail the booking itself. Imported lazily — reminders.ts imports this file.
@@ -291,7 +315,10 @@ export async function bookAppointment(input: BookingInput, actor: Actor): Promis
   const t = await typeWithRequirements(prisma, input.typeId);
   if (!t) return { ok: false, error: "Unknown appointment type" };
   if (!t.type.active) return { ok: false, error: `${t.type.name} is no longer bookable` };
-  const lead = await prisma.lead.findFirst({ where: { id: input.leadId, deletedAt: null }, select: { id: true } });
+  if (input.onlineHold && !input.holdMinutes) return { ok: false, error: "An online hold needs a hold time" };
+  const lead = input.onlineHold
+    ? { id: await onlineHoldLeadId() }
+    : await prisma.lead.findFirst({ where: { id: input.leadId, deletedAt: null }, select: { id: true } });
   if (!lead) return { ok: false, error: "Patient not found" };
 
   const toggles = await loadToggles();
@@ -329,7 +356,7 @@ export async function bookAppointment(input: BookingInput, actor: Actor): Promis
       const hold = input.holdMinutes ? new Date(Date.now() + input.holdMinutes * MINUTE_MS) : null;
       const appt = await tx.appointment.create({
         data: {
-          leadId: input.leadId,
+          leadId: lead.id,
           branchId: input.branchId,
           typeId: input.typeId,
           startAt: input.startAt,

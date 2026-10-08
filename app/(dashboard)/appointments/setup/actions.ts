@@ -559,6 +559,11 @@ export type AppointmentTypeInput = {
   prepInstructions?: string | null;
   color?: string | null;
   requirements: RequirementInput[];
+  /// §2.3 — anyone | existing (patients already treated); fee; prepay discount.
+  onlineAudience?: string;
+  onlineFee?: number | string | null;
+  onlinePrepay?: boolean;
+  prepayDiscountPct?: number | string | null;
 };
 
 function normaliseType(input: AppointmentTypeInput) {
@@ -581,9 +586,22 @@ function normaliseType(input: AppointmentTypeInput) {
       quantity: clean(r.resourceId) ? 1 : quantity,
     });
   }
+  const fee = input.onlineFee === null || input.onlineFee === undefined || String(input.onlineFee).trim() === "" ? null : Math.round(Number(input.onlineFee));
+  if (fee !== null && (!Number.isFinite(fee) || fee < 0 || fee > 1_000_000)) return { ok: false as const, error: "Fee must be a rupee amount" };
+  const disc = input.prepayDiscountPct === null || input.prepayDiscountPct === undefined || String(input.prepayDiscountPct).trim() === "" ? null : Math.round(Number(input.prepayDiscountPct));
+  if (disc !== null && (!Number.isFinite(disc) || disc < 0 || disc > 90)) return { ok: false as const, error: "Discount must be 0–90%" };
+  const audience = input.onlineAudience === "existing" ? "existing" : "anyone";
+  // §2.3.b: online prepayment is for consultations only — new-patient types, with a fee.
+  if (input.onlinePrepay && (audience !== "anyone" || !fee)) {
+    return { ok: false as const, error: "Online prepayment is for consultations (open to new patients) with a fee set" };
+  }
   return {
     ok: true as const,
     data: {
+      onlineAudience: audience,
+      onlineFee: fee,
+      onlinePrepay: !!input.onlinePrepay,
+      prepayDiscountPct: disc,
       name,
       code: clean(input.code),
       category: clean(input.category),
