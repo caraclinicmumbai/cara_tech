@@ -24,9 +24,11 @@ import {
   ENFORCE_BRANCH_HOURS,
   ENFORCE_STAFF_ROSTERS,
   REQUIRE_SUPPORT_STAFF,
+  BLOCK_EQUIPMENT,
 } from "@/lib/scheduling/toggles";
 import {
   evaluateSlot,
+  explainDay,
   findSlots as engineFindSlots,
   type DayContext,
   type EngineResource,
@@ -37,6 +39,7 @@ import {
 } from "@/lib/scheduling/engine";
 import { branchDay } from "@/lib/scheduling/hours";
 import { istDateKey, istInstant, weekdayOfKey, MINUTE_MS } from "@/lib/scheduling/time";
+import type { SlotResult } from "@/lib/scheduling/engine";
 import {
   canTransition,
   isAppointmentStatus,
@@ -54,20 +57,22 @@ export type Actor = { id?: string | null; email?: string | null };
 
 export type BookingResult =
   | { ok: true; appointmentId: string; warnings: Issue[] }
-  | { ok: false; error: string; issues?: Issue[]; needsAck?: boolean };
+  | { ok: false; error: string; issues?: Issue[]; needsAck?: boolean; overridable?: boolean; justTaken?: boolean };
 
 export async function schedulingEnabled(): Promise<boolean> {
   return getBoolSetting(SCHEDULING_ENABLED);
 }
 
 export async function loadToggles(): Promise<EngineToggles> {
-  const [allowDoctorDoubleBooking, enforceBranchHours, enforceStaffRosters, requireSupportStaff] = await Promise.all([
-    getBoolSetting(ALLOW_DOCTOR_DOUBLE_BOOKING),
-    getBoolSetting(ENFORCE_BRANCH_HOURS),
-    getBoolSetting(ENFORCE_STAFF_ROSTERS),
-    getBoolSetting(REQUIRE_SUPPORT_STAFF),
-  ]);
-  return { allowDoctorDoubleBooking, enforceBranchHours, enforceStaffRosters, requireSupportStaff };
+  const [allowDoctorDoubleBooking, enforceBranchHours, enforceStaffRosters, requireSupportStaff, blockEquipment] =
+    await Promise.all([
+      getBoolSetting(ALLOW_DOCTOR_DOUBLE_BOOKING),
+      getBoolSetting(ENFORCE_BRANCH_HOURS),
+      getBoolSetting(ENFORCE_STAFF_ROSTERS),
+      getBoolSetting(REQUIRE_SUPPORT_STAFF),
+      getBoolSetting(BLOCK_EQUIPMENT),
+    ]);
+  return { allowDoctorDoubleBooking, enforceBranchHours, enforceStaffRosters, requireSupportStaff, blockEquipment };
 }
 
 /// Every resource that could take part in a booking at this branch: its own rooms and
@@ -126,6 +131,7 @@ export async function loadDayContext(
       branchId: r.branchId,
       active: r.active,
       sortOrder: r.sortOrder,
+      allowOverride: r.kind === "room" && r.allowOverride,
       hasRoster: r.schedules.length > 0,
       rosterHere: r.schedules
         .filter((s) => s.branchId === branchId && s.weekday === weekday)
@@ -171,9 +177,28 @@ export type BookingInput = {
   /// Create as a tentative hold (online booking) that lapses after `holdMinutes`.
   holdMinutes?: number | null;
   allowPast?: boolean;
+  /// Book over a clash on a consultation room (§2.1.c). The CALLER must have checked
+  /// `appointments.override`; a reason is required and recorded.
+  override?: { reason: string } | null;
   quoteId?: string | null;
   journeyId?: string | null;
 };
+
+/// Turn a refused evaluation into the answer the form needs. `before` is the same
+/// evaluation run BEFORE taking the locks: if that was fine and the locked one isn't,
+/// somebody else booked those resources in the meantime — say so plainly (§2.1 "the
+/// other is told the slot was just taken") rather than listing a clash the person
+/// booking never saw.
+function refusal(result: SlotResult, before: SlotResult | null, ack: string): BookingResult {
+  const blocks = result.issues.filter((i) => i.severity === "block");
+  if (blocks.length && before?.ok) {
+    return { ok: false, error: "That slot was just taken by another booking — please pick another time.", issues: result.issues, justTaken: true };
+  }
+  if (blocks.length) {
+    return { ok: false, error: blocks[0].message, issues: result.issues, overridable: result.overridable };
+  }
+  return { ok: false, error: ack, issues: result.issues, needsAck: true };
+}
 
 /// What would happen if this were booked — the same evaluation booking runs, without
 /// writing or locking. For the booking form to show warnings before the click.
@@ -219,20 +244,28 @@ export async function bookAppointment(input: BookingInput, actor: Actor): Promis
   const holdUntil = new Date(endAt.getTime() + t.type.bufferAfterMin * MINUTE_MS);
   const dateKey = istDateKey(input.startAt);
   const chosen = input.resourceIds ?? [];
+  const overrideReason = input.override?.reason?.trim() || null;
+  if (input.override && !overrideReason) return { ok: false, error: "An override needs a reason" };
+  const slot = {
+    startAt: input.startAt,
+    endAt,
+    holdUntil,
+    requirements: t.requirements,
+    chosenIds: chosen,
+    allowPast: input.allowPast,
+    override: !!overrideReason,
+  };
 
   try {
+    // Unlocked first look — only used to tell "just taken" apart from "never free".
+    const preIds = await candidateResourceIds(prisma, input.branchId, chosen);
+    const before = evaluateSlot(await loadDayContext(prisma, input.branchId, dateKey, preIds, toggles), slot);
+
     const outcome = await prisma.$transaction(async (tx) => {
       const ids = await candidateResourceIds(tx, input.branchId, chosen);
       await lockResources(tx, ids);
       const ctx = await loadDayContext(tx, input.branchId, dateKey, ids, toggles);
-      const result = evaluateSlot(ctx, {
-        startAt: input.startAt,
-        endAt,
-        holdUntil,
-        requirements: t.requirements,
-        chosenIds: chosen,
-        allowPast: input.allowPast,
-      });
+      const result = evaluateSlot(ctx, slot);
       if (!result.ok) return { ok: false as const, result };
       if (result.needsAck && !input.acknowledgeWarnings) return { ok: false as const, result };
 
@@ -250,6 +283,9 @@ export async function bookAppointment(input: BookingInput, actor: Actor): Promis
           bookedById: actor.id ?? null,
           holdExpiresAt: hold,
           doctorOverbooked: result.issues.some((i) => i.code === "doctor_overbooked"),
+          ...(result.issues.some((i) => i.code === "room_overridden")
+            ? { overrideReason, overriddenById: actor.id ?? null }
+            : {}),
           quoteId: input.quoteId ?? null,
           journeyId: input.journeyId ?? null,
           resources: {
@@ -261,17 +297,14 @@ export async function bookAppointment(input: BookingInput, actor: Actor): Promis
       return { ok: true as const, id: appt.id, result };
     });
 
-    if (!outcome.ok) {
-      const blocks = outcome.result.issues.filter((i) => i.severity === "block");
-      return blocks.length
-        ? { ok: false, error: blocks[0].message, issues: outcome.result.issues }
-        : { ok: false, error: "Please confirm the warnings to book", issues: outcome.result.issues, needsAck: true };
-    }
+    if (!outcome.ok) return refusal(outcome.result, before, "Please confirm the warnings to book");
 
+    const overridden = outcome.result.issues.filter((i) => i.code === "room_overridden");
     await writeAudit({
       actorId: actor.id,
       actorEmail: actor.email,
-      action: "appointment.book",
+      action: overridden.length ? "appointment.book.override" : "appointment.book",
+      reason: overridden.length ? overrideReason : null,
       entityType: "appointment",
       entityId: outcome.id,
       newValue: `${t.type.name} @ ${input.startAt.toISOString()}`,
@@ -307,7 +340,7 @@ export async function rescheduleAppointment(id: string, input: RescheduleInput, 
 
   const old = await prisma.appointment.findUnique({
     where: { id },
-    include: { resources: { where: { blocking: true }, select: { resourceId: true } } },
+    include: { resources: { where: { blocking: true }, select: { resourceId: true, resource: { select: { kind: true } } } } },
   });
   if (!old) return { ok: false, error: "Appointment not found" };
   if (!RESCHEDULABLE.includes(old.status as AppointmentStatus)) {
@@ -321,11 +354,25 @@ export async function rescheduleAppointment(id: string, input: RescheduleInput, 
   const duration = input.durationMin ?? Math.round((old.endAt.getTime() - old.startAt.getTime()) / MINUTE_MS);
   const endAt = new Date(input.startAt.getTime() + duration * MINUTE_MS);
   const holdUntil = new Date(endAt.getTime() + t.type.bufferAfterMin * MINUTE_MS);
-  // Keep the same people/rooms unless told otherwise — "same doctor, Thursday instead".
-  const chosen = input.resourceIds ?? old.resources.map((r) => r.resourceId);
+  // Keep the patient's chosen SURGEON (§2.1.d) unless told otherwise; everything else —
+  // rooms, the OT team, machines — is re-allocated from scratch for the new time
+  // (§2.1 "rescheduling never assumes the old resources are still valid").
+  const chosen = input.resourceIds ?? old.resources.filter((r) => r.resource.kind === "doctor").map((r) => r.resourceId);
   const dateKey = istDateKey(input.startAt);
 
   try {
+    const rescheduleSlot = {
+      startAt: input.startAt,
+      endAt,
+      holdUntil,
+      requirements: t.requirements,
+      chosenIds: chosen,
+      ignoreAppointmentIds: [id], // its own current slot is about to be freed
+      allowPast: input.allowPast,
+    };
+    const preIds = await candidateResourceIds(prisma, branchId, chosen);
+    const before = evaluateSlot(await loadDayContext(prisma, branchId, dateKey, preIds, toggles), rescheduleSlot);
+
     const outcome = await prisma.$transaction(async (tx) => {
       const ids = await candidateResourceIds(tx, branchId, chosen);
       await lockResources(tx, ids);
@@ -334,15 +381,7 @@ export async function rescheduleAppointment(id: string, input: RescheduleInput, 
         return { ok: false as const, result: null, error: "The appointment changed while you were editing it" };
       }
       const ctx = await loadDayContext(tx, branchId, dateKey, ids, toggles);
-      const result = evaluateSlot(ctx, {
-        startAt: input.startAt,
-        endAt,
-        holdUntil,
-        requirements: t.requirements,
-        chosenIds: chosen,
-        ignoreAppointmentIds: [id], // its own current slot is about to be freed
-        allowPast: input.allowPast,
-      });
+      const result = evaluateSlot(ctx, rescheduleSlot);
       if (!result.ok || (result.needsAck && !input.acknowledgeWarnings)) return { ok: false as const, result };
 
       const now = new Date();
@@ -379,10 +418,7 @@ export async function rescheduleAppointment(id: string, input: RescheduleInput, 
 
     if (!outcome.ok) {
       if (!outcome.result) return { ok: false, error: "The appointment changed while you were editing it" };
-      const blocks = outcome.result.issues.filter((i) => i.severity === "block");
-      return blocks.length
-        ? { ok: false, error: blocks[0].message, issues: outcome.result.issues }
-        : { ok: false, error: "Please confirm the warnings to reschedule", issues: outcome.result.issues, needsAck: true };
+      return refusal(outcome.result, before, "Please confirm the warnings to reschedule");
     }
 
     await writeAudit({
@@ -505,4 +541,64 @@ export async function findSlots(params: {
     excludeNeedsAck: params.excludeNeedsAck,
     istInstant,
   });
+}
+
+export type DayAvailability = {
+  dateKey: string;
+  slots: { startAt: string; endAt: string; needsAck: boolean; warnings: string[] }[];
+  /// Why nothing is offered, when nothing is (§2.1 "shows the front desk why").
+  reasons: string[];
+};
+
+/// Find a slot (§2.1 worked example): the requested day — its slots, or why there are
+/// none — and, when it has none, the next day within `searchDays` that does.
+export async function searchAvailability(params: {
+  branchId: string;
+  typeId: string;
+  dateKey: string;
+  doctorId?: string | null;
+  stepMin?: number;
+  searchDays?: number;
+}): Promise<{ ok: true; requested: DayAvailability; next: DayAvailability | null } | { ok: false; error: string }> {
+  const t = await typeWithRequirements(prisma, params.typeId);
+  if (!t) return { ok: false, error: "Unknown appointment type" };
+  const needsDoctor = t.requirements.some((r) => r.kind === "doctor" && !r.resourceId);
+  if (needsDoctor && !params.doctorId) return { ok: false, error: "Choose the doctor — patients book a specific surgeon" };
+
+  const toggles = await loadToggles();
+  const chosen = params.doctorId ? [params.doctorId] : [];
+  const ids = await candidateResourceIds(prisma, params.branchId, chosen);
+  const opts = {
+    durationMin: t.type.durationMin,
+    bufferAfterMin: t.type.bufferAfterMin,
+    requirements: t.requirements,
+    chosenIds: chosen,
+    stepMin: params.stepMin ?? 15,
+    istInstant,
+  };
+
+  const day = async (dateKey: string): Promise<DayAvailability> => {
+    const ctx = await loadDayContext(prisma, params.branchId, dateKey, ids, toggles);
+    const slots = engineFindSlots(ctx, opts);
+    return {
+      dateKey,
+      slots: slots.map((s) => ({
+        startAt: s.startAt.toISOString(),
+        endAt: s.endAt.toISOString(),
+        needsAck: s.needsAck,
+        warnings: s.warnings.filter((w) => w.severity === "warn").map((w) => w.message),
+      })),
+      reasons: slots.length ? [] : explainDay(ctx, opts),
+    };
+  };
+
+  const requested = await day(params.dateKey);
+  if (requested.slots.length) return { ok: true, requested, next: null };
+
+  const start = istInstant(params.dateKey, 12 * 60);
+  for (let i = 1; i <= (params.searchDays ?? 14); i++) {
+    const d = await day(istDateKey(new Date(start.getTime() + i * 86_400_000)));
+    if (d.slots.length) return { ok: true, requested, next: d };
+  }
+  return { ok: true, requested, next: null };
 }

@@ -51,6 +51,7 @@ const NEW_CAPABILITIES: Capability[] = [
   "appointments.book",
   "appointments.checkin",
   "appointments.configure",
+  "appointments.override",
 ];
 
 /// Every capability that now gates a top-level route. A customised role missing one of

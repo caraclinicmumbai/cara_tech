@@ -31,6 +31,7 @@ type ResourceView = {
   userLabel: string | null;
   notes: string | null;
   active: boolean;
+  allowOverride: boolean;
   roster: RosterRowInput[];
   timeOff: { id: string; start: string; end: string; reason: string | null; source: string }[];
 };
@@ -71,6 +72,17 @@ function ResourceFields({
           <option key={b.id} value={b.id}>{b.name}</option>
         ))}
       </select>
+      {data.kind === "room" && (
+        <label className="flex items-center gap-1.5 text-[12.5px] text-cara-muted" title="Consultation rooms only — never an OT">
+          <input
+            type="checkbox"
+            checked={!!data.allowOverride}
+            disabled={(data.subtype ?? "").trim().toLowerCase() === "ot"}
+            onChange={(e) => set({ allowOverride: e.target.checked })}
+          />
+          branch manager may override a clash
+        </label>
+      )}
       {isPerson(data.kind) && (
         <select className="cara-select w-auto!" value={data.userId ?? ""} onChange={(e) => set({ userId: e.target.value })}>
           <option value="">No staff login linked</option>
@@ -143,6 +155,7 @@ function ResourceCard({ r, branches, users }: { r: ResourceView; branches: Opt[]
     branchId: r.branchId ?? "",
     userId: r.userId ?? "",
     notes: r.notes ?? "",
+    allowOverride: r.allowOverride,
   });
   const { run, pending, msg } = useRun();
   const branchName = branches.find((b) => b.id === r.branchId)?.name;
@@ -154,6 +167,7 @@ function ResourceCard({ r, branches, users }: { r: ResourceView; branches: Opt[]
           <span className="tag tag-ink">{RESOURCE_KIND_LABELS[r.kind as ResourceKind] ?? r.kind}</span>
           <span className="font-medium text-cara-ink">{r.name}</span>
           {r.subtype && <span className="text-[12px] text-cara-muted">{r.subtype}</span>}
+          {r.allowOverride && <span className="tag tag-citric">override allowed</span>}
           <span className="text-[12px] text-cara-faint">· {branchName ?? "across branches"}</span>
           {r.userLabel && <span className="text-[12px] text-cara-faint">· login: {r.userLabel}</span>}
           {!r.active && <span className="tag tag-neutral">inactive</span>}

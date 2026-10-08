@@ -1319,20 +1319,23 @@ model BranchClosure {
 ///             between branches — leave it null, and say where they are on which day
 ///             with ResourceSchedule.
 model Resource {
-  id        String  @id @default(cuid())
-  kind      String
-  subtype   String?
-  name      String
-  branchId  String?
-  branch    Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  id            String  @id @default(cuid())
+  kind          String
+  subtype       String?
+  name          String
+  branchId      String?
+  branch        Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
   /// The staff login this doctor / staff member signs in as — so a doctor sees their
   /// own schedule. Unique: one person is one resource.
-  userId    String? @unique
-  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-  color     String?
-  notes     String?
-  active    Boolean @default(true)
-  sortOrder Int     @default(0)
+  userId        String? @unique
+  user          User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  color         String?
+  notes         String?
+  active        Boolean @default(true)
+  sortOrder     Int     @default(0)
+  /// Rooms only: a branch manager may override a clash on this room, with a logged
+  /// reason (§2.1.c — consultation rooms yes, OT never).
+  allowOverride Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1475,6 +1478,11 @@ model Appointment {
   /// acknowledged. Kept on the row (not only in the audit log) so utilisation and
   /// "how often do we overbook Dr X" are a query.
   doctorOverbooked Boolean @default(false)
+  /// A branch manager booked over a clash on a consultation room (§2.1.c). The reason
+  /// and who did it are kept on the row as well as in the audit log, so "how often do
+  /// we override, and who" is a query.
+  overrideReason   String?
+  overriddenById   String?
 
   rescheduledFromId String?      @unique
   rescheduledFrom   Appointment? @relation("AppointmentReschedule", fields: [rescheduledFromId], references: [id], onDelete: SetNull)

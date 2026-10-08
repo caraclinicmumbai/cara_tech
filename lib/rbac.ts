@@ -94,6 +94,9 @@ export const CAPABILITIES = [
   "appointments.book",
   "appointments.checkin",
   "appointments.configure",
+  // Book over a clash on a CONSULTATION room, with a logged reason (§2.1.c). Never
+  // applies to an OT or the OT team. Branch managers by default.
+  "appointments.override",
   "calls.view",
   "analytics.view",
   // Reports (§reports) — the management read-outs, split in two because they answer to
@@ -191,6 +194,7 @@ export const CAPABILITY_GROUPS: {
       { key: "appointments.book", label: "Book / reschedule / cancel" },
       { key: "appointments.checkin", label: "Check in / start / complete / no-show" },
       { key: "appointments.configure", label: "Configure hours, resources, types & flags" },
+      { key: "appointments.override", label: "Override a consultation-room clash" },
     ],
   },
   {
@@ -351,6 +355,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "appointments.book",
     "appointments.checkin",
     "appointments.configure",
+    "appointments.override",
   ],
   sales_head: [
     "leads.view",

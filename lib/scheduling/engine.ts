@@ -11,9 +11,15 @@
 // booking page can never disagree about what "free" means: there is one definition.
 //
 // Severity:
-//   block — the booking is refused.
-//   warn  — the booking may go ahead. A warn with `needsAck` (an overbooked doctor)
-//           goes ahead only when the person booking has acknowledged it.
+//   block — the booking is refused. A block marked `overridable` (a clash on a
+//           consultation room) can be overridden by a branch manager with a reason.
+//   warn  — the booking may go ahead. A warn with `needsAck` (an overbooked doctor or
+//           machine) goes ahead only when the person booking has acknowledged it.
+//
+// WHAT BLOCKS (spec §2.1, decided 2026-10-08): only ROOMS and the OT TEAM (support
+// staff) are hard-blocked. Doctors and equipment are tracked and warned about, never
+// blocked — unless the clinic flips the matching switch. And the doctor is always
+// NAMED (§2.1.d — patients book a specific surgeon): the engine never auto-picks one.
 import type { ResourceKind } from "@/lib/scheduling/status";
 import { istDateKey, istMinutes, overlaps, MINUTE_MS, minutesToHhmm } from "@/lib/scheduling/time";
 
@@ -27,6 +33,9 @@ export type EngineResource = {
   branchId: string | null;
   active: boolean;
   sortOrder: number;
+  /// Rooms only: a branch manager may override a clash on this room (consultation
+  /// rooms — §2.1.c). Never true for an OT.
+  allowOverride: boolean;
   /// Roster windows AT THIS BRANCH on this weekday. `hasRoster` says whether the person
   /// has a roster anywhere — someone with no roster at all is available whenever the
   /// branch is open; someone with a roster only inside it.
@@ -42,6 +51,7 @@ export type EngineToggles = {
   enforceBranchHours: boolean;
   enforceStaffRosters: boolean;
   requireSupportStaff: boolean;
+  blockEquipment: boolean;
 };
 
 export type DayContext = {
@@ -74,6 +84,9 @@ export type IssueCode =
   | "time_off"
   | "double_booked"
   | "doctor_overbooked"
+  | "equipment_overbooked"
+  | "room_overridden"
+  | "doctor_not_chosen"
   | "requirement_unfilled"
   | "unknown_resource";
 
@@ -84,6 +97,8 @@ export type Issue = {
   resourceId?: string;
   /// The booking may proceed only once someone acknowledges this warning.
   needsAck?: boolean;
+  /// A block that a branch manager may override with a reason (consultation room clash).
+  overridable?: boolean;
 };
 
 export type SlotRequest = {
@@ -99,12 +114,18 @@ export type SlotRequest = {
   ignoreAppointmentIds?: string[];
   /// Allow a start time in the past (back-dating a walk-in that's already here).
   allowPast?: boolean;
+  /// A branch manager is overriding clashes on overridable (consultation) rooms. The
+  /// caller checks the capability and records the reason; the engine only downgrades
+  /// those specific blocks to warnings.
+  override?: boolean;
   now?: Date;
 };
 
 export type SlotResult = {
   ok: boolean; // no block-level issue
   needsAck: boolean; // ok, but a warning must be acknowledged first
+  /// Not ok, but every block is overridable — a branch manager could book it.
+  overridable: boolean;
   resourceIds: string[]; // the full assignment (chosen + auto-filled)
   issues: Issue[];
 };
@@ -172,7 +193,13 @@ export function resourceIssues(ctx: DayContext, res: EngineResource, req: SlotRe
     if (overlaps(req.startAt, req.holdUntil, off.startAt, off.endAt)) {
       issues.push({
         code: "time_off",
-        severity: toggles.enforceStaffRosters || res.kind === "room" || res.kind === "equipment" ? "block" : "warn",
+        severity:
+          res.kind === "room" ||
+          (res.kind === "equipment" && toggles.blockEquipment) ||
+          ((res.kind === "doctor" || res.kind === "staff") && toggles.enforceStaffRosters)
+            ? "block"
+            : "warn",
+        needsAck: res.kind === "equipment" && !toggles.blockEquipment ? true : undefined,
         message: `${res.name} is unavailable${off.reason ? ` (${off.reason})` : ""}`,
         resourceId: res.id,
       });
@@ -180,8 +207,9 @@ export function resourceIssues(ctx: DayContext, res: EngineResource, req: SlotRe
     }
   }
 
-  // Already booked. THE rule: rooms, equipment and staff never double; doctors may,
-  // with an acknowledged warning, when the clinic allows it.
+  // Already booked. THE rule: rooms and the OT team never double. Doctors and
+  // equipment may, with an acknowledged warning, unless the clinic switched that off.
+  // A consultation room may be overridden by a branch manager.
   const ignore = new Set(req.ignoreAppointmentIds ?? []);
   const clash = ctx.busy.find(
     (b) => b.resourceId === res.id && !ignore.has(b.appointmentId) && overlaps(req.startAt, req.holdUntil, b.startAt, b.endAt),
@@ -194,6 +222,29 @@ export function resourceIssues(ctx: DayContext, res: EngineResource, req: SlotRe
         severity: "warn",
         needsAck: true,
         message: `${res.name} already has a patient ${span} — this double-books them`,
+        resourceId: res.id,
+      });
+    } else if (res.kind === "equipment" && !toggles.blockEquipment) {
+      issues.push({
+        code: "equipment_overbooked",
+        severity: "warn",
+        needsAck: true,
+        message: `${res.name} is already in use ${span}`,
+        resourceId: res.id,
+      });
+    } else if (res.kind === "room" && res.allowOverride && req.override) {
+      issues.push({
+        code: "room_overridden",
+        severity: "warn",
+        message: `${res.name} is already booked ${span} — overridden by a branch manager`,
+        resourceId: res.id,
+      });
+    } else if (res.kind === "room" && res.allowOverride) {
+      issues.push({
+        code: "double_booked",
+        severity: "block",
+        overridable: true,
+        message: `${res.name} is already booked ${span}`,
         resourceId: res.id,
       });
     } else {
@@ -266,8 +317,14 @@ export function evaluateSlot(ctx: DayContext, req: SlotRequest): SlotResult {
     }
     if (filled >= r.quantity) continue;
 
-    // 2. Auto-fill from the free pool. Only a resource with NOTHING in the way is
-    //    auto-picked — the system never silently picks an overbooked doctor.
+    // The doctor is always named by the person booking (§2.1.d) — never auto-picked.
+    if (r.kind === "doctor" && !r.resourceId) {
+      issues.push({ code: "doctor_not_chosen", severity: "block", message: "Choose the doctor" });
+      continue;
+    }
+
+    // 2. Auto-fill from the free pool — first choice is a resource with NOTHING in the
+    //    way, so a free machine always beats a busy one.
     const pool = [...ctx.resources.values()]
       .filter((res) => !used.has(res.id) && matches(res, r))
       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
@@ -276,6 +333,20 @@ export function evaluateSlot(ctx: DayContext, req: SlotRequest): SlotResult {
       if (resourceIssues(ctx, res, req).length > 0) continue;
       used.add(res.id);
       assigned.push(res.id);
+      filled++;
+    }
+    // 3. Nothing completely free: take one whose problems are only WARNINGS (a machine
+    //    already in use, when equipment isn't blocked) and surface those warnings, so
+    //    the booking needs an acknowledgement rather than being refused. A room or the
+    //    OT team can't get here — their clashes are always blocks.
+    for (const res of pool) {
+      if (filled >= r.quantity) break;
+      if (used.has(res.id)) continue;
+      const found = resourceIssues(ctx, res, req);
+      if (found.some((i) => i.severity === "block")) continue;
+      used.add(res.id);
+      assigned.push(res.id);
+      issues.push(...found);
       filled++;
     }
     if (filled < r.quantity) {
@@ -298,8 +369,15 @@ export function evaluateSlot(ctx: DayContext, req: SlotRequest): SlotResult {
     issues.push(...resourceIssues(ctx, res, req));
   }
 
-  const ok = !issues.some((i) => i.severity === "block");
-  return { ok, needsAck: ok && issues.some((i) => i.needsAck), resourceIds: assigned, issues };
+  const blocks = issues.filter((i) => i.severity === "block");
+  const ok = blocks.length === 0;
+  return {
+    ok,
+    needsAck: ok && issues.some((i) => i.needsAck),
+    overridable: !ok && blocks.every((i) => i.overridable),
+    resourceIds: assigned,
+    issues,
+  };
 }
 
 export type SlotOption = {
@@ -351,4 +429,53 @@ export function findSlots(
     }
   }
   return out;
+}
+
+/// Why a day offers no slot (§2.1 "shows the front desk why Saturday failed"). Walks
+/// the same start times findSlots does, collects the blocking reasons, and returns
+/// the distinct ones, most common first — "Needs 3 × technician — only 2 free",
+/// "OT-1 is already booked 08:00–16:45". Branch-level reasons (closed, holiday) come
+/// back alone, because nothing else matters on a closed day.
+export function explainDay(
+  ctx: DayContext,
+  opts: Parameters<typeof findSlots>[1],
+  limit = 4,
+): string[] {
+  const step = opts.stepMin ?? 15;
+  const windows = ctx.toggles.enforceBranchHours ? ctx.open : [{ startMin: 0, endMin: 24 * 60 }];
+  if (windows.length === 0) {
+    const closure = ctx.closures.find((c) => c.startMin === 0 && c.endMin >= 24 * 60);
+    return [closure ? `Branch closed: ${closure.reason}` : "The branch is closed on this day"];
+  }
+  const counts = new Map<string, number>();
+  let tried = 0;
+  for (const w of windows) {
+    for (let m = Math.ceil(w.startMin / step) * step; m + opts.durationMin <= w.endMin; m += step) {
+      const startAt = opts.istInstant(ctx.dateKey, m);
+      const endAt = new Date(startAt.getTime() + opts.durationMin * MINUTE_MS);
+      const holdUntil = new Date(endAt.getTime() + opts.bufferAfterMin * MINUTE_MS);
+      const r = evaluateSlot(ctx, {
+        startAt,
+        endAt,
+        holdUntil,
+        requirements: opts.requirements,
+        chosenIds: opts.chosenIds,
+        ignoreAppointmentIds: opts.ignoreAppointmentIds,
+        now: opts.now,
+      });
+      tried++;
+      for (const i of r.issues) {
+        if (i.severity !== "block") continue;
+        counts.set(i.message, (counts.get(i.message) ?? 0) + 1);
+      }
+    }
+  }
+  if (tried === 0) {
+    const hours = windows.map((w) => `${fmt(w.startMin)}–${fmt(w.endMin)}`).join(", ");
+    return [`Too long to fit in the branch's hours (${hours})`];
+  }
+  // "That time has already passed" is noise when the day still has other reasons.
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([msg]) => msg);
+  const useful = ranked.filter((m) => m !== "That time has already passed");
+  return (useful.length ? useful : ranked).slice(0, limit);
 }

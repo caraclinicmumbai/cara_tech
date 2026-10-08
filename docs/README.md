@@ -31,7 +31,7 @@ data model, integrations), then dip into the flow you care about.
 | 10 | [Quote lifecycle](flows/10-quote-lifecycle.md) | The commercial track: raise → price → revise → send → accept → convert, the money maths, the Open Quotes desk, and what locks on conversion |
 | 11 | [Inbound call routing](flows/11-inbound-call-routing.md) | Patients calling the published clinic number: sticky routing to their own counsellor, cover ladder, hold, voicemail |
 | 12 | [Reports](flows/12-reports.md) | The ten management read-outs: inflow, AI contact, handoff speed, counsellors, cost per lead/consultation/surgery, lost leads, treatment mix, lost quotes, multi-quote, repeat treatment — and the ad-spend import behind the cost figures |
-| 15 | [Appointments & scheduling](flows/15-appointments-scheduling.md) | Module 3.2: resources (doctor/room/equipment/staff), branch hours and holidays, appointment types, the no-double-booking engine and its locks, status lifecycle, setup screen. Phase A (foundation); calendar UI next |
+| 15 | [Appointments & scheduling](flows/15-appointments-scheduling.md) | Module 3.2: resources, branch hours and holidays, appointment types, the engine (rooms + OT team hard-block; doctors + equipment warn), locks, status lifecycle, setup screen, Find a slot. Phase A + Feature 2.1; calendar UI next |
 
 **Also:** [ElevenLabs agent ↔ CRM integration contract](elevenlabs-agent-integration.md) —
 what the AI first-call agent must emit (outcome, handover keys, callback time, tag,

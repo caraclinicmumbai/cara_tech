@@ -18,6 +18,7 @@ export const ALLOW_DOCTOR_DOUBLE_BOOKING = "scheduling.allowDoctorDoubleBooking"
 export const ENFORCE_BRANCH_HOURS = "scheduling.enforceBranchHours";
 export const ENFORCE_STAFF_ROSTERS = "scheduling.enforceStaffRosters";
 export const REQUIRE_SUPPORT_STAFF = "scheduling.requireSupportStaff";
+export const BLOCK_EQUIPMENT = "scheduling.blockEquipment";
 export const PATIENT_FLAGS_ENABLED = "scheduling.patientFlags";
 
 export const SCHEDULING_TOGGLES: SchedulingToggle[] = [
@@ -32,8 +33,15 @@ export const SCHEDULING_TOGGLES: SchedulingToggle[] = [
     key: ALLOW_DOCTOR_DOUBLE_BOOKING,
     label: "Allow doctors to be double-booked",
     description:
-      "On: booking a doctor who already has a patient at that time shows a warning that must be acknowledged, and the overbooking is recorded. Off: a doctor is blocked like a room. Rooms, equipment and support staff are never double-booked either way.",
+      "On: booking a doctor who already has a patient at that time shows a warning that must be acknowledged, and the overbooking is recorded. Off: a doctor is blocked like a room. Rooms and the OT team are never double-booked either way.",
     default: true,
+  },
+  {
+    key: BLOCK_EQUIPMENT,
+    label: "Block equipment like rooms",
+    description:
+      "Off (the clinic's choice, §2.1): a machine already in use or under maintenance shows a warning that must be acknowledged, but doesn't stop the booking. On: equipment is blocked like a room — no double-booking, no booking during downtime.",
+    default: false,
   },
   {
     key: ENFORCE_BRANCH_HOURS,
@@ -53,7 +61,7 @@ export const SCHEDULING_TOGGLES: SchedulingToggle[] = [
     key: REQUIRE_SUPPORT_STAFF,
     label: "Schedule support staff",
     description:
-      "On: appointment types that need technicians, nurses or an anaesthetist reserve them, and can't be booked when the team isn't free. Off: staff requirements are ignored.",
+      "On: appointment types that need the OT team (technicians, nurses, an anaesthetist) reserve them, and can't be booked when the team isn't free. Off: staff requirements are ignored.",
     default: true,
   },
   {

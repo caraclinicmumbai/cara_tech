@@ -171,6 +171,7 @@ async function ResourcesTab({ branches }: { branches: BranchOpt[] }) {
         userLabel: r.user ? (r.user.name ?? r.user.email) : null,
         notes: r.notes,
         active: r.active,
+        allowOverride: r.allowOverride,
         roster: r.schedules.map((s) => ({
           branchId: s.branchId,
           weekday: s.weekday,

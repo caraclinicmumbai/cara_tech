@@ -185,9 +185,13 @@ export type ResourceInput = {
   branchId?: string | null;
   userId?: string | null;
   notes?: string | null;
+  /// Rooms only: a branch manager may override a clash here (§2.1.c).
+  allowOverride?: boolean;
 };
 
-function normaliseResource(input: ResourceInput): { ok: true; data: Omit<ResourceInput, "kind"> & { kind: string } } | Result {
+function normaliseResource(
+  input: ResourceInput,
+): { ok: true; data: Omit<ResourceInput, "kind" | "allowOverride"> & { kind: string; allowOverride: boolean } } | Result {
   if (!isResourceKind(input.kind)) return { ok: false, error: "Pick what kind of resource this is" };
   const name = clean(input.name);
   if (!name) return { ok: false, error: "Give it a name" };
@@ -195,11 +199,18 @@ function normaliseResource(input: ResourceInput): { ok: true; data: Omit<Resourc
   if ((input.kind === "room" || input.kind === "equipment") && !branchId) {
     return { ok: false, error: `A ${RESOURCE_KIND_LABELS[input.kind].toLowerCase()} must belong to a branch` };
   }
+  const subtype = clean(input.subtype)?.toLowerCase() ?? null;
+  // §2.1.c: overrides are for consultation rooms. An OT can never be overridden, so
+  // the flag is refused there rather than trusted.
+  if (input.allowOverride && input.kind === "room" && subtype === "ot") {
+    return { ok: false, error: "An OT can't allow overrides — only consultation rooms can" };
+  }
   return {
     ok: true,
     data: {
       kind: input.kind,
-      subtype: clean(input.subtype)?.toLowerCase() ?? null,
+      subtype,
+      allowOverride: input.kind === "room" && !!input.allowOverride,
       name,
       branchId,
       userId: input.kind === "doctor" || input.kind === "staff" ? clean(input.userId) : null,

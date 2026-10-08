@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { auth, signOut } from "@/auth";
+import { schedulingEnabled } from "@/lib/scheduling/booking";
 import { can, isRole, ROLE_LABELS } from "@/lib/rbac";
 import type { SessionUser } from "@/lib/authz";
 import { unreadTotal } from "@/lib/whatsappInbox";
@@ -29,6 +30,8 @@ export default async function DashboardLayout({
   // Unread WhatsApp replies for the nav badge (§whatsapp inbox). Server-rendered so
   // the count is right on first paint; the inbox itself polls once open.
   const viewer = session?.user as SessionUser | undefined;
+  // Appointments (§3.2) — hidden from the menu while the module's master switch is off.
+  const schedulingOn = can(role, "appointments.view") ? await schedulingEnabled() : false;
   const waUnread = viewer && can(role, "leads.whatsapp") ? await unreadTotal(viewer) : 0;
 
   // Capabilities are resolved HERE, on the server, and only the permitted links
@@ -44,6 +47,7 @@ export default async function DashboardLayout({
         can(role, "leads.whatsapp") && { href: "/whatsapp", label: "WhatsApp", badge: waUnread },
         can(role, "quotes.view") && { href: "/quotes", label: "Open Quotes" },
         can(role, "postsales.view") && { href: "/post-sales", label: "Post-Sales" },
+        can(role, "appointments.view") && schedulingOn && { href: "/appointments", label: "Appointments" },
       ].filter(Boolean) as NavItem[],
     },
     {
