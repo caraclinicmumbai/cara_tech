@@ -41,7 +41,12 @@ export type EngineResource = {
   /// branch is open; someone with a roster only inside it.
   rosterHere: Window[];
   hasRoster: boolean;
-  timeOff: { startAt: Date; endAt: Date; reason: string | null }[];
+  /// Leave / downtime. `tentative` = requested, not yet approved (§2.9 — warns, doesn't
+  /// block).
+  timeOff: { startAt: Date; endAt: Date; reason: string | null; tentative?: boolean }[];
+  /// Visiting doctors (§2.9.e): bookable only between these IST dates, inclusive.
+  contractFrom?: string | null;
+  contractUntil?: string | null;
 };
 
 export type Busy = { resourceId: string; appointmentId: string; branchId: string; startAt: Date; endAt: Date };
@@ -86,6 +91,8 @@ export type IssueCode =
   | "wrong_branch"
   | "off_roster"
   | "time_off"
+  | "leave_requested"
+  | "contract"
   | "double_booked"
   | "doctor_overbooked"
   | "elsewhere"
@@ -193,9 +200,31 @@ export function resourceIssues(ctx: DayContext, res: EngineResource, req: SlotRe
     }
   }
 
+  // Visiting doctors: outside their contract dates they can't be booked at all (§2.9.e).
+  if ((res.contractFrom && ctx.dateKey < res.contractFrom) || (res.contractUntil && ctx.dateKey > res.contractUntil)) {
+    const span = `${res.contractFrom ?? "…"} to ${res.contractUntil ?? "…"}`;
+    issues.push({ code: "contract", severity: "block", message: `${res.name} is only available ${span}`, resourceId: res.id });
+  }
+
+  // Requested (not yet approved) leave warns — the booking needs a confirmation — but
+  // doesn't block (§2.9 "tentative leave").
+  for (const off of res.timeOff) {
+    if (off.tentative && overlaps(req.startAt, req.holdUntil, off.startAt, off.endAt)) {
+      issues.push({
+        code: "leave_requested",
+        severity: "warn",
+        needsAck: true,
+        message: `${res.name} has requested leave then${off.reason ? ` (${off.reason})` : ""} — not yet approved`,
+        resourceId: res.id,
+      });
+      break;
+    }
+  }
+
   // Leave / maintenance. Always at least a warning: a booking into someone's leave is
   // never something to do silently.
   for (const off of res.timeOff) {
+    if (off.tentative) continue;
     if (overlaps(req.startAt, req.holdUntil, off.startAt, off.endAt)) {
       issues.push({
         code: "time_off",

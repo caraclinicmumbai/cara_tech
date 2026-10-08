@@ -18,6 +18,7 @@ type Item = {
   title: string;
   body: string | null;
   leadId: string | null;
+  href?: string | null;
   read: boolean;
   createdAt: string;
 };
@@ -155,8 +156,9 @@ export function NotificationBell() {
                   </>
                 );
                 const className = "block w-full border-b-[0.5px] border-cara-rule px-3 py-2 text-left hover:bg-cara-surface";
-                return item.leadId ? (
-                  <Link key={item.id} href={`/leads/${item.leadId}`} onClick={() => openItem(item)} className={className}>
+                const href = item.href ?? (item.leadId ? `/leads/${item.leadId}` : null);
+                return href ? (
+                  <Link key={item.id} href={href} onClick={() => openItem(item)} className={className}>
                     {inner}
                   </Link>
                 ) : (

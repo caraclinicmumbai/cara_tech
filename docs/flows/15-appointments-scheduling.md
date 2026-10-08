@@ -12,6 +12,9 @@ recorded.
 > - **2.2 Branch & chain calendar:** the front-desk calendar with booking,
 >   rescheduling, check-in and the board; cross-branch doctor rosters; one-off changes;
 >   travel time; privacy across branches.
+> - **2.9 Doctor availability & leave sync:** leave requests and approval, emergency
+>   unavailability, visiting-doctor contract dates, the "needs rebooking" worklist with
+>   suggestions, and escalation.
 >
 > 2.5 (walk-in queue/tokens) and 2.6 (no-show tracking and waitlist) are **deferred**
 > by decision; see `docs/deferred-todo.md`.
@@ -36,6 +39,12 @@ recorded.
 | 2.2.b | Cross-branch visibility | Free/busy only ("Booked"): no patient, service, notes or flags for other branches. Exceptions: `appointments.viewAllBranches` (call centre, head office, branch managers) and a doctor's own appointments anywhere |
 | 2.2.c | Who books across branches | `appointments.bookAnyBranch`: telecaller (call centre), telecalling head, branch manager, sales head (+ admin). Front desk books at their home branch only |
 | 2.2.d | Moving equipment | Not built. Decided (Fahar, 2026-10-08): no transfer log while nothing moves. `Resource.branchId` already *is* the current branch, and every edit is audited (`scheduling.resource.update`), so a move today is an audited edit. A dedicated transfer log can be added if portable machines appear |
+| 2.9.a | Who owns the doctor's calendar | The doctor (or anyone linked to a resource) **requests** leave; head office (`appointments.approveLeave`: Sales Head + admin) **approves**. Managers can enter leave directly (approved) |
+| 2.9.b | Existing appointments | **Never** cancelled or moved automatically. They go to the "needs rebooking" list with suggestions; staff choose, and the patient is messaged (WhatsApp; SMS + reschedule link come with 2.4) and confirmed by call |
+| 2.9.c | Google/Outlook sync | Phase 2 (deferred) |
+| 2.9.d | Emergency same-day | "Mark unavailable now": blocks to midnight, cases opened as **urgent**, **Admin + Sales Head** alerted in-app and on Slack; rebook via WhatsApp + calls |
+| 2.9.e | Visiting doctors | Clinic admin enters contract dates on the resource (setup); the doctor can see their calendar. Outside the dates they can't be booked |
+| 2.9.f | Leave notice rules | Taken up with the HR module (3.8) |
 | — | Toggles | Global, not per branch |
 | — | Patient = ? | The **Lead**. Cara has no separate patient table |
 | — | Zenoti history | Not imported now. Build first, import after |
@@ -174,6 +183,61 @@ Booking moves the lead's stage forward to **appointment scheduled** (forward-onl
   date: a moved clinic day, a Sunday clinic, a split day.
 - Setup → Resources → One-off changes; Setup → Hours → Travel time.
 
+## Feature 2.9: doctor availability and leave sync
+
+**One source of truth per person.** The weekly roster (2.2), one-off changes, leave and
+contract dates all sit on the person's resource. The engine reads one calendar per
+person, so approved leave blocks them at **every** branch, and the online widget will
+never offer that time.
+
+**Leave** (`/appointments/leave`):
+- A doctor requests their own leave (type, dates, reason). Approvers get a bell entry
+  showing how many booked appointments fall inside.
+- **Requested** leave doesn't block. A booking inside it shows a warning that has to be
+  confirmed ("has requested leave — not yet approved").
+- **Approved** leave blocks. Every live appointment inside it becomes a rebooking case
+  (cause `leave`).
+- **Rejected** leave needs a note. **Withdrawing** approved leave re-checks its cases and
+  closes those that fit again.
+- **Emergency** (`markEmergency`): approved leave from now to midnight, urgent cases,
+  and an alert to admins and the Sales Head (bell + Slack).
+
+**What opens a rebooking case** (`lib/scheduling/conflicts.ts`):
+
+| Trigger | Cause |
+|---|---|
+| Leave approved / entered | `leave` |
+| Emergency | `emergency` |
+| Roster saved, one-off change removed | `roster` |
+| One-off change added | `exception` |
+| Room/machine downtime, resource retired | `downtime` |
+| Contract dates or branch changed on a resource | `contract` |
+| Holiday / blackout added over booked dates | `closure` |
+
+"Doesn't fit" is decided by re-running the booking engine on the appointment in place,
+with the people and rooms it holds. The reason shown is the engine's own message
+("Dr Asif is unavailable (conference)").
+
+**Needs rebooking** (`/appointments/rebooking`, `appointments.book`, own branch unless
+`bookAnyBranch`):
+- Each case shows patient (tap to call), appointment, reason, owner (the branch
+  manager), due time, and an urgent/overdue marker.
+- **Show options** suggests:
+  1. the same doctor's next free time at this branch, over the next three weeks;
+  2. another doctor at this branch at the same time;
+  3. the same doctor at another branch (earliest).
+- **Move & tell patient** reschedules and messages the patient: "Dr Asif is
+  unavailable on Tue 13 Oct. Your appointment has been moved to … Reply if this doesn't
+  work." The case goes to `proposed` and waits there until staff mark **Patient
+  confirmed**, or **Patient declined — call required**.
+- Also: **Resolved by phone** and **Dismiss** (dismiss needs a note).
+- **Due** is two days before the appointment (or two hours from now if it's sooner);
+  under 24 h it's **urgent**. The worker escalates overdue cases every 30 minutes, once:
+  owner, admins and Sales Head get a bell entry, and Slack gets a summary.
+
+**Bell links:** notifications can now carry an `href`, so leave requests and rebooking
+alerts open the right page rather than a lead.
+
 ## Reschedule, status, holds
 
 - **Reschedule never edits the time in place.** The old row becomes `rescheduled`, its
@@ -218,6 +282,11 @@ Gated to `appointments.configure`. Every change is audited.
 | `app/(dashboard)/appointments/` + `components/scheduling/SlotFinder.tsx` | Find a slot |
 | migration `20261008070455_scheduling_room_override` | `Resource.allowOverride`, `Appointment.overrideReason/overriddenById` |
 | migration `20261008074655_scheduling_cross_branch` | `ResourceScheduleException`, `BranchTravelTime` |
+| `lib/scheduling/leave.ts` | Request / approve / reject / withdraw leave, emergency |
+| `lib/scheduling/conflicts.ts` | Conflict detection, rebooking cases, suggestions, apply, escalation, closures |
+| `lib/scheduling/notify.ts` | Messaging a patient about a change (WhatsApp today; 2.4 extends it) |
+| `app/(dashboard)/appointments/leave/`, `…/rebooking/` | The two screens + their actions |
+| migration `20261008082550_scheduling_leave_sync` | leave status/kind/decision on `ResourceTimeOff`, contract dates on `Resource`, `RebookingCase`, `Notification.href` |
 | `lib/scheduling/calendar.ts` | Viewer + privacy, appointments for a range, day columns, week roster, summary |
 | `components/scheduling/desk/*` | The desk: shell/toolbar, views, booking drawer, appointment card |
 | `components/scheduling/*` | Setup tab components |
@@ -249,6 +318,7 @@ Gated to `appointments.configure`. Every change is audited.
 | `appointments.override` | branch manager (+ admin) |
 | `appointments.viewAllBranches` | telecaller, telecalling head, branch manager, sales head (+ admin) |
 | `appointments.bookAnyBranch` | telecaller, telecalling head, branch manager, sales head (+ admin) |
+| `appointments.approveLeave` | sales head (+ admin) |
 
 > **Run `npm run backfill:capabilities` after deploying.** Roles customised in the
 > Hierarchy screen don't get new capabilities by themselves. Locally, `front_desk` was
@@ -258,6 +328,14 @@ Gated to `appointments.configure`. Every change is audited.
 
 - **No booking UI yet.** Find a slot is read-only. Booking, and the override button,
   arrive with the calendar in Phase B.
+- **Telling the patient is WhatsApp-only, inside the 24 h window**, until 2.4 adds
+  approved templates, SMS and the reschedule link. Outside the window the case says
+  "call the patient", and nothing is sent silently.
+- **A patient's "No" reply isn't read automatically yet** (2.4). Staff mark "Patient
+  declined — call required".
+- **Branches without a manager** have unassigned cases. They still escalate to admins
+  and the Sales Head.
+- **No HR integration** (3.8 isn't built): leave is requested here, not in HR.
 - **Equipment can't move between branches** (2.2.d); changing a machine's branch is an
   audited edit.
 - **Chain search is a straightforward loop** (branches × days). Fine at today's

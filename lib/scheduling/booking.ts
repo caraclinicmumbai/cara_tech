@@ -113,7 +113,7 @@ export async function loadDayContext(
       include: {
         schedules: { select: { branchId: true, weekday: true, startMin: true, endMin: true } },
         exceptions: { where: { date: dateColumn(dateKey) }, select: { branchId: true, startMin: true, endMin: true } },
-        timeOff: { where: { startAt: { lt: dayEnd }, endAt: { gt: dayStart } } },
+        timeOff: { where: { startAt: { lt: dayEnd }, endAt: { gt: dayStart }, status: { in: ["approved", "requested"] } } },
       },
     }),
     db.appointmentResource.findMany({
@@ -148,7 +148,9 @@ export async function loadDayContext(
         ? r.exceptions.filter((e) => e.branchId === branchId)
         : r.schedules.filter((s) => s.branchId === branchId && s.weekday === weekday)
       ).map((s) => ({ startMin: s.startMin, endMin: s.endMin })),
-      timeOff: r.timeOff.map((t) => ({ startAt: t.startAt, endAt: t.endAt, reason: t.reason })),
+      timeOff: r.timeOff.map((t) => ({ startAt: t.startAt, endAt: t.endAt, reason: t.reason, tentative: t.status === "requested" })),
+      contractFrom: r.availableFrom ? r.availableFrom.toISOString().slice(0, 10) : null,
+      contractUntil: r.availableUntil ? r.availableUntil.toISOString().slice(0, 10) : null,
     });
   }
   return {

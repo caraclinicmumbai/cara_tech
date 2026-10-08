@@ -103,6 +103,9 @@ export const CAPABILITIES = [
   // centre, head office and branch managers (2.2.c).
   "appointments.viewAllBranches",
   "appointments.bookAnyBranch",
+  // §2.9.a — approve / reject doctors' leave (head office; + admin). Anyone linked to a
+  // doctor/staff resource can REQUEST their own leave without a capability.
+  "appointments.approveLeave",
   "calls.view",
   "analytics.view",
   // Reports (§reports) — the management read-outs, split in two because they answer to
@@ -203,6 +206,7 @@ export const CAPABILITY_GROUPS: {
       { key: "appointments.override", label: "Override a consultation-room clash" },
       { key: "appointments.viewAllBranches", label: "See patient details at every branch" },
       { key: "appointments.bookAnyBranch", label: "Book at any branch (not just own)" },
+      { key: "appointments.approveLeave", label: "Approve doctors' leave / mark emergency" },
     ],
   },
   {
@@ -410,6 +414,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "appointments.book",
     "appointments.viewAllBranches",
     "appointments.bookAnyBranch",
+    "appointments.approveLeave",
   ],
 
   // ── The post-sales / clinical roles (§post-sales). Note what is ABSENT from all

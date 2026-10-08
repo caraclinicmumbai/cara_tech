@@ -84,6 +84,11 @@ export default async function AppointmentsPage({
   }
 
   const chain = query.branch === "all";
+  const openCases = viewer.canBook
+    ? await prisma.rebookingCase.count({
+        where: { status: { in: ["open", "patient_declined"] }, ...(viewer.bookAnyBranch ? {} : { branchId: viewer.homeBranchId ?? "__none__" }) },
+      })
+    : 0;
   const filters = { branchId: chain ? null : query.branch, doctorId: query.doctor || null, staffId: query.staff || null, typeId: query.type || null };
   const weekKeys = Array.from({ length: 7 }, (_, i) => addDays(weekStart(query.date), i));
   const [fromKey, toKey] = query.view === "week" ? [weekKeys[0], addDays(weekKeys[6], 1)] : [query.date, addDays(query.date, 1)];
@@ -108,10 +113,23 @@ export default async function AppointmentsPage({
           <div className="cara-eyebrow">Appointments</div>
           <h1 className="cara-title">{chain ? "Chain calendar" : "Branch calendar"}</h1>
         </div>
-        {can(user.role, "appointments.configure") && (
-          <Link href="/appointments/setup" className="text-[12.5px] tone-link">Scheduling setup</Link>
-        )}
+        <div className="flex flex-wrap items-center gap-3 text-[12.5px]">
+          {viewer.canBook && (
+            <Link href="/appointments/rebooking" className="tone-link">
+              Needs rebooking{openCases ? ` (${openCases})` : ""}
+            </Link>
+          )}
+          <Link href="/appointments/leave" className="tone-link">Leave</Link>
+          {can(user.role, "appointments.configure") && (
+            <Link href="/appointments/setup" className="tone-link">Scheduling setup</Link>
+          )}
+        </div>
       </header>
+      {openCases > 0 && viewer.canBook && (
+        <Link href="/appointments/rebooking" className="cara-notice is-warn block text-[12.5px]">
+          {openCases} appointment{openCases === 1 ? "" : "s"} need rebooking (a doctor away, a roster change or downtime) — open the list.
+        </Link>
+      )}
       {types.length === 0 && (
         <div className="cara-notice is-info">
           No appointment types yet — {can(user.role, "appointments.configure") ? <Link href="/appointments/setup?tab=types" className="tone-link">set them up</Link> : "ask a branch manager to set them up"}.

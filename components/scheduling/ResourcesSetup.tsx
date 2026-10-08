@@ -34,6 +34,8 @@ type ResourceView = {
   notes: string | null;
   active: boolean;
   allowOverride: boolean;
+  availableFrom: string;
+  availableUntil: string;
   roster: RosterRowInput[];
   exceptions: { id: string; date: string; branchId: string; start: string; end: string; note: string | null }[];
   timeOff: { id: string; start: string; end: string; reason: string | null; source: string }[];
@@ -85,6 +87,14 @@ function ResourceFields({
           />
           branch manager may override a clash
         </label>
+      )}
+      {isPerson(data.kind) && (
+        <span className="flex items-center gap-1 text-[12px] text-cara-muted" title="Visiting / consultant doctors: bookable only between these dates (§2.9.e). Leave blank for permanent staff.">
+          contract
+          <input type="date" className="cara-input w-auto!" value={data.availableFrom ?? ""} onChange={(e) => set({ availableFrom: e.target.value })} aria-label="Contract from" />
+          –
+          <input type="date" className="cara-input w-auto!" value={data.availableUntil ?? ""} onChange={(e) => set({ availableUntil: e.target.value })} aria-label="Contract until" />
+        </span>
       )}
       {isPerson(data.kind) && (
         <select className="cara-select w-auto!" value={data.userId ?? ""} onChange={(e) => set({ userId: e.target.value })}>
@@ -159,6 +169,8 @@ function ResourceCard({ r, branches, users }: { r: ResourceView; branches: Opt[]
     userId: r.userId ?? "",
     notes: r.notes ?? "",
     allowOverride: r.allowOverride,
+    availableFrom: r.availableFrom,
+    availableUntil: r.availableUntil,
   });
   const { run, pending, msg } = useRun();
   const branchName = branches.find((b) => b.id === r.branchId)?.name;
@@ -171,6 +183,9 @@ function ResourceCard({ r, branches, users }: { r: ResourceView; branches: Opt[]
           <span className="font-medium text-cara-ink">{r.name}</span>
           {r.subtype && <span className="text-[12px] text-cara-muted">{r.subtype}</span>}
           {r.allowOverride && <span className="tag tag-citric">override allowed</span>}
+          {(r.availableFrom || r.availableUntil) && (
+            <span className="tag tag-klein">visiting {r.availableFrom || "…"} – {r.availableUntil || "…"}</span>
+          )}
           <span className="text-[12px] text-cara-faint">· {branchName ?? "across branches"}</span>
           {r.userLabel && <span className="text-[12px] text-cara-faint">· login: {r.userLabel}</span>}
           {!r.active && <span className="tag tag-neutral">inactive</span>}

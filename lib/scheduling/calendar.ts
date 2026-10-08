@@ -181,7 +181,7 @@ export async function loadDayColumns(branchId: string, dateKey: string, kinds: R
       include: {
         schedules: { select: { branchId: true, weekday: true, startMin: true, endMin: true } },
         exceptions: { where: { date: dateColumn(dateKey) }, select: { branchId: true, startMin: true, endMin: true } },
-        timeOff: { where: { startAt: { lt: dayEnd }, endAt: { gt: dayStart } }, select: { reason: true, startAt: true, endAt: true } },
+        timeOff: { where: { startAt: { lt: dayEnd }, endAt: { gt: dayStart }, status: "approved" }, select: { reason: true, startAt: true, endAt: true } },
       },
     }),
     prisma.branch.findMany({ select: { id: true, name: true } }),
@@ -251,7 +251,7 @@ export async function loadWeekRoster(resourceId: string, dateKeys: string[]): Pr
       include: {
         schedules: true,
         exceptions: { where: { date: { gte: dateColumn(dateKeys[0]), lte: dateColumn(dateKeys[dateKeys.length - 1]) } } },
-        timeOff: { where: { startAt: { lt: last }, endAt: { gt: first } } },
+        timeOff: { where: { startAt: { lt: last }, endAt: { gt: first }, status: "approved" } },
       },
     }),
     prisma.branch.findMany({ select: { id: true, name: true } }),

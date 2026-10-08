@@ -163,7 +163,7 @@ async function ResourcesTab({ branches }: { branches: BranchOpt[] }) {
           where: { date: { gte: new Date(new Date().toISOString().slice(0, 10)) } },
           orderBy: [{ date: "asc" }, { startMin: "asc" }],
         },
-        timeOff: { where: { endAt: { gt: new Date() } }, orderBy: { startAt: "asc" } },
+        timeOff: { where: { endAt: { gt: new Date() }, status: { in: ["approved", "requested"] } }, orderBy: { startAt: "asc" } },
         user: { select: { email: true, name: true } },
       },
     }),
@@ -207,8 +207,10 @@ async function ResourcesTab({ branches }: { branches: BranchOpt[] }) {
           start: istDateTimeLocal(t.startAt).replace("T", " "),
           end: istDateTimeLocal(t.endAt).replace("T", " "),
           reason: t.reason,
-          source: t.source,
+          source: t.status === "requested" ? "requested" : t.kind === "leave" ? t.source : t.kind,
         })),
+        availableFrom: r.availableFrom ? keyOfDateColumn(r.availableFrom) : "",
+        availableUntil: r.availableUntil ? keyOfDateColumn(r.availableUntil) : "",
       }))}
     />
   );

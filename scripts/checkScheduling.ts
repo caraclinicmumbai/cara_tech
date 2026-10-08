@@ -436,6 +436,25 @@ async function spec22Checks() {
   });
 }
 
+async function spec29Checks() {
+  console.log("Spec 2.9 — leave and visiting doctors (engine)");
+  await check("requested (unapproved) leave warns and needs acknowledgement, doesn't block", () => {
+    const r = BASE.map((x) =>
+      x.id === "drA" ? { ...x, timeOff: [{ startAt: istInstant(DAY, 0), endAt: istInstant(DAY, 1440), reason: "Conference", tentative: true }] } : x,
+    );
+    const out = evaluateSlot(ctx({}, r), slot(11 * 60, 30, { chosenIds: ["drA"] }));
+    assert.equal(out.ok, true);
+    assert.equal(out.needsAck, true);
+    assert.ok(out.issues.some((i) => i.code === "leave_requested"));
+  });
+  await check("visiting doctor can't be booked outside their contract dates", () => {
+    const r = BASE.map((x) => (x.id === "drA" ? { ...x, contractFrom: "2030-02-01", contractUntil: "2030-03-31" } : x));
+    const out = evaluateSlot(ctx({}, r), slot(11 * 60, 30, { chosenIds: ["drA"] }));
+    assert.equal(out.ok, false);
+    assert.ok(out.issues.some((i) => i.code === "contract"));
+  });
+}
+
 // ── Part 2: database ─────────────────────────────────────────────────────────
 
 async function dbChecks() {
@@ -607,6 +626,82 @@ async function dbChecks() {
       assert.ok(asDoctor.filter((a) => a.resources.some((x) => x.id === rotating.id)).every((a) => a.visible), "a doctor sees their own appointments everywhere");
     });
 
+    // §2.9 — leave approval, rebooking cases, suggestions, emergency.
+    const leave = await import("../lib/scheduling/leave");
+    const conflicts = await import("../lib/scheduling/conflicts");
+    const drX = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} leave doctor` } });
+    const drY = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} cover doctor` } });
+    extraResources.push(drX.id, drY.id);
+    const b4 = { leadId: lead.id, branchId: branch.id, typeId: anyRoom.id, acknowledgeWarnings: true };
+    const booked = await bookAppointment({ ...b4, resourceIds: [drX.id], startAt: at(17 * 60) }, actor);
+    const bookedId = booked.ok ? booked.appointmentId : "";
+    let leaveId = "";
+
+    await check("a leave REQUEST doesn't open cases; approving it does, and never cancels the appointment", async () => {
+      assert.ok(booked.ok, !booked.ok ? booked.error : "");
+      const req = await leave.requestLeave({ resourceId: drX.id, startAt: at(0), endAt: at(24 * 60), kind: "conference", reason: "Conference" }, actor);
+      assert.ok(req.ok && req.id);
+      leaveId = req.id!;
+      assert.equal(await prisma.rebookingCase.count({ where: { appointmentId: bookedId } }), 0);
+      const dec = await leave.decideLeave(leaveId, true, null, actor);
+      assert.ok(dec.ok);
+      assert.equal(dec.affected, 1);
+      const c = await prisma.rebookingCase.findFirstOrThrow({ where: { appointmentId: bookedId } });
+      assert.equal(c.status, "open");
+      const appt = await prisma.appointment.findUniqueOrThrow({ where: { id: bookedId } });
+      assert.equal(appt.status, "booked", "the system never cancels on its own");
+    });
+
+    await check("approved leave blocks new bookings for that doctor", async () => {
+      const r = await bookAppointment({ ...b4, resourceIds: [drX.id], startAt: at(10 * 60) }, actor);
+      assert.equal(r.ok, false);
+    });
+
+    await check("withdrawing the leave closes the case it opened", async () => {
+      await leave.cancelLeave(leaveId, actor);
+      const c = await prisma.rebookingCase.findFirstOrThrow({ where: { appointmentId: bookedId } });
+      assert.equal(c.status, "dismissed");
+    });
+
+    await check("rebooking helper suggests another doctor at the same time, and applying it moves the appointment", async () => {
+      const again = await leave.requestLeave({ resourceId: drX.id, startAt: at(0), endAt: at(24 * 60), kind: "leave", reason: "Leave", approveNow: true }, actor);
+      assert.ok(again.ok);
+      const c = await prisma.rebookingCase.findFirstOrThrow({ where: { appointmentId: bookedId, status: "open" } });
+      const opts = await conflicts.suggestAlternatives(c.id);
+      const cover = opts.find((o) => o.kind === "other_doctor_same_time" && o.doctorId === drY.id);
+      assert.ok(cover, `expected cover doctor among ${opts.map((o) => o.label).join(", ")}`);
+      const applied = await conflicts.applyAlternative(c.id, { branchId: cover!.branchId, doctorId: cover!.doctorId, startAt: cover!.startAt }, actor);
+      assert.ok(applied.ok, applied.error);
+      await conflicts.recheckOpenCases({}); // the worklist page runs this on every load
+      const after = await prisma.rebookingCase.findUniqueOrThrow({ where: { id: c.id } });
+      assert.equal(after.status, "proposed", "a moved case waits for the patient's confirmation");
+      const moved = await prisma.appointment.findUniqueOrThrow({ where: { id: after.newAppointmentId! }, include: { resources: true } });
+      assert.ok(moved.resources.some((r) => r.resourceId === drY.id));
+    });
+
+    await check("emergency: urgent case, and the doctor is blocked for the rest of the day", async () => {
+      const drZ = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} emergency doctor` } });
+      extraResources.push(drZ.id);
+      const z = await bookAppointment({ ...b4, resourceIds: [drZ.id], startAt: at(18 * 60) }, actor);
+      assert.ok(z.ok);
+      const e = await leave.markEmergency(drZ.id, "Unwell", actor, at(9 * 60));
+      assert.ok(e.ok);
+      const c = await prisma.rebookingCase.findFirstOrThrow({ where: { appointmentId: z.ok ? z.appointmentId : "" } });
+      assert.equal(c.urgent, true);
+      assert.equal(c.cause, "emergency");
+    });
+
+    await check("a holiday added over booked dates puts those appointments on the rebooking list", async () => {
+      const drH = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} holiday doctor` } });
+      extraResources.push(drH.id);
+      const h = await bookAppointment({ ...b4, resourceIds: [drH.id], startAt: at(19 * 60) }, actor);
+      assert.ok(h.ok);
+      const n = await conflicts.detectClosure({ branchId: branch.id, startDateKey: dateKey, endDateKey: dateKey, startMin: null, endMin: null, reason: "Diwali" });
+      assert.ok(n >= 1);
+      const c = await prisma.rebookingCase.findFirstOrThrow({ where: { appointmentId: h.ok ? h.appointmentId : "" } });
+      assert.equal(c.cause, "closure");
+    });
+
     await check("every write left an audit row", async () => {
       const ids = (await prisma.appointment.findMany({ where: { typeId: type.id }, select: { id: true } })).map((a) => a.id);
       const n = await prisma.auditLog.count({ where: { entityType: "appointment", entityId: { in: ids } } });
@@ -626,6 +721,10 @@ async function dbChecks() {
   await engineChecks();
   await spec21Checks();
   await spec22Checks();
+  await spec29Checks();
   if (process.env.CHECK_DB !== "0") await dbChecks();
   console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);
+  // The messaging modules (WhatsApp/Redis) keep sockets open; exit explicitly so the
+  // check finishes in CI and in a terminal alike.
+  process.exit(process.exitCode ?? 0);
 })();

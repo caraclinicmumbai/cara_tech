@@ -472,6 +472,10 @@ model Notification {
   // webhook) doesn't stack identical bells. Null = never deduped.
   dedupeKey String? @unique
 
+  // Where clicking it goes when it isn't about one lead (an appointment worklist, a
+  // leave request). Null = the lead page, as before.
+  href String?
+
   readAt    DateTime? // null = unread; drives the bell's badge count
   createdAt DateTime  @default(now())
 
@@ -1322,23 +1326,27 @@ model BranchClosure {
 ///             between branches — leave it null, and say where they are on which day
 ///             with ResourceSchedule.
 model Resource {
-  id            String  @id @default(cuid())
-  kind          String
-  subtype       String?
-  name          String
-  branchId      String?
-  branch        Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  id             String    @id @default(cuid())
+  kind           String
+  subtype        String?
+  name           String
+  branchId       String?
+  branch         Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
   /// The staff login this doctor / staff member signs in as — so a doctor sees their
   /// own schedule. Unique: one person is one resource.
-  userId        String? @unique
-  user          User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-  color         String?
-  notes         String?
-  active        Boolean @default(true)
-  sortOrder     Int     @default(0)
+  userId         String?   @unique
+  user           User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  color          String?
+  notes          String?
+  active         Boolean   @default(true)
+  sortOrder      Int       @default(0)
   /// Rooms only: a branch manager may override a clash on this room, with a logged
   /// reason (§2.1.c — consultation rooms yes, OT never).
-  allowOverride Boolean @default(false)
+  allowOverride  Boolean   @default(false)
+  /// Visiting / consultant doctors (§2.9.e): bookable only between these IST dates,
+  /// inclusive. Null = no limit on that side.
+  availableFrom  DateTime? @db.Date
+  availableUntil DateTime? @db.Date
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1386,10 +1394,25 @@ model ResourceTimeOff {
   reason     String?
   source     String   @default("manual")
 
+  /// §2.9 leave workflow. requested = tentative (warns, doesn't block) → approved
+  /// (blocks every branch at once) | rejected | cancelled. Rows from before the
+  /// workflow, and anything an admin enters directly, are approved.
+  status String @default("approved")
+  /// leave | conference | training | travel | emergency | maintenance | other
+  kind   String @default("leave")
+
+  requestedById String?
+  decidedById   String?
+  decidedAt     DateTime?
+  decisionNote  String?
+
   createdById String?
   createdAt   DateTime @default(now())
 
+  rebookingCases RebookingCase[]
+
   @@index([resourceId, startAt])
+  @@index([status])
 }
 
 /// A one-off change to someone's weekly roster for ONE date (§2.2 "exceptions — one-off
@@ -1537,7 +1560,8 @@ model Appointment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  resources AppointmentResource[]
+  resources      AppointmentResource[]
+  rebookingCases RebookingCase[]
 
   @@index([branchId, startAt])
   @@index([leadId])
@@ -1599,4 +1623,43 @@ model LeadFlag {
 
   @@unique([leadId, flagId])
   @@index([flagId])
+}
+
+/// An existing appointment that no longer fits (§2.9 "needs rebooking"): its doctor
+/// went on leave, their roster changed, a machine went down. The system NEVER cancels
+/// or moves it on its own — it lands here with suggested alternatives, an owner and a
+/// due date, and stays until a person resolves it.
+///
+/// status: open → proposed (a new time chosen, patient being told) →
+///         resolved | patient_declined (call required) | dismissed
+model RebookingCase {
+  id            String           @id @default(cuid())
+  appointmentId String
+  appointment   Appointment      @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  /// What caused it: leave | emergency | roster | exception | downtime | contract
+  cause         String
+  reason        String
+  timeOffId     String?
+  timeOff       ResourceTimeOff? @relation(fields: [timeOffId], references: [id], onDelete: SetNull)
+  branchId      String
+  /// The person accountable for sorting it out — the branch manager, else unassigned.
+  ownerId       String?
+  /// Resolve before this; past it, the case escalates.
+  dueAt         DateTime
+  urgent        Boolean          @default(false)
+
+  status            String    @default("open")
+  newAppointmentId  String?
+  resolutionNote    String?
+  resolvedById      String?
+  resolvedAt        DateTime?
+  patientNotifiedAt DateTime?
+  escalatedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, dueAt])
+  @@index([branchId, status])
+  @@index([appointmentId])
 }

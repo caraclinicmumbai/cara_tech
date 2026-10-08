@@ -33,6 +33,7 @@ import { runCheckInTick, checkInsEnabled } from "@/lib/postSales/checkins";
 import { runPostSalesSlaScan, reconcileMissingJourneys } from "@/lib/postSales/sla";
 import { campaignsEnabled } from "@/lib/campaigns/types";
 import { expireHolds } from "@/lib/scheduling/booking";
+import { escalateOverdueCases } from "@/lib/scheduling/conflicts";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -240,6 +241,17 @@ const runHoldSweep = () =>
     .catch((err) => logger.error(`Appointment hold sweep error: ${String(err)}`));
 setInterval(runHoldSweep, HOLD_SWEEP_MS);
 logger.info("Appointment hold sweep active (every 1 min)");
+
+// Rebooking escalation (§3.2 2.9) — an appointment stranded by leave or a roster change
+// that nobody has rebooked by its due time escalates once to the owner, admins and the
+// sales head. Half-hourly is plenty: due times are hours-to-days ahead.
+const REBOOKING_ESCALATION_MS = 30 * 60_000;
+const runRebookingEscalation = () =>
+  escalateOverdueCases()
+    .then((n) => n && logger.info(`Escalated ${n} overdue rebooking case(s)`))
+    .catch((err) => logger.error(`Rebooking escalation error: ${String(err)}`));
+setInterval(runRebookingEscalation, REBOOKING_ESCALATION_MS);
+logger.info("Rebooking escalation active (every 30 min)");
 
 // Branch Manager daily digest — a repeatable (cron) job fires once a day at
 // DIGEST_HOUR_IST; this worker registers it and processes it (§3.1).

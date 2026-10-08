@@ -17,6 +17,7 @@ import { isResourceKind, RESOURCE_KIND_LABELS } from "@/lib/scheduling/status";
 import { dateColumn, hhmmToMinutes, istInstant as istInstantOf } from "@/lib/scheduling/time";
 import { parseIstDateTimeLocal } from "@/lib/datetime";
 import { FLAG_ICONS, FLAG_TONES } from "@/lib/scheduling/flags";
+import { detectClosure, detectConflicts, detectForResource, recheckOpenCases } from "@/lib/scheduling/conflicts";
 
 type Result = { ok: boolean; error?: string; info?: string; id?: string };
 
@@ -229,8 +230,17 @@ export async function addClosure(input: ClosureInput): Promise<Result> {
     await audit(actor, "scheduling.closure.create", row.id, `${reason}: ${input.startDate}–${endDate}`, {
       meta: { branchId: input.branchId, startMin, endMin },
     });
+    const opened = await detectClosure({
+      branchId: input.branchId || null,
+      startDateKey: input.startDate,
+      endDateKey: endDate,
+      startMin,
+      endMin,
+      reason,
+      actor,
+    });
     revalidatePath(PATH);
-    return { ok: true, id: row.id };
+    return { ok: true, id: row.id, info: opened ? `Saved. ${opened} booked appointment(s) fall on it — see Needs rebooking.` : "Saved" };
   } catch (err) {
     return fail("addClosure", err, "Could not add the closure");
   }
@@ -261,11 +271,22 @@ export type ResourceInput = {
   notes?: string | null;
   /// Rooms only: a branch manager may override a clash here (§2.1.c).
   allowOverride?: boolean;
+  /// Visiting doctors (§2.9.e): contract dates, "YYYY-MM-DD" or blank.
+  availableFrom?: string | null;
+  availableUntil?: string | null;
 };
 
 function normaliseResource(
   input: ResourceInput,
-): { ok: true; data: Omit<ResourceInput, "kind" | "allowOverride"> & { kind: string; allowOverride: boolean } } | Result {
+): {
+  ok: true;
+  data: Omit<ResourceInput, "kind" | "allowOverride" | "availableFrom" | "availableUntil"> & {
+    kind: string;
+    allowOverride: boolean;
+    availableFrom: Date | null;
+    availableUntil: Date | null;
+  };
+} | Result {
   if (!isResourceKind(input.kind)) return { ok: false, error: "Pick what kind of resource this is" };
   const name = clean(input.name);
   if (!name) return { ok: false, error: "Give it a name" };
@@ -274,6 +295,11 @@ function normaliseResource(
     return { ok: false, error: `A ${RESOURCE_KIND_LABELS[input.kind].toLowerCase()} must belong to a branch` };
   }
   const subtype = clean(input.subtype)?.toLowerCase() ?? null;
+  const from = clean(input.availableFrom);
+  const until = clean(input.availableUntil);
+  const isDate = (v: string | null) => !v || /^\d{4}-\d{2}-\d{2}$/.test(v);
+  if (!isDate(from) || !isDate(until)) return { ok: false, error: "Contract dates must be dates" };
+  if (from && until && until < from) return { ok: false, error: "The contract ends before it starts" };
   // §2.1.c: overrides are for consultation rooms. An OT can never be overridden, so
   // the flag is refused there rather than trusted.
   if (input.allowOverride && input.kind === "room" && subtype === "ot") {
@@ -285,6 +311,8 @@ function normaliseResource(
       kind: input.kind,
       subtype,
       allowOverride: input.kind === "room" && !!input.allowOverride,
+      availableFrom: input.kind === "doctor" || input.kind === "staff" ? (from ? dateColumn(from) : null) : null,
+      availableUntil: input.kind === "doctor" || input.kind === "staff" ? (until ? dateColumn(until) : null) : null,
       name,
       branchId,
       userId: input.kind === "doctor" || input.kind === "staff" ? clean(input.userId) : null,
@@ -315,8 +343,10 @@ export async function updateResource(id: string, input: ResourceInput): Promise<
   try {
     await prisma.resource.update({ where: { id }, data: n.data });
     await audit(actor, "scheduling.resource.update", id, `${n.data.kind}: ${n.data.name}`);
+    // A changed branch or contract window can strand booked appointments (§2.9).
+    const d = await detectForResource(id, "contract", actor);
     revalidatePath(PATH);
-    return { ok: true };
+    return { ok: true, info: d.opened ? `Saved. ${d.opened} appointment(s) need rebooking.` : "Saved" };
   } catch (err) {
     if (String(err).includes("Unique constraint")) return { ok: false, error: "That staff login is already linked to another resource" };
     return fail("updateResource", err, "Could not save the resource");
@@ -329,8 +359,9 @@ export async function setResourceActive(id: string, active: boolean): Promise<Re
   try {
     const r = await prisma.resource.update({ where: { id }, data: { active }, select: { name: true } });
     await audit(actor, active ? "scheduling.resource.activate" : "scheduling.resource.deactivate", id, r.name);
+    const d = await detectForResource(id, "downtime", actor);
     revalidatePath(PATH);
-    return { ok: true };
+    return { ok: true, info: d.opened ? `${d.opened} appointment(s) need rebooking.` : undefined };
   } catch (err) {
     return fail("setResourceActive", err, "Could not update the resource");
   }
@@ -375,8 +406,10 @@ export async function saveRoster(resourceId: string, rows: RosterRowInput[]): Pr
       prisma.resourceSchedule.createMany({ data: parsed }),
     ]);
     await audit(actor, "scheduling.roster.update", resourceId, `${r.name}: ${parsed.length} row(s)`, { meta: { rows } });
+    const d = await detectForResource(resourceId, "roster", actor);
     revalidatePath(PATH);
-    return { ok: true, info: parsed.length ? "Roster saved" : "Roster cleared — available whenever the branch is open" };
+    const base = parsed.length ? "Roster saved" : "Roster cleared — available whenever the branch is open";
+    return { ok: true, info: d.opened ? `${base}. ${d.opened} appointment(s) no longer fit and need rebooking.` : base };
   } catch (err) {
     return fail("saveRoster", err, "Could not save the roster");
   }
@@ -413,22 +446,22 @@ export async function addScheduleException(input: {
       data: { resourceId: input.resourceId, date, branchId: input.branchId, startMin, endMin, note: clean(input.note), createdById: actor.id ?? null },
       select: { id: true },
     });
-    const clashes = await prisma.appointmentResource.count({
-      where: {
-        resourceId: input.resourceId,
-        blocking: true,
-        startAt: { gte: istInstantOf(input.date, 0), lt: istInstantOf(input.date, 1440) },
-      },
-    });
     await audit(actor, "scheduling.exception.create", row.id, `${r.name}: ${input.date} ${input.start}–${input.end}`, {
       meta: { resourceId: input.resourceId, branchId: input.branchId },
+    });
+    const d = await detectConflicts({
+      resourceId: input.resourceId,
+      from: istInstantOf(input.date, 0),
+      to: istInstantOf(input.date, 1440),
+      cause: "exception",
+      actor,
     });
     revalidatePath(PATH);
     return {
       ok: true,
       id: row.id,
-      info: clashes
-        ? `Saved. ${r.name} has ${clashes} appointment(s) that day — check they still fit the changed roster.`
+      info: d.opened
+        ? `Saved. ${d.opened} of ${r.name}'s appointments that day no longer fit and need rebooking.`
         : `Saved. This replaces ${r.name}'s weekly roster for that date.`,
     };
   } catch (err) {
@@ -441,8 +474,10 @@ export async function deleteScheduleException(id: string): Promise<Result> {
   try {
     const row = await prisma.resourceScheduleException.delete({ where: { id } });
     await audit(actor, "scheduling.exception.delete", id, row.date.toISOString().slice(0, 10), { meta: { resourceId: row.resourceId } });
+    // Back on the weekly roster for that date — which may itself not fit what's booked.
+    const d = await detectForResource(row.resourceId, "roster", actor);
     revalidatePath(PATH);
-    return { ok: true };
+    return { ok: true, info: d.opened ? `${d.opened} appointment(s) need rebooking.` : undefined };
   } catch (err) {
     return fail("deleteScheduleException", err, "Could not remove the change");
   }
@@ -457,24 +492,36 @@ export async function addTimeOff(resourceId: string, start: string, end: string,
   if (endAt && /^\d{4}-\d{2}-\d{2}$/.test(end.trim())) endAt = new Date(endAt.getTime() + 86_400_000);
   if (!endAt || endAt <= startAt) return { ok: false, error: "The end must be after the start" };
   try {
+    const res = await prisma.resource.findUnique({ where: { id: resourceId }, select: { kind: true } });
+    const isMachine = res?.kind === "room" || res?.kind === "equipment";
+    // Entered from setup by someone who configures scheduling = approved directly.
     const row = await prisma.resourceTimeOff.create({
-      data: { resourceId, startAt, endAt, reason: clean(reason), source: "manual", createdById: actor.id ?? null },
+      data: {
+        resourceId,
+        startAt,
+        endAt,
+        reason: clean(reason),
+        source: "manual",
+        kind: isMachine ? "maintenance" : "leave",
+        status: "approved",
+        decidedById: actor.id ?? null,
+        decidedAt: new Date(),
+        createdById: actor.id ?? null,
+      },
       select: { id: true },
-    });
-    const clashes = await prisma.appointmentResource.count({
-      where: { resourceId, blocking: true, startAt: { lt: endAt }, endAt: { gt: startAt } },
     });
     await audit(actor, "scheduling.timeoff.create", row.id, `${startAt.toISOString()}–${endAt.toISOString()}`, {
       reason: clean(reason),
-      meta: { resourceId, existingAppointments: clashes },
+      meta: { resourceId },
     });
+    // Time off never cancels anything already booked (2.9) — affected appointments go
+    // to the "needs rebooking" list for a person to handle.
+    const d = await detectConflicts({ resourceId, from: startAt, to: endAt, cause: isMachine ? "downtime" : "leave", timeOffId: row.id, actor });
     revalidatePath(PATH);
-    // Time off doesn't cancel anything already booked — that's a person's decision, so
-    // say how many need looking at.
     return {
       ok: true,
       id: row.id,
-      info: clashes ? `Saved. ${clashes} existing appointment(s) fall inside it and need rebooking.` : "Saved",
+      info: d.opened ? `Saved. ${d.opened} appointment(s) fall inside it — see Needs rebooking.` : "Saved",
     };
   } catch (err) {
     return fail("addTimeOff", err, "Could not add the time off");
@@ -484,10 +531,11 @@ export async function addTimeOff(resourceId: string, start: string, end: string,
 export async function deleteTimeOff(id: string): Promise<Result> {
   const actor = await requireCapability("appointments.configure");
   try {
-    const row = await prisma.resourceTimeOff.delete({ where: { id } });
+    const row = await prisma.resourceTimeOff.update({ where: { id }, data: { status: "cancelled", decidedById: actor.id ?? null, decidedAt: new Date() } });
     await audit(actor, "scheduling.timeoff.delete", id, `${row.startAt.toISOString()}–${row.endAt.toISOString()}`, {
       meta: { resourceId: row.resourceId },
     });
+    await recheckOpenCases({ timeOffId: id });
     revalidatePath(PATH);
     return { ok: true };
   } catch (err) {
