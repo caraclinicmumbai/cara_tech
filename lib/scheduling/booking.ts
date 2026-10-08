@@ -17,7 +17,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
-import { getBoolSetting } from "@/lib/settings";
+import { getBoolSetting, getNumberSetting } from "@/lib/settings";
 import {
   SCHEDULING_ENABLED,
   ALLOW_DOCTOR_DOUBLE_BOOKING,
@@ -25,6 +25,7 @@ import {
   ENFORCE_STAFF_ROSTERS,
   REQUIRE_SUPPORT_STAFF,
   BLOCK_EQUIPMENT,
+  DEFAULT_TRAVEL_MINUTES,
 } from "@/lib/scheduling/toggles";
 import {
   evaluateSlot,
@@ -38,7 +39,7 @@ import {
   type SlotOption,
 } from "@/lib/scheduling/engine";
 import { branchDay } from "@/lib/scheduling/hours";
-import { istDateKey, istInstant, weekdayOfKey, MINUTE_MS } from "@/lib/scheduling/time";
+import { dateColumn, istDateKey, istInstant, weekdayOfKey, MINUTE_MS } from "@/lib/scheduling/time";
 import type { SlotResult } from "@/lib/scheduling/engine";
 import {
   canTransition,
@@ -105,20 +106,29 @@ export async function loadDayContext(
   const dayEnd = istInstant(dateKey, 24 * 60);
   const weekday = weekdayOfKey(dateKey);
 
-  const [{ open, closures }, resources, busy] = await Promise.all([
+  const [{ open, closures }, resources, busyRows, travel] = await Promise.all([
     branchDay(db, branchId, dateKey),
     db.resource.findMany({
       where: { id: { in: resourceIds } },
       include: {
         schedules: { select: { branchId: true, weekday: true, startMin: true, endMin: true } },
+        exceptions: { where: { date: dateColumn(dateKey) }, select: { branchId: true, startMin: true, endMin: true } },
         timeOff: { where: { startAt: { lt: dayEnd }, endAt: { gt: dayStart } } },
       },
     }),
     db.appointmentResource.findMany({
       where: { resourceId: { in: resourceIds }, blocking: true, startAt: { lt: dayEnd }, endAt: { gt: dayStart } },
-      select: { resourceId: true, appointmentId: true, startAt: true, endAt: true },
+      select: { resourceId: true, appointmentId: true, startAt: true, endAt: true, appointment: { select: { branchId: true } } },
     }),
+    loadTravel(db),
   ]);
+  const busy = busyRows.map((b) => ({
+    resourceId: b.resourceId,
+    appointmentId: b.appointmentId,
+    branchId: b.appointment.branchId,
+    startAt: b.startAt,
+    endAt: b.endAt,
+  }));
 
   const map = new Map<string, EngineResource>();
   for (const r of resources) {
@@ -132,14 +142,44 @@ export async function loadDayContext(
       active: r.active,
       sortOrder: r.sortOrder,
       allowOverride: r.kind === "room" && r.allowOverride,
-      hasRoster: r.schedules.length > 0,
-      rosterHere: r.schedules
-        .filter((s) => s.branchId === branchId && s.weekday === weekday)
-        .map((s) => ({ startMin: s.startMin, endMin: s.endMin })),
+      // A one-off change for this date replaces the weekly roster for the day (§2.2).
+      hasRoster: r.schedules.length > 0 || r.exceptions.length > 0,
+      rosterHere: (r.exceptions.length
+        ? r.exceptions.filter((e) => e.branchId === branchId)
+        : r.schedules.filter((s) => s.branchId === branchId && s.weekday === weekday)
+      ).map((s) => ({ startMin: s.startMin, endMin: s.endMin })),
       timeOff: r.timeOff.map((t) => ({ startAt: t.startAt, endAt: t.endAt, reason: t.reason })),
     });
   }
-  return { branchId, dateKey, open, closures, resources: map, busy, toggles };
+  return {
+    branchId,
+    dateKey,
+    open,
+    closures,
+    resources: map,
+    busy,
+    toggles,
+    travelMinutes: travel.minutes,
+    branchNames: travel.names,
+  };
+}
+
+/// The travel matrix (§2.2.a): explicit pairs, else the default. Same branch = 0.
+export async function loadTravel(db: Db): Promise<{ minutes: (a: string, b: string) => number; names: Map<string, string> }> {
+  const [rows, branches, fallback] = await Promise.all([
+    db.branchTravelTime.findMany({ select: { branchAId: true, branchBId: true, minutes: true } }),
+    db.branch.findMany({ select: { id: true, name: true } }),
+    getNumberSetting(DEFAULT_TRAVEL_MINUTES),
+  ]);
+  const pairs = new Map(rows.map((r) => [travelKey(r.branchAId, r.branchBId), r.minutes]));
+  return {
+    minutes: (a, b) => (a === b ? 0 : (pairs.get(travelKey(a, b)) ?? fallback)),
+    names: new Map(branches.map((b) => [b.id, b.name])),
+  };
+}
+
+export function travelKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
 async function lockResources(tx: Prisma.TransactionClient, ids: string[]): Promise<void> {
@@ -601,4 +641,65 @@ export async function searchAvailability(params: {
     if (d.slots.length) return { ok: true, requested, next: d };
   }
   return { ok: true, requested, next: null };
+}
+
+export type BranchEarliest = { branchId: string; branchName: string; dateKey: string; slots: DayAvailability["slots"] };
+
+/// Chain view search (§2.2 worked example): "Dr Asif — Consultation, as soon as
+/// possible, anywhere." For every active branch, the first day within `searchDays`
+/// that has a slot, with its first few start times — sorted by the earliest slot, so
+/// the call centre reads the answer off the top.
+export async function searchChainAvailability(params: {
+  typeId: string;
+  doctorId?: string | null;
+  dateKey: string;
+  searchDays?: number;
+  perBranch?: number;
+}): Promise<{ ok: true; branches: BranchEarliest[] } | { ok: false; error: string }> {
+  const t = await typeWithRequirements(prisma, params.typeId);
+  if (!t) return { ok: false, error: "Unknown appointment type" };
+  const needsDoctor = t.requirements.some((r) => r.kind === "doctor" && !r.resourceId);
+  if (needsDoctor && !params.doctorId) return { ok: false, error: "Choose the doctor — patients book a specific surgeon" };
+
+  const toggles = await loadToggles();
+  const chosen = params.doctorId ? [params.doctorId] : [];
+  const branches = await prisma.branch.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+  const opts = {
+    durationMin: t.type.durationMin,
+    bufferAfterMin: t.type.bufferAfterMin,
+    requirements: t.requirements,
+    chosenIds: chosen,
+    stepMin: 15,
+    istInstant,
+  };
+  const start = istInstant(params.dateKey, 12 * 60);
+  const out: BranchEarliest[] = [];
+
+  for (const b of branches) {
+    const ids = await candidateResourceIds(prisma, b.id, chosen);
+    for (let i = 0; i <= (params.searchDays ?? 14); i++) {
+      const dateKey = istDateKey(new Date(start.getTime() + i * 86_400_000));
+      const ctx = await loadDayContext(prisma, b.id, dateKey, ids, toggles);
+      // A branch the doctor isn't rostered at on this day can't have a slot — skip the
+      // slot walk (the common case for a rotating surgeon).
+      const doc = params.doctorId ? ctx.resources.get(params.doctorId) : null;
+      if (doc && doc.hasRoster && doc.rosterHere.length === 0) continue;
+      const slots = engineFindSlots(ctx, opts);
+      if (!slots.length) continue;
+      out.push({
+        branchId: b.id,
+        branchName: b.name,
+        dateKey,
+        slots: slots.slice(0, params.perBranch ?? 6).map((s) => ({
+          startAt: s.startAt.toISOString(),
+          endAt: s.endAt.toISOString(),
+          needsAck: s.needsAck,
+          warnings: s.warnings.filter((w) => w.severity === "warn").map((w) => w.message),
+        })),
+      });
+      break;
+    }
+  }
+  out.sort((x, y) => x.slots[0].startAt.localeCompare(y.slots[0].startAt));
+  return { ok: true, branches: out };
 }

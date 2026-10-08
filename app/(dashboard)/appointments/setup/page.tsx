@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/authz";
-import { getBoolSetting } from "@/lib/settings";
-import { SCHEDULING_TOGGLES } from "@/lib/scheduling/toggles";
+import { getBoolSetting, getNumberSetting } from "@/lib/settings";
+import { SCHEDULING_TOGGLES, DEFAULT_TRAVEL_MINUTES } from "@/lib/scheduling/toggles";
 import { branchWeek } from "@/lib/scheduling/hours";
 import { keyOfDateColumn, minutesToHhmm } from "@/lib/scheduling/time";
 import { istDateTimeLocal } from "@/lib/datetime";
 import { SettingToggle } from "@/components/SettingToggle";
-import { BranchHoursEditor, ClosuresEditor } from "@/components/scheduling/HoursSetup";
+import { BranchHoursEditor, ClosuresEditor, TravelSetup } from "@/components/scheduling/HoursSetup";
 import { ResourcesSetup } from "@/components/scheduling/ResourcesSetup";
 import { TypesSetup } from "@/components/scheduling/TypesSetup";
 import { FlagsSetup } from "@/components/scheduling/FlagsSetup";
@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 
 const TABS = [
   { key: "switches", label: "Switches" },
-  { key: "hours", label: "Hours & holidays" },
+  { key: "hours", label: "Hours, holidays & travel" },
   { key: "resources", label: "Resources & rosters" },
   { key: "types", label: "Appointment types" },
   { key: "flags", label: "Patient flags" },
@@ -97,7 +97,11 @@ async function SwitchesTab() {
 type BranchOpt = { id: string; name: string; code: string };
 
 async function HoursTab({ branches }: { branches: BranchOpt[] }) {
-  const weeks = await Promise.all(branches.map((b) => branchWeek(prisma, b.id)));
+  const [weeks, travelRows, defaultTravel] = await Promise.all([
+    Promise.all(branches.map((b) => branchWeek(prisma, b.id))),
+    prisma.branchTravelTime.findMany({ select: { branchAId: true, branchBId: true, minutes: true } }),
+    getNumberSetting(DEFAULT_TRAVEL_MINUTES),
+  ]);
   const closures = await prisma.branchClosure.findMany({
     where: { endDate: { gte: new Date(new Date().toISOString().slice(0, 10)) } },
     orderBy: { startDate: "asc" },
@@ -137,6 +141,14 @@ async function HoursTab({ branches }: { branches: BranchOpt[] }) {
           }))}
         />
       </section>
+      <section className="space-y-3">
+        <h2 className="cara-eyebrow">Travel time between branches</h2>
+        <TravelSetup
+          branches={branches}
+          defaultMinutes={defaultTravel}
+          pairs={travelRows.map((t) => ({ a: t.branchAId, b: t.branchBId, minutes: t.minutes }))}
+        />
+      </section>
     </div>
   );
 }
@@ -147,6 +159,10 @@ async function ResourcesTab({ branches }: { branches: BranchOpt[] }) {
       orderBy: [{ active: "desc" }, { kind: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
       include: {
         schedules: { orderBy: [{ weekday: "asc" }, { startMin: "asc" }] },
+        exceptions: {
+          where: { date: { gte: new Date(new Date().toISOString().slice(0, 10)) } },
+          orderBy: [{ date: "asc" }, { startMin: "asc" }],
+        },
         timeOff: { where: { endAt: { gt: new Date() } }, orderBy: { startAt: "asc" } },
         user: { select: { email: true, name: true } },
       },
@@ -177,6 +193,14 @@ async function ResourcesTab({ branches }: { branches: BranchOpt[] }) {
           weekday: s.weekday,
           start: minutesToHhmm(s.startMin),
           end: minutesToHhmm(s.endMin),
+        })),
+        exceptions: r.exceptions.map((e) => ({
+          id: e.id,
+          date: keyOfDateColumn(e.date),
+          branchId: e.branchId,
+          start: minutesToHhmm(e.startMin),
+          end: minutesToHhmm(e.endMin),
+          note: e.note,
         })),
         timeOff: r.timeOff.map((t) => ({
           id: t.id,

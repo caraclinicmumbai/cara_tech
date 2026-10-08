@@ -13,6 +13,21 @@
 
 ## Open
 
+### Appointments 2.5: walk-in queue / token management
+Module 3.2 Feature 2.5 (tokens W-/A-/P-, priority rules, waiting-room display, "you're next"
+messages, wait-time reporting). **Deferred by the clinic in the spec** (2026-10-08): hair
+transplant clinics run mostly on appointments. When picked up: build it as a view on top of
+check-in data (the front-desk board already has check-in → in progress → completed), and make
+it switchable per branch. Open decisions 2.5.a–d are in the spec.
+
+### Appointments 2.6: no-show tracking and automated waitlist fill
+Module 3.2 Feature 2.6 (automatic no-show after a grace period, late-cancel counts, waitlist
+offers with timed holds, repeat-no-show consequences, deposits). **Deferred by the clinic in
+the spec** (2026-10-08). Already in place to build on: the `no_show` status (set by hand
+today), cancel reason + who cancelled, tentative holds that lapse (`expireHolds`), and the
+per-resource locks that make "first to accept wins" safe. Open decisions 2.6.a–f
+(grace periods, late-cancel windows, deposits) need the clinic and legal.
+
 ### 🟠 Plivo deletes recordings after 30 days — download them to our own storage
 Found 2026-10-04 while building the Plivo adapter. Plivo keeps a recording for **30 days**,
 then deletes it; Twilio kept them indefinitely, which is what the CRM assumes. Transcripts and

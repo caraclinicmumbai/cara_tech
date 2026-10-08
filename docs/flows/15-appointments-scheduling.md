@@ -6,12 +6,15 @@ equipment are tracked and warned about, but not blocked (spec §2.1, decided
 2026-10-08): booking over a busy doctor or machine needs an acknowledgement, which is
 recorded.
 
-> **Built so far:** Phase A (data model, conflict engine, booking service, setup
-> screen) and **Feature 2.1, multi-resource scheduling** (the hard-block rules, named
-> surgeon, consultation-room override, why-a-day-failed, next available day, "just
-> taken", re-allocation on reschedule, and the **Find a slot** screen at
-> `/appointments`). Nothing books from the UI yet; that's the front-desk calendar
-> (Phase B). See [What's next](#whats-next).
+> **Built so far:**
+> - Phase A: data model, conflict engine, booking service, setup screen.
+> - **2.1 Multi-resource scheduling.**
+> - **2.2 Branch & chain calendar:** the front-desk calendar with booking,
+>   rescheduling, check-in and the board; cross-branch doctor rosters; one-off changes;
+>   travel time; privacy across branches.
+>
+> 2.5 (walk-in queue/tokens) and 2.6 (no-show tracking and waitlist) are **deferred**
+> by decision; see `docs/deferred-todo.md`.
 
 ## Decisions taken (2026-10-08)
 
@@ -28,6 +31,11 @@ recorded.
 | 2.1.b | Turnover buffers | Per appointment type: none for minor treatments, 45–60 min for hair transplant |
 | 2.1.c | Conflict override | Branch manager (`appointments.override`) may override a **consultation-room** clash, with a reason recorded on the row and in the audit log. Never an OT, never the OT team |
 | 2.1.d | Named vs any | Patients book a **specific surgeon and treatment**. The engine never auto-picks a doctor |
+| 2.2 | Doctor at two branches | **One person, one calendar.** Overlapping, or inside the travel time, at a *different* branch = **blocked** (geography, not policy). Same-branch overlap stays a confirmable warning |
+| 2.2.a | Travel time | Configurable matrix per branch pair, default **90 min** for any pair not set |
+| 2.2.b | Cross-branch visibility | Free/busy only ("Booked"): no patient, service, notes or flags for other branches. Exceptions: `appointments.viewAllBranches` (call centre, head office, branch managers) and a doctor's own appointments anywhere |
+| 2.2.c | Who books across branches | `appointments.bookAnyBranch`: telecaller (call centre), telecalling head, branch manager, sales head (+ admin). Front desk books at their home branch only |
+| 2.2.d | Moving equipment | Not built. Decided (Fahar, 2026-10-08): no transfer log while nothing moves. `Resource.branchId` already *is* the current branch, and every edit is audited (`scheduling.resource.update`), so a move today is an audited edit. A dedicated transfer log can be added if portable machines appear |
 | — | Toggles | Global, not per branch |
 | — | Patient = ? | The **Lead**. Cara has no separate patient table |
 | — | Zenoti history | Not imported now. Build first, import after |
@@ -73,6 +81,8 @@ through.
 | Equipment already booked or under maintenance | warn + acknowledge (block if "Block equipment like rooms" is on) |
 | Doctor already booked | warn + acknowledge (block if "Allow doctors to be double-booked" is off) |
 | Doctor not chosen | block: "Choose the doctor" |
+| Doctor/OT-team member booked at **another branch** at an overlapping time | **block, always** (2.2: one person, one calendar) |
+| …or at another branch with less than the travel time in between | **block, always** (2.2.a) |
 | Outside branch hours, closed day, holiday, part-day closure | block (warn if "Enforce branch hours" is off) |
 | Doctor/staff outside their roster at this branch | block (warn if "Enforce rosters" is off) |
 | Doctor/staff on leave | block (warn if rosters aren't enforced) |
@@ -111,6 +121,58 @@ Two subtleties:
 - **Auto-fill order.** A completely free resource first. Failing that, one whose only
   problems are warnings (a busy machine), with the warning surfaced for
   acknowledgement. Never one with a block.
+
+## Feature 2.2: the calendar
+
+`/appointments` (`appointments.view`). One calendar, two scopes, five views. State is in
+the URL (`view`, `date`, `branch`, `doctor`, `staff`, `type`), so a view can be bookmarked
+or shared.
+
+| View | What it is |
+|---|---|
+| **Day · columns** | Resource-as-columns for one branch (the front-desk default): doctors, OT team, rooms, machines. Not-working time is hatched; a doctor rostered elsewhere today shows **"at Santacruz 10 AM–5 PM"** in the header. Overlapping appointments sit side by side. Red line = now. Click open time to book there |
+| **Day · list** | Zenoti's list: grouped by hour, guest + flags, time, consultant, service, (branch), status |
+| **Week** | Seven days. Filtered to one doctor, each day header shows where they are ("Juhu 10–5", "Juhu 9–1 → Santacruz 3–6") |
+| **Front desk board** | 1.B: Expected → Waiting (checked in) → With the doctor → Done → No-show, with one-tap Check in / Start / Complete; "running late" after 15 min |
+| **Find a slot** | 2.1 search, plus **All branches**: the earliest slot for that doctor at every branch, soonest first. Clicking a time opens booking |
+
+**Defaults:**
+- Front desk opens on their **home branch** as columns.
+- A doctor whose login is linked to a resource opens on **their own calendar across
+  all branches**.
+- "All branches" is the chain view.
+
+**Privacy (2.2.b):** applied in `lib/scheduling/calendar.ts` before anything leaves the
+server. A masked appointment carries only time, branch and resources. The card for it
+says "Another branch's appointment" and offers no actions.
+
+**Booking from the desk** (`BookingDrawer`):
+1. Find the patient by name or phone. The search returns name + last 4 digits only, and
+   ignores lead-ownership scope, because the receptionist isn't the counsellor.
+2. Or add a new patient. A known phone returns the existing record, never a duplicate.
+3. Choose branch (own only, unless `bookAnyBranch`), treatment, named doctor and day,
+   then pick a free slot.
+4. Book. Server answers are shown as they come: confirm-warnings, the override box
+   (branch manager), or "just taken" (the slot list refreshes).
+
+Booking moves the lead's stage forward to **appointment scheduled** (forward-only).
+
+**Appointment card:**
+- Shows patient, phone, flag chips (click to set/clear, audited), status, service, time,
+  branch, resources and notes.
+- Offers only the status moves allowed from the current status. Running the day (check
+  in, start, complete, no-show) needs `checkin`; confirm/cancel/reschedule need `book`.
+  Cancelling asks who cancelled (patient/clinic) and why.
+- Reschedule keeps the doctor and picks a new slot.
+
+**Rosters across branches:**
+- A weekly roster can put one person at different branches on different days or
+  half-days.
+- Saving a roster (or a one-off change) with two branches on one day is **refused**
+  unless the gap covers the travel time.
+- **One-off changes** (`ResourceScheduleException`) replace the weekly roster for their
+  date: a moved clinic day, a Sunday clinic, a split day.
+- Setup → Resources → One-off changes; Setup → Hours → Travel time.
 
 ## Reschedule, status, holds
 
@@ -155,6 +217,9 @@ Gated to `appointments.configure`. Every change is audited.
 | `app/(dashboard)/appointments/setup/` | Setup page + server actions |
 | `app/(dashboard)/appointments/` + `components/scheduling/SlotFinder.tsx` | Find a slot |
 | migration `20261008070455_scheduling_room_override` | `Resource.allowOverride`, `Appointment.overrideReason/overriddenById` |
+| migration `20261008074655_scheduling_cross_branch` | `ResourceScheduleException`, `BranchTravelTime` |
+| `lib/scheduling/calendar.ts` | Viewer + privacy, appointments for a range, day columns, week roster, summary |
+| `components/scheduling/desk/*` | The desk: shell/toolbar, views, booking drawer, appointment card |
 | `components/scheduling/*` | Setup tab components |
 | `scripts/checkScheduling.ts` | `npm run check:scheduling`: 39 checks: engine, spec 2.1 incl. the worked example, database concurrency / reschedule / override |
 
@@ -170,6 +235,7 @@ Gated to `appointments.configure`. Every change is audited.
 | `scheduling.enforceStaffRosters` | on | Off = rosters and leave only warn |
 | `scheduling.requireSupportStaff` | on | Off = staff requirements are ignored |
 | `scheduling.blockEquipment` | **off** | On = equipment blocks like a room |
+| `scheduling.defaultTravelMinutes` | 90 | Travel time for any branch pair without its own |
 | `scheduling.patientFlags` | on | Flags on cards (used from Phase B) |
 
 **Capabilities** (new; run `npm run backfill:capabilities` in prod for customised roles):
@@ -181,11 +247,22 @@ Gated to `appointments.configure`. Every change is audited.
 | `appointments.checkin` | front desk, branch manager, doctor |
 | `appointments.configure` | branch manager (+ admin) |
 | `appointments.override` | branch manager (+ admin) |
+| `appointments.viewAllBranches` | telecaller, telecalling head, branch manager, sales head (+ admin) |
+| `appointments.bookAnyBranch` | telecaller, telecalling head, branch manager, sales head (+ admin) |
+
+> **Run `npm run backfill:capabilities` after deploying.** Roles customised in the
+> Hierarchy screen don't get new capabilities by themselves. Locally, `front_desk` was
+> customised and was redirected away from `/appointments` until the backfill ran.
 
 ## Limitations
 
 - **No booking UI yet.** Find a slot is read-only. Booking, and the override button,
   arrive with the calendar in Phase B.
+- **Equipment can't move between branches** (2.2.d); changing a machine's branch is an
+  audited edit.
+- **Chain search is a straightforward loop** (branches × days). Fine at today's
+  scale; worth caching if the chain grows past ~10 branches.
+- **Resource columns scroll horizontally** past ~6 columns; there's no column picker yet.
 - **Find a slot checks one named doctor.** "Show me every surgeon's free days" isn't
   offered, by decision 2.1.d (patients book a specific surgeon).
 - **Room-level minimum turnover isn't modelled.** Buffers are per appointment type only

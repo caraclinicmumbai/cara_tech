@@ -44,7 +44,7 @@ export type EngineResource = {
   timeOff: { startAt: Date; endAt: Date; reason: string | null }[];
 };
 
-export type Busy = { resourceId: string; appointmentId: string; startAt: Date; endAt: Date };
+export type Busy = { resourceId: string; appointmentId: string; branchId: string; startAt: Date; endAt: Date };
 
 export type EngineToggles = {
   allowDoctorDoubleBooking: boolean;
@@ -63,6 +63,10 @@ export type DayContext = {
   resources: Map<string, EngineResource>;
   busy: Busy[];
   toggles: EngineToggles;
+  /// Minutes a person needs to get between two branches (§2.2.a). Symmetric.
+  travelMinutes: (branchA: string, branchB: string) => number;
+  /// Branch names, for messages ("Dr Asif is at Powai until 13:00").
+  branchNames: Map<string, string>;
 };
 
 export type Requirement = {
@@ -84,6 +88,8 @@ export type IssueCode =
   | "time_off"
   | "double_booked"
   | "doctor_overbooked"
+  | "elsewhere"
+  | "travel_time"
   | "equipment_overbooked"
   | "room_overridden"
   | "doctor_not_chosen"
@@ -207,12 +213,47 @@ export function resourceIssues(ctx: DayContext, res: EngineResource, req: SlotRe
     }
   }
 
+  const ignore = new Set(req.ignoreAppointmentIds ?? []);
+
+  // ONE PERSON, ONE CALENDAR (§2.2): a doctor or staff member booked at ANOTHER branch
+  // can't be here at an overlapping time — and can't be here without the travel time
+  // in between. Always a block, whatever the double-booking switches say: it isn't a
+  // policy, it's geography.
+  if (res.kind === "doctor" || res.kind === "staff") {
+    for (const b of ctx.busy) {
+      if (b.resourceId !== res.id || ignore.has(b.appointmentId) || b.branchId === ctx.branchId) continue;
+      const where = ctx.branchNames.get(b.branchId) ?? "another branch";
+      const span = `${fmt(istMinutes(b.startAt))}–${fmt(istMinutes(b.endAt) || 1440)}`;
+      if (overlaps(req.startAt, req.holdUntil, b.startAt, b.endAt)) {
+        issues.push({ code: "elsewhere", severity: "block", message: `${res.name} is at ${where} ${span}`, resourceId: res.id });
+        break;
+      }
+      const travel = ctx.travelMinutes(ctx.branchId, b.branchId);
+      const gapBefore = (req.startAt.getTime() - b.endAt.getTime()) / MINUTE_MS; // they come from there
+      const gapAfter = (b.startAt.getTime() - req.holdUntil.getTime()) / MINUTE_MS; // they go there next
+      if ((gapBefore >= 0 && gapBefore < travel) || (gapAfter >= 0 && gapAfter < travel)) {
+        issues.push({
+          code: "travel_time",
+          severity: "block",
+          message: `${res.name} is at ${where} ${span} — needs ${travel} min to travel between branches`,
+          resourceId: res.id,
+        });
+        break;
+      }
+    }
+  }
+
   // Already booked. THE rule: rooms and the OT team never double. Doctors and
   // equipment may, with an acknowledged warning, unless the clinic switched that off.
   // A consultation room may be overridden by a branch manager.
-  const ignore = new Set(req.ignoreAppointmentIds ?? []);
+  // Same-branch clashes. (A clash at another branch was handled above for people;
+  // rooms and machines never leave their branch.)
   const clash = ctx.busy.find(
-    (b) => b.resourceId === res.id && !ignore.has(b.appointmentId) && overlaps(req.startAt, req.holdUntil, b.startAt, b.endAt),
+    (b) =>
+      b.resourceId === res.id &&
+      !ignore.has(b.appointmentId) &&
+      (b.branchId === ctx.branchId || (res.kind !== "doctor" && res.kind !== "staff")) &&
+      overlaps(req.startAt, req.holdUntil, b.startAt, b.endAt),
   );
   if (clash) {
     const span = `${fmt(istMinutes(clash.startAt))}–${fmt(istMinutes(clash.endAt) || 1440)}`;

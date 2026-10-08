@@ -9,6 +9,8 @@ import {
   updateResource,
   setResourceActive,
   saveRoster,
+  addScheduleException,
+  deleteScheduleException,
   addTimeOff,
   deleteTimeOff,
   type ResourceInput,
@@ -33,6 +35,7 @@ type ResourceView = {
   active: boolean;
   allowOverride: boolean;
   roster: RosterRowInput[];
+  exceptions: { id: string; date: string; branchId: string; start: string; end: string; note: string | null }[];
   timeOff: { id: string; start: string; end: string; reason: string | null; source: string }[];
 };
 
@@ -147,7 +150,7 @@ export function ResourcesSetup({
 
 function ResourceCard({ r, branches, users }: { r: ResourceView; branches: Opt[]; users: UserOpt[] }) {
   const [editing, setEditing] = useState(false);
-  const [open, setOpen] = useState<"roster" | "timeoff" | null>(null);
+  const [open, setOpen] = useState<"roster" | "changes" | "timeoff" | null>(null);
   const [data, setData] = useState<ResourceInput>({
     kind: r.kind,
     name: r.name,
@@ -178,6 +181,9 @@ function ResourceCard({ r, branches, users }: { r: ResourceView; branches: Opt[]
               <button className={`cara-chip ${open === "roster" ? "on" : ""}`} onClick={() => setOpen(open === "roster" ? null : "roster")}>
                 Roster ({r.roster.length})
               </button>
+              <button className={`cara-chip ${open === "changes" ? "on" : ""}`} onClick={() => setOpen(open === "changes" ? null : "changes")}>
+                One-off changes ({r.exceptions.length})
+              </button>
               <button className={`cara-chip ${open === "timeoff" ? "on" : ""}`} onClick={() => setOpen(open === "timeoff" ? null : "timeoff")}>
                 Time off ({r.timeOff.length})
               </button>
@@ -204,6 +210,7 @@ function ResourceCard({ r, branches, users }: { r: ResourceView; branches: Opt[]
         </div>
       )}
       {open === "roster" && <RosterEditor resourceId={r.id} initial={r.roster} branches={branches} defaultBranch={r.branchId} />}
+      {open === "changes" && <ExceptionsEditor resourceId={r.id} rows={r.exceptions} branches={branches} defaultBranch={r.branchId} />}
       {open === "timeoff" && <TimeOffEditor resourceId={r.id} rows={r.timeOff} />}
       <Msg msg={msg} />
     </div>
@@ -295,6 +302,61 @@ function TimeOffEditor({
           className="cara-btn cara-btn-primary"
           disabled={pending}
           onClick={() => run(() => addTimeOff(resourceId, form.start, form.end, form.reason), () => setForm({ start: "", end: "", reason: "" }))}
+        >
+          Add
+        </button>
+      </div>
+      <Msg msg={msg} />
+    </div>
+  );
+}
+
+/// One-off roster changes for a single date (§2.2): they replace the weekly roster for
+/// that day. Two rows on one date make a split day (Andheri morning, Powai afternoon).
+function ExceptionsEditor({
+  resourceId,
+  rows,
+  branches,
+  defaultBranch,
+}: {
+  resourceId: string;
+  rows: { id: string; date: string; branchId: string; start: string; end: string; note: string | null }[];
+  branches: Opt[];
+  defaultBranch: string | null;
+}) {
+  const empty = { date: "", branchId: defaultBranch ?? branches[0]?.id ?? "", start: "10:00", end: "17:00", note: "" };
+  const [form, setForm] = useState(empty);
+  const { run, pending, msg } = useRun();
+  const name = (id: string) => branches.find((b) => b.id === id)?.name ?? "—";
+  return (
+    <div className="space-y-2 rounded-lg border border-cara-rule p-3">
+      <p className="cara-note text-[12px]">
+        A change for a date replaces the weekly roster for that whole day. To take a day off, use Time off instead.
+      </p>
+      {rows.length === 0 && <p className="cara-note text-[12px]">No upcoming changes.</p>}
+      {rows.map((x) => (
+        <div key={x.id} className="flex flex-wrap items-center gap-2 text-[12.5px]">
+          <span className="font-medium">{x.date}</span>
+          <span>{x.start}–{x.end}</span>
+          <span className="text-cara-muted">at {name(x.branchId)}</span>
+          {x.note && <span className="text-cara-faint">· {x.note}</span>}
+          <button className="cara-btn" disabled={pending} onClick={() => run(() => deleteScheduleException(x.id))}>Remove</button>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <input type="date" className="cara-input w-auto!" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} aria-label="Date" />
+        <input type="time" className="cara-input w-[7.75rem]!" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} aria-label="From" />
+        <input type="time" className="cara-input w-[7.75rem]!" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} aria-label="To" />
+        <select className="cara-select w-auto!" value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })} aria-label="Branch">
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>{b.name}</option>
+          ))}
+        </select>
+        <input className="cara-input min-w-[10rem]! flex-1" placeholder="Note (optional)" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+        <button
+          className="cara-btn cara-btn-primary"
+          disabled={pending}
+          onClick={() => run(() => addScheduleException({ resourceId, ...form }), () => setForm({ ...empty, date: form.date }))}
         >
           Add
         </button>

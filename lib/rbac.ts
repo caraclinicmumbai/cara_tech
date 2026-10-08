@@ -97,6 +97,12 @@ export const CAPABILITIES = [
   // Book over a clash on a CONSULTATION room, with a logged reason (§2.1.c). Never
   // applies to an OT or the OT team. Branch managers by default.
   "appointments.override",
+  // §2.2 cross-branch. `viewAllBranches` = see patient details on EVERY branch's
+  // calendar; without it, other branches show free/busy only ("Booked") — 2.2.b.
+  // `bookAnyBranch` = book / move / cancel at a branch other than your own — the call
+  // centre, head office and branch managers (2.2.c).
+  "appointments.viewAllBranches",
+  "appointments.bookAnyBranch",
   "calls.view",
   "analytics.view",
   // Reports (§reports) — the management read-outs, split in two because they answer to
@@ -195,6 +201,8 @@ export const CAPABILITY_GROUPS: {
       { key: "appointments.checkin", label: "Check in / start / complete / no-show" },
       { key: "appointments.configure", label: "Configure hours, resources, types & flags" },
       { key: "appointments.override", label: "Override a consultation-room clash" },
+      { key: "appointments.viewAllBranches", label: "See patient details at every branch" },
+      { key: "appointments.bookAnyBranch", label: "Book at any branch (not just own)" },
     ],
   },
   {
@@ -284,6 +292,8 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "postsales.view",
     "appointments.view",
     "appointments.book",
+    "appointments.viewAllBranches",
+    "appointments.bookAnyBranch",
   ],
   telecalling_head: [
     "leads.view",
@@ -313,6 +323,8 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "postsales.view",
     "appointments.view",
     "appointments.book",
+    "appointments.viewAllBranches",
+    "appointments.bookAnyBranch",
   ],
   branch_manager: [
     "leads.view",
@@ -356,6 +368,8 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "appointments.checkin",
     "appointments.configure",
     "appointments.override",
+    "appointments.viewAllBranches",
+    "appointments.bookAnyBranch",
   ],
   sales_head: [
     "leads.view",
@@ -393,6 +407,9 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     // those stages.
     "postsales.view",
     "appointments.view",
+    "appointments.book",
+    "appointments.viewAllBranches",
+    "appointments.bookAnyBranch",
   ],
 
   // ── The post-sales / clinical roles (§post-sales). Note what is ABSENT from all

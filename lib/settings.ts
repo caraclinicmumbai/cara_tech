@@ -9,7 +9,7 @@
 // rows at all, and a key nobody has touched can't be in an undefined state.
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { SCHEDULING_TOGGLE_DEFAULTS } from "@/lib/scheduling/toggles";
+import { SCHEDULING_TOGGLE_DEFAULTS, SCHEDULING_NUMBER_DEFAULTS } from "@/lib/scheduling/toggles";
 
 /// Allow a quote to be marked Converted without an invoice behind it.
 ///
@@ -30,6 +30,7 @@ const DEFAULTS: Record<string, unknown> = {
   [ALLOW_UNINVOICED_CONVERSION]: true,
   // Appointments & scheduling (§3.2) — declared alongside their labels.
   ...SCHEDULING_TOGGLE_DEFAULTS,
+  ...SCHEDULING_NUMBER_DEFAULTS,
 };
 
 // Settings are read on hot paths (every quote transition), change rarely, and are
@@ -63,6 +64,24 @@ export async function getBoolSetting(key: string): Promise<boolean> {
   const values = await load();
   const raw = values.has(key) ? values.get(key) : DEFAULTS[key];
   return raw === true;
+}
+
+/// Read a numeric setting, falling back to its declared default (0 if it has none).
+export async function getNumberSetting(key: string): Promise<number> {
+  const values = await load();
+  const raw = values.has(key) ? values.get(key) : DEFAULTS[key];
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : Number(DEFAULTS[key] ?? 0);
+}
+
+/// Write a numeric setting and drop the cache. As with booleans, the caller audits.
+export async function setNumberSetting(key: string, value: number, updatedById?: string | null): Promise<void> {
+  await prisma.appSetting.upsert({
+    where: { key },
+    create: { key, value, updatedById: updatedById ?? null },
+    update: { value, updatedById: updatedById ?? null },
+  });
+  invalidateSettings();
+  logger.info(`App setting ${key} set to ${value}`);
 }
 
 /// Write a setting and drop the cache. The caller writes the audit entry — this module

@@ -79,3 +79,34 @@ export const SCHEDULING_TOGGLE_DEFAULTS: Record<string, boolean> = Object.fromEn
 export function isSchedulingToggle(key: string): boolean {
   return key in SCHEDULING_TOGGLE_DEFAULTS;
 }
+
+// ── Numeric settings (same store, same audit) ────────────────────────────────
+
+export type SchedulingNumber = {
+  key: string;
+  label: string;
+  description: string;
+  unit: string;
+  default: number;
+  min: number;
+  max: number;
+};
+
+export const DEFAULT_TRAVEL_MINUTES = "scheduling.defaultTravelMinutes";
+
+export const SCHEDULING_NUMBERS: SchedulingNumber[] = [
+  {
+    key: DEFAULT_TRAVEL_MINUTES,
+    label: "Default travel time between branches",
+    description:
+      "Used for any pair of branches without its own time in the travel matrix. A doctor or staff member can't be booked at a second branch the same day unless this much time separates the two (§2.2.a).",
+    unit: "min",
+    default: 90,
+    min: 0,
+    max: 600,
+  },
+];
+
+export const SCHEDULING_NUMBER_DEFAULTS: Record<string, number> = Object.fromEntries(
+  SCHEDULING_NUMBERS.map((n) => [n.key, n.default]),
+);

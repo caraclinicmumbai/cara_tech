@@ -10,10 +10,11 @@ import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/authz";
 import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
-import { getBoolSetting, setBoolSetting } from "@/lib/settings";
-import { isSchedulingToggle, SCHEDULING_TOGGLES } from "@/lib/scheduling/toggles";
+import { getBoolSetting, setBoolSetting, getNumberSetting, setNumberSetting } from "@/lib/settings";
+import { isSchedulingToggle, SCHEDULING_TOGGLES, SCHEDULING_NUMBERS } from "@/lib/scheduling/toggles";
+import { loadTravel } from "@/lib/scheduling/booking";
 import { isResourceKind, RESOURCE_KIND_LABELS } from "@/lib/scheduling/status";
-import { dateColumn, hhmmToMinutes } from "@/lib/scheduling/time";
+import { dateColumn, hhmmToMinutes, istInstant as istInstantOf } from "@/lib/scheduling/time";
 import { parseIstDateTimeLocal } from "@/lib/datetime";
 import { FLAG_ICONS, FLAG_TONES } from "@/lib/scheduling/flags";
 
@@ -75,6 +76,79 @@ export async function setSchedulingToggle(key: string, value: boolean): Promise<
   } catch (err) {
     return fail("setSchedulingToggle", err, "Could not save the switch");
   }
+}
+
+export async function setSchedulingNumber(key: string, value: number): Promise<Result> {
+  const actor = await requireCapability("appointments.configure");
+  const def = SCHEDULING_NUMBERS.find((n) => n.key === key);
+  if (!def) return { ok: false, error: "Unknown setting" };
+  const v = Math.round(Number(value));
+  if (!Number.isFinite(v) || v < def.min || v > def.max) return { ok: false, error: `Must be ${def.min}–${def.max} ${def.unit}` };
+  try {
+    const old = await getNumberSetting(key);
+    await setNumberSetting(key, v, actor.id ?? null);
+    await writeAudit({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: "settings.update",
+      entityType: "setting",
+      entityId: key,
+      field: "value",
+      oldValue: String(old),
+      newValue: String(v),
+      reason: def.label,
+    });
+    revalidatePath(PATH);
+    return { ok: true, info: `${def.label}: ${v} ${def.unit}` };
+  } catch (err) {
+    return fail("setSchedulingNumber", err, "Could not save the setting");
+  }
+}
+
+/// Set (or clear, with null) the travel time between two branches (§2.2.a). Stored
+/// once per unordered pair.
+export async function saveTravelTime(branchX: string, branchY: string, minutes: number | null): Promise<Result> {
+  const actor = await requireCapability("appointments.configure");
+  if (!branchX || !branchY || branchX === branchY) return { ok: false, error: "Pick two different branches" };
+  const [a, b] = branchX < branchY ? [branchX, branchY] : [branchY, branchX];
+  try {
+    if (minutes === null) {
+      await prisma.branchTravelTime.deleteMany({ where: { branchAId: a, branchBId: b } });
+    } else {
+      const m = Math.round(Number(minutes));
+      if (!Number.isFinite(m) || m < 0 || m > 600) return { ok: false, error: "Travel time must be 0–600 minutes" };
+      await prisma.branchTravelTime.upsert({
+        where: { branchAId_branchBId: { branchAId: a, branchBId: b } },
+        create: { branchAId: a, branchBId: b, minutes: m },
+        update: { minutes: m },
+      });
+    }
+    await audit(actor, "scheduling.travel.update", `${a}|${b}`, minutes === null ? "default" : `${minutes} min`);
+    revalidatePath(PATH);
+    return { ok: true, info: minutes === null ? "Reset to the default" : "Saved" };
+  } catch (err) {
+    return fail("saveTravelTime", err, "Could not save the travel time");
+  }
+}
+
+/// Same-day rows at two different branches must leave room to travel (§2.2). Returns
+/// an error message, or null when the rows are fine.
+async function travelProblem(rows: { branchId: string; startMin: number; endMin: number }[]): Promise<string | null> {
+  if (rows.length < 2) return null;
+  const travel = await loadTravel(prisma);
+  const sorted = [...rows].sort((x, y) => x.startMin - y.startMin);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const cur = sorted[i];
+    if (prev.branchId === cur.branchId) continue;
+    const need = travel.minutes(prev.branchId, cur.branchId);
+    if (cur.startMin - prev.endMin < need) {
+      const from = travel.names.get(prev.branchId) ?? "one branch";
+      const to = travel.names.get(cur.branchId) ?? "the next";
+      return `Leave at least ${need} min to travel from ${from} to ${to}`;
+    }
+  }
+  return null;
 }
 
 // ── Branch hours & holidays ──────────────────────────────────────────────────
@@ -289,6 +363,10 @@ export async function saveRoster(resourceId: string, rows: RosterRowInput[]): Pr
       }
     }
   }
+  for (let d = 0; d < 7; d++) {
+    const problem = await travelProblem(parsed.filter((p) => p.weekday === d));
+    if (problem) return { ok: false, error: problem };
+  }
   try {
     const r = await prisma.resource.findUnique({ where: { id: resourceId }, select: { kind: true, name: true } });
     if (!r || (r.kind !== "doctor" && r.kind !== "staff")) return { ok: false, error: "Only doctors and staff have rosters" };
@@ -301,6 +379,72 @@ export async function saveRoster(resourceId: string, rows: RosterRowInput[]): Pr
     return { ok: true, info: parsed.length ? "Roster saved" : "Roster cleared — available whenever the branch is open" };
   } catch (err) {
     return fail("saveRoster", err, "Could not save the roster");
+  }
+}
+
+/// A one-off roster change for one date (§2.2): these rows replace the weekly roster
+/// for that day. Add several rows for a split day (Andheri morning, Powai afternoon).
+export async function addScheduleException(input: {
+  resourceId: string;
+  date: string;
+  branchId: string;
+  start: string;
+  end: string;
+  note?: string | null;
+}): Promise<Result> {
+  const actor = await requireCapability("appointments.configure");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return { ok: false, error: "Pick a date" };
+  if (!input.branchId) return { ok: false, error: "Pick a branch" };
+  const startMin = hhmmToMinutes(input.start);
+  const endMin = hhmmToMinutes(input.end);
+  if (startMin === null || endMin === null || endMin <= startMin) return { ok: false, error: "Start must be before end (HH:MM)" };
+  try {
+    const r = await prisma.resource.findUnique({ where: { id: input.resourceId }, select: { kind: true, name: true } });
+    if (!r || (r.kind !== "doctor" && r.kind !== "staff")) return { ok: false, error: "Only doctors and staff have rosters" };
+    const date = dateColumn(input.date);
+    const same = await prisma.resourceScheduleException.findMany({
+      where: { resourceId: input.resourceId, date },
+      select: { branchId: true, startMin: true, endMin: true },
+    });
+    if (same.some((x) => startMin < x.endMin && x.startMin < endMin)) return { ok: false, error: "Overlaps another change on that date" };
+    const problem = await travelProblem([...same, { branchId: input.branchId, startMin, endMin }]);
+    if (problem) return { ok: false, error: problem };
+    const row = await prisma.resourceScheduleException.create({
+      data: { resourceId: input.resourceId, date, branchId: input.branchId, startMin, endMin, note: clean(input.note), createdById: actor.id ?? null },
+      select: { id: true },
+    });
+    const clashes = await prisma.appointmentResource.count({
+      where: {
+        resourceId: input.resourceId,
+        blocking: true,
+        startAt: { gte: istInstantOf(input.date, 0), lt: istInstantOf(input.date, 1440) },
+      },
+    });
+    await audit(actor, "scheduling.exception.create", row.id, `${r.name}: ${input.date} ${input.start}–${input.end}`, {
+      meta: { resourceId: input.resourceId, branchId: input.branchId },
+    });
+    revalidatePath(PATH);
+    return {
+      ok: true,
+      id: row.id,
+      info: clashes
+        ? `Saved. ${r.name} has ${clashes} appointment(s) that day — check they still fit the changed roster.`
+        : `Saved. This replaces ${r.name}'s weekly roster for that date.`,
+    };
+  } catch (err) {
+    return fail("addScheduleException", err, "Could not save the change");
+  }
+}
+
+export async function deleteScheduleException(id: string): Promise<Result> {
+  const actor = await requireCapability("appointments.configure");
+  try {
+    const row = await prisma.resourceScheduleException.delete({ where: { id } });
+    await audit(actor, "scheduling.exception.delete", id, row.date.toISOString().slice(0, 10), { meta: { resourceId: row.resourceId } });
+    revalidatePath(PATH);
+    return { ok: true };
+  } catch (err) {
+    return fail("deleteScheduleException", err, "Could not remove the change");
   }
 }
 

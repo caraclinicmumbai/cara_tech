@@ -73,6 +73,8 @@ function ctx(over: Partial<DayContext> = {}, resources: EngineResource[] = BASE)
     resources: new Map(resources.map((r) => [r.id, r])),
     busy: [],
     toggles: TOGGLES,
+    travelMinutes: (a: string, b: string) => (a === b ? 0 : 120),
+    branchNames: new Map([["B1", "Andheri"], ["B2", "Powai"]]),
     ...over,
   };
 }
@@ -104,8 +106,8 @@ function slot(startMin: number, durationMin: number, extra: Partial<Parameters<t
   return { startAt, endAt, holdUntil: endAt, requirements: CONSULT, chosenIds: [], now: NOW, ...extra };
 }
 
-function busy(resourceId: string, startMin: number, endMin: number, appointmentId = "existing") {
-  return { resourceId, appointmentId, startAt: istInstant(DAY, startMin), endAt: istInstant(DAY, endMin) };
+function busy(resourceId: string, startMin: number, endMin: number, appointmentId = "existing", branchId = "B1") {
+  return { resourceId, appointmentId, branchId, startAt: istInstant(DAY, startMin), endAt: istInstant(DAY, endMin) };
 }
 
 async function engineChecks() {
@@ -346,8 +348,8 @@ async function spec21Checks() {
     { kind: "staff", subtype: "technician", resourceId: null, quantity: 3 },
   ];
   const satBusy = [
-    { resourceId: "devA", appointmentId: "other", startAt: istInstant(SAT, 8 * 60), endAt: istInstant(SAT, 12 * 60) },
-    { resourceId: "t3", appointmentId: "other2", startAt: istInstant(SAT, 13 * 60), endAt: istInstant(SAT, 18 * 60) },
+    { resourceId: "devA", appointmentId: "other", branchId: "B1", startAt: istInstant(SAT, 8 * 60), endAt: istInstant(SAT, 12 * 60) },
+    { resourceId: "t3", appointmentId: "other2", branchId: "B1", startAt: istInstant(SAT, 13 * 60), endAt: istInstant(SAT, 18 * 60) },
   ];
   const day = (dateKey: string, busyRows: typeof satBusy) =>
     ctx({ dateKey, open: [{ startMin: 8 * 60, endMin: 20 * 60 }], busy: busyRows }, rohanRes);
@@ -370,6 +372,67 @@ async function spec21Checks() {
   await check("explainDay on a holiday says only that", () => {
     const why = explainDay(ctx({ open: [], closures: [{ startMin: 0, endMin: 1440, reason: "Diwali" }] }), fueOpts);
     assert.deepEqual(why, ["Branch closed: Diwali"]);
+  });
+}
+
+async function spec22Checks() {
+  console.log("Spec 2.2 — one person, one calendar, across branches");
+  // ctx() is branch B1 = Andheri; B2 = Powai; travel between them = 120 min.
+
+  await check("doctor booked at Powai can't be at Andheri at the same time (even with double-booking allowed)", () => {
+    const r = evaluateSlot(ctx({ busy: [busy("drA", 10 * 60, 11 * 60, "p", "B2")] }), slot(10 * 60 + 30, 30, { chosenIds: ["drA"] }));
+    assert.equal(r.ok, false);
+    assert.ok(r.issues.some((i) => i.code === "elsewhere" && i.message.includes("Powai")));
+  });
+
+  await check("…and not within the travel time either side", () => {
+    const c = ctx({ busy: [busy("drA", 10 * 60, 12 * 60, "p", "B2")] });
+    const tooSoon = evaluateSlot(c, slot(13 * 60, 30, { chosenIds: ["drA"] })); // 60 min after
+    const fine = evaluateSlot(c, slot(14 * 60, 30, { chosenIds: ["drA"] })); // 120 min after
+    const beforeTooLate = evaluateSlot(c, slot(8 * 60 + 30, 30, { chosenIds: ["drA"], allowPast: true, now: NOW })); // ends 9:00, Powai at 10
+    assert.equal(tooSoon.ok, false);
+    assert.ok(tooSoon.issues.some((i) => i.code === "travel_time"));
+    assert.equal(fine.ok, true);
+    assert.ok(beforeTooLate.issues.some((i) => i.code === "travel_time"));
+  });
+
+  await check("same-branch doctor overlap is still only a warning", () => {
+    const r = evaluateSlot(ctx({ busy: [busy("drA", 10 * 60, 11 * 60, "p", "B1")] }), slot(10 * 60 + 30, 30, { chosenIds: ["drA"] }));
+    assert.equal(r.ok, true);
+    assert.equal(r.needsAck, true);
+  });
+
+  await check("OT-team member at another branch is blocked too", () => {
+    const r = evaluateSlot(
+      ctx({ busy: [busy("tech1", 10 * 60, 12 * 60, "p", "B2")] }),
+      slot(10 * 60, 8 * 60, { requirements: FUE, chosenIds: ["drA", "tech1"] }),
+    );
+    assert.ok(r.issues.some((i) => i.code === "elsewhere" && i.resourceId === "tech1"));
+  });
+
+  // Worked example: Dr Asif Sat — Andheri 09:00–13:00, Powai 15:00–18:00.
+  const satAtPowai = (busyRows: ReturnType<typeof busy>[]) =>
+    ctx(
+      { branchId: "B2", open: [{ startMin: 9 * 60, endMin: 20 * 60 }], busy: busyRows },
+      BASE.map((x) => (x.id === "drA" ? { ...x, hasRoster: true, rosterHere: [{ startMin: 15 * 60, endMin: 18 * 60 }] } : x)).concat([
+        res({ id: "powaiRoom", kind: "room", subtype: "consultation", branchId: "B2" }),
+      ]),
+    );
+
+  await check("worked example: 13:30 at Powai is not offered (he's travelling)", () => {
+    const r = evaluateSlot(satAtPowai([]), slot(13 * 60 + 30, 15, { chosenIds: ["drA"] }));
+    assert.equal(r.ok, false);
+  });
+
+  await check("worked example: 15:00 at Powai works after an Andheri patient until 13:00", () => {
+    const r = evaluateSlot(satAtPowai([busy("drA", 12 * 60 + 30, 13 * 60, "a", "B1")]), slot(15 * 60, 15, { chosenIds: ["drA"] }));
+    assert.equal(r.ok, true, r.issues.map((i) => i.message).join(" | "));
+  });
+
+  await check("worked example: an Andheri patient running to 14:00 pushes Powai's first slot to 16:00", () => {
+    const c = satAtPowai([busy("drA", 13 * 60 + 30, 14 * 60, "a", "B1")]);
+    const slots = findSlots(c, { durationMin: 15, bufferAfterMin: 0, requirements: CONSULT, chosenIds: ["drA"], stepMin: 30, now: NOW, istInstant });
+    assert.equal(slots[0].startAt.getTime(), istInstant(DAY, 16 * 60).getTime());
   });
 }
 
@@ -407,6 +470,7 @@ async function dbChecks() {
 
   const extraTypes: string[] = [];
   const extraResources: string[] = [];
+  const extraBranches: string[] = [];
 
   try {
     await check("12 simultaneous bookings of one room → exactly one wins", async () => {
@@ -502,6 +566,47 @@ async function dbChecks() {
       assert.equal(audit, 1);
     });
 
+    // §2.2 — one-off roster changes and privacy, against the real loaders.
+    const branch2 = await prisma.branch.create({ data: { code: `U${String(Date.now()).slice(-6)}`, name: `${tag} branch 2` } });
+    extraBranches.push(branch2.id);
+    const roomB2 = await prisma.resource.create({ data: { kind: "room", subtype: "consult2", name: `${tag} room B2`, branchId: branch2.id } });
+    extraResources.push(roomB2.id);
+    const rotating = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} rotating doctor` } });
+    extraResources.push(rotating.id);
+    const { weekdayOfKey, dateColumn } = await import("../lib/scheduling/time");
+    // Weekly: this weekday at branch 1 only.
+    await prisma.resourceSchedule.create({ data: { resourceId: rotating.id, branchId: branch.id, weekday: weekdayOfKey(dateKey), startMin: 10 * 60, endMin: 17 * 60 } });
+    const b3 = { leadId: lead.id, branchId: branch2.id, typeId: anyRoom.id, resourceIds: [rotating.id] };
+
+    await check("doctor rostered at branch 1 can't be booked at branch 2 that day", async () => {
+      const r = await bookAppointment({ ...b3, startAt: at(11 * 60) }, actor);
+      assert.equal(r.ok, false);
+    });
+
+    await check("a one-off change moves them to branch 2 for that date (replacing the weekly roster)", async () => {
+      await prisma.resourceScheduleException.create({
+        data: { resourceId: rotating.id, date: dateColumn(dateKey), branchId: branch2.id, startMin: 10 * 60, endMin: 17 * 60 },
+      });
+      const atB2 = await bookAppointment({ ...b3, startAt: at(11 * 60) }, actor);
+      assert.ok(atB2.ok, !atB2.ok ? atB2.error : "");
+      const atB1 = await bookAppointment({ ...b2, resourceIds: [rotating.id], startAt: at(14 * 60) }, actor);
+      assert.equal(atB1.ok, false, "branch 1 is no longer on their roster that day");
+    });
+
+    await check("other branch's appointments are masked for a viewer without all-branch access", async () => {
+      const { loadAppointments } = await import("../lib/scheduling/calendar");
+      const from = at(0);
+      const to = at(24 * 60);
+      const base = { id: null, role: "front_desk", resourceId: null, bookAnyBranch: false, canBook: true, canCheckin: true, canOverride: false };
+      const fromB1 = await loadAppointments({ ...base, homeBranchId: branch.id, seesAllBranches: false }, from, to, { branchId: branch2.id });
+      assert.ok(fromB1.length >= 1);
+      assert.ok(fromB1.every((a) => !a.visible && a.patientName === null && a.typeName === null && a.notes === null));
+      const fromB2 = await loadAppointments({ ...base, homeBranchId: branch2.id, seesAllBranches: false }, from, to, { branchId: branch2.id });
+      assert.ok(fromB2.every((a) => a.visible && a.patientName !== null));
+      const asDoctor = await loadAppointments({ ...base, homeBranchId: branch.id, seesAllBranches: false, resourceId: rotating.id }, from, to, { branchId: null });
+      assert.ok(asDoctor.filter((a) => a.resources.some((x) => x.id === rotating.id)).every((a) => a.visible), "a doctor sees their own appointments everywhere");
+    });
+
     await check("every write left an audit row", async () => {
       const ids = (await prisma.appointment.findMany({ where: { typeId: type.id }, select: { id: true } })).map((a) => a.id);
       const n = await prisma.auditLog.count({ where: { entityType: "appointment", entityId: { in: ids } } });
@@ -512,7 +617,7 @@ async function dbChecks() {
     await prisma.appointmentType.deleteMany({ where: { id: { in: [type.id, ...extraTypes] } } });
     await prisma.resource.deleteMany({ where: { id: { in: [room.id, doctor.id, ...extraResources] } } });
     await prisma.lead.delete({ where: { id: lead.id } });
-    await prisma.branch.delete({ where: { id: branch.id } });
+    await prisma.branch.deleteMany({ where: { id: { in: [branch.id, ...extraBranches] } } });
     await prisma.$disconnect();
   }
 }
@@ -520,6 +625,7 @@ async function dbChecks() {
 (async () => {
   await engineChecks();
   await spec21Checks();
+  await spec22Checks();
   if (process.env.CHECK_DB !== "0") await dbChecks();
   console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);
 })();

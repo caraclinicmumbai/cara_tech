@@ -1,10 +1,13 @@
 "use client";
 
-// Find a slot (§2.1 worked example). Pick branch, treatment, the doctor the patient
-// asked for, and a day: the screen shows the times that work — or why that day
-// doesn't, and the next day that does.
+// Find a slot (§2.1 / §2.2 worked examples). Pick branch, treatment, the doctor the
+// patient asked for, and a day: the screen shows the times that work — or why that day
+// doesn't, and the next day that does. "All branches" asks the chain: the earliest
+// slot for that doctor at every branch, soonest first (the call-centre question).
+// Clicking a time opens the booking drawer, when the viewer may book there.
 import { useState, useTransition } from "react";
-import { searchSlots, type SlotSearchResult } from "@/app/(dashboard)/appointments/actions";
+import { searchChain, searchSlots, type SlotSearchResult } from "@/app/(dashboard)/appointments/actions";
+import type { BranchEarliest } from "@/lib/scheduling/booking";
 import type { DayAvailability } from "@/lib/scheduling/booking";
 import { IconAlert } from "@/components/Icon";
 
@@ -23,7 +26,40 @@ function hours(min: number): string {
   return h && m ? `${h} h ${m} min` : h ? `${h} h` : `${m} min`;
 }
 
-function DayResult({ day, heading }: { day: DayAvailability; heading: string }) {
+export type SlotPick = { branchId: string; typeId: string; doctorId: string; startAt: string; dateKey: string };
+
+function Chips({
+  slots,
+  onPick,
+}: {
+  slots: DayAvailability["slots"];
+  onPick?: (startAt: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {slots.map((s) => {
+        const cls = `tag ${s.needsAck ? "tag-citric" : "tag-aqua"}`;
+        const body = (
+          <>
+            {s.needsAck && <IconAlert className="tag-icon" />}
+            {timeFmt.format(new Date(s.startAt))} – {timeFmt.format(new Date(s.endAt))}
+          </>
+        );
+        return onPick ? (
+          <button key={s.startAt} className={cls} title={s.warnings.length ? s.warnings.join("\n") : "Everything free — click to book"} onClick={() => onPick(s.startAt)}>
+            {body}
+          </button>
+        ) : (
+          <span key={s.startAt} className={cls} title={s.warnings.length ? s.warnings.join("\n") : "Everything free"}>
+            {body}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function DayResult({ day, heading, onPick }: { day: DayAvailability; heading: string; onPick?: (startAt: string) => void }) {
   return (
     <div className="cara-card space-y-3 p-5">
       <div className="flex flex-wrap items-baseline gap-2">
@@ -41,18 +77,7 @@ function DayResult({ day, heading }: { day: DayAvailability; heading: string }) 
           </ul>
         </div>
       ) : (
-        <div className="flex flex-wrap gap-2">
-          {day.slots.map((s) => (
-            <span
-              key={s.startAt}
-              className={`tag ${s.needsAck ? "tag-citric" : "tag-aqua"}`}
-              title={s.warnings.length ? s.warnings.join("\n") : "Everything free"}
-            >
-              {s.needsAck && <IconAlert className="tag-icon" />}
-              {timeFmt.format(new Date(s.startAt))} – {timeFmt.format(new Date(s.endAt))}
-            </span>
-          ))}
-        </div>
+        <Chips slots={day.slots} onPick={onPick} />
       )}
       {day.slots.some((s) => s.needsAck) && (
         <p className="cara-note text-[12px]">
@@ -69,26 +94,60 @@ export function SlotFinder({
   types,
   doctors,
   today,
+  initial,
+  canPick,
+  onPick,
 }: {
   branches: { id: string; name: string }[];
   types: TypeOpt[];
   doctors: { id: string; name: string }[];
   today: string;
+  initial?: { branchId?: string; doctorId?: string; typeId?: string; dateKey?: string };
+  /// May the viewer book at this branch? (2.2.c) — times there become clickable.
+  canPick?: (branchId: string) => boolean;
+  onPick?: (p: SlotPick) => void;
 }) {
-  const [form, setForm] = useState({ branchId: branches[0]?.id ?? "", typeId: types[0]?.id ?? "", doctorId: "", dateKey: today });
+  const [form, setForm] = useState({
+    branchId: initial?.branchId ?? branches[0]?.id ?? "",
+    typeId: initial?.typeId || types[0]?.id || "",
+    doctorId: initial?.doctorId ?? "",
+    dateKey: initial?.dateKey && initial.dateKey >= today ? initial.dateKey : today,
+  });
   const [result, setResult] = useState<SlotSearchResult | null>(null);
+  const [chain, setChain] = useState<{ ok: true; branches: BranchEarliest[] } | { ok: false; error: string } | null>(null);
   const [pending, startTransition] = useTransition();
   const type = types.find((t) => t.id === form.typeId);
 
   function search() {
-    startTransition(async () => setResult(await searchSlots(form)));
+    startTransition(async () => {
+      if (form.branchId === "all") {
+        setResult(null);
+        setChain(await searchChain({ typeId: form.typeId, doctorId: form.doctorId, dateKey: form.dateKey }));
+      } else {
+        setChain(null);
+        setResult(await searchSlots(form));
+      }
+    });
   }
+
+  const picker = (branchId: string) =>
+    onPick && (!canPick || canPick(branchId))
+      ? (startAt: string) =>
+          onPick({
+            branchId,
+            typeId: form.typeId,
+            doctorId: form.doctorId,
+            startAt,
+            dateKey: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(startAt)),
+          })
+      : undefined;
 
   return (
     <div className="space-y-4">
       <div className="cara-card space-y-3 p-5">
         <div className="flex flex-wrap items-center gap-2">
           <select className="cara-select w-auto!" value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })} aria-label="Branch">
+            {branches.length > 1 && <option value="all">All branches — earliest anywhere</option>}
             {branches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
@@ -106,7 +165,7 @@ export function SlotFinder({
               ))}
             </select>
           )}
-          <input type="date" className="cara-input w-auto!" value={form.dateKey} min={today} onChange={(e) => setForm({ ...form, dateKey: e.target.value })} aria-label="Date" />
+          <input type="date" className="cara-input w-auto!" value={form.dateKey} min={today} onChange={(e) => setForm({ ...form, dateKey: e.target.value })} aria-label="Search from date" />
           <button className="cara-btn cara-btn-primary" disabled={pending} onClick={search}>
             {pending ? "Searching…" : "Find slots"}
           </button>
@@ -122,13 +181,30 @@ export function SlotFinder({
       {result && !result.ok && <div className="cara-notice is-warn">{result.error}</div>}
       {result?.ok && (
         <div className="space-y-3">
-          <DayResult day={result.requested} heading="Requested day" />
+          <DayResult day={result.requested} heading="Requested day" onPick={picker(form.branchId)} />
           {result.requested.slots.length === 0 &&
             (result.next ? (
-              <DayResult day={result.next} heading="Next available" />
+              <DayResult day={result.next} heading="Next available" onPick={picker(form.branchId)} />
             ) : (
               <p className="cara-note">Nothing free in the next 14 days.</p>
             ))}
+        </div>
+      )}
+      {chain && !chain.ok && <div className="cara-notice is-warn">{chain.error}</div>}
+      {chain?.ok && (
+        <div className="space-y-3">
+          {chain.branches.length === 0 && <p className="cara-note">Nothing free at any branch in the next 14 days.</p>}
+          {chain.branches.map((b, i) => (
+            <div key={b.branchId} className="cara-card space-y-2 p-5">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <span className="font-medium text-cara-ink">{b.branchName}</span>
+                <span className="text-[12px] text-cara-muted">{dayLabel(b.dateKey)}</span>
+                {i === 0 && <span className="tag tag-lime">earliest</span>}
+                {canPick && !canPick(b.branchId) && <span className="text-[11.5px] text-cara-faint">· another branch — the call centre books here</span>}
+              </div>
+              <Chips slots={b.slots} onPick={picker(b.branchId)} />
+            </div>
+          ))}
         </div>
       )}
     </div>

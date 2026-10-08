@@ -52,6 +52,8 @@ const NEW_CAPABILITIES: Capability[] = [
   "appointments.checkin",
   "appointments.configure",
   "appointments.override",
+  "appointments.viewAllBranches",
+  "appointments.bookAnyBranch",
 ];
 
 /// Every capability that now gates a top-level route. A customised role missing one of
@@ -61,6 +63,7 @@ const ROUTE_GATES: { path: string; cap: Capability }[] = [
   "/calls",
   "/dashboard",
   "/post-sales",
+  "/appointments",
   "/campaigns",
   "/audit",
   "/users",

@@ -815,11 +815,14 @@ model Branch {
   adSpend               AdSpend[]            @relation("AdSpendBranch")
 
   // ── Scheduling (§3.2) ──
-  hours             BranchHours[]
-  closures          BranchClosure[]
-  resources         Resource[]
-  resourceSchedules ResourceSchedule[]
-  appointments      Appointment[]
+  hours              BranchHours[]
+  closures           BranchClosure[]
+  resources          Resource[]
+  resourceSchedules  ResourceSchedule[]
+  appointments       Appointment[]
+  scheduleExceptions ResourceScheduleException[]
+  travelFrom         BranchTravelTime[]          @relation("TravelFrom")
+  travelTo           BranchTravelTime[]          @relation("TravelTo")
 
   @@index([active])
 }
@@ -1341,6 +1344,7 @@ model Resource {
   updatedAt DateTime @updatedAt
 
   schedules    ResourceSchedule[]
+  exceptions   ResourceScheduleException[]
   timeOff      ResourceTimeOff[]
   bookings     AppointmentResource[]
   requirements AppointmentTypeRequirement[]
@@ -1386,6 +1390,43 @@ model ResourceTimeOff {
   createdAt   DateTime @default(now())
 
   @@index([resourceId, startAt])
+}
+
+/// A one-off change to someone's weekly roster for ONE date (§2.2 "exceptions — one-off
+/// changes"): Dr Asif at Powai instead of Andheri this Saturday, or an extra Sunday
+/// clinic. When a person has any exception rows for a date, those rows REPLACE their
+/// weekly roster for that date entirely. A day off is ResourceTimeOff, not this.
+model ResourceScheduleException {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  date       DateTime @db.Date
+  branchId   String
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  startMin   Int
+  endMin     Int
+  note       String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([resourceId, date])
+}
+
+/// How long it takes a doctor or staff member to get from one branch to another
+/// (§2.2.a — a configurable matrix, with a default for any pair not listed). Stored
+/// once per unordered pair: branchAId < branchBId.
+model BranchTravelTime {
+  id        String @id @default(cuid())
+  branchAId String
+  branchA   Branch @relation("TravelFrom", fields: [branchAId], references: [id], onDelete: Cascade)
+  branchBId String
+  branchB   Branch @relation("TravelTo", fields: [branchBId], references: [id], onDelete: Cascade)
+  minutes   Int
+
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([branchAId, branchBId])
 }
 
 /// What is being booked (§3.2 1.4) — "Hair Transplant Consultation", "FUE Surgery –
