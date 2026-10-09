@@ -19,6 +19,7 @@ import {
   type SlotsForBooking,
 } from "@/app/(dashboard)/appointments/actions";
 import { FlagGlyph, IconAlert } from "@/components/Icon";
+import { startPlanFromAppointment } from "@/app/(dashboard)/appointments/plans/actions";
 import { STATUS_ACTION, STATUS_LABEL, STATUS_TONE, fmtDay, fmtRange, fmtTime, keyOf } from "./ui";
 
 /// Mounted fresh for each appointment opened (the desk keys it by id).
@@ -211,6 +212,24 @@ export function AppointmentCard({ id, onClose }: { id: string; onClose: () => vo
                 </div>
               )}
 
+              {/* Treatment plan (§2.8) */}
+              {d.visible && (d.plan || d.otherPlans.length > 0 || (d.canAct && d.seriesOptions.length > 0)) && (
+                <div className="space-y-1.5 border-t border-cara-rule pt-3 text-[12.5px]">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-cara-muted">Treatment plan</div>
+                  {d.plan && (
+                    <div>
+                      <Link href={`/appointments/plans/${d.plan.planId}`} className="tone-link">{d.plan.name}</Link> — {d.plan.step} <span className="text-cara-muted">({d.plan.position})</span>
+                    </div>
+                  )}
+                  {d.otherPlans.map((p) => (
+                    <div key={p.id}>
+                      <Link href={`/appointments/plans/${p.id}`} className="tone-link">{p.name}</Link> <span className="text-cara-muted">({p.progress})</span>
+                    </div>
+                  ))}
+                  {d.canAct && !d.plan && d.seriesOptions.length > 0 && <StartPlan appointmentId={d.id} options={d.seriesOptions} />}
+                </div>
+              )}
+
               {/* Messages (§2.4) */}
               {(d.reminders.length > 0 || d.patientLink) && (
                 <div className="space-y-1.5 border-t border-cara-rule pt-3">
@@ -324,6 +343,35 @@ export function AppointmentCard({ id, onClose }: { id: string; onClose: () => vo
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/// Start a treatment plan anchored on this appointment (§2.8).
+function StartPlan({ appointmentId, options }: { appointmentId: string; options: { id: string; name: string }[] }) {
+  const router = useRouter();
+  const [templateId, setTemplateId] = useState(options[0]?.id ?? "");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select className="cara-select w-auto!" value={templateId} onChange={(e) => setTemplateId(e.target.value)} aria-label="Series">
+        {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+      </select>
+      <button
+        className="cara-btn"
+        disabled={pending}
+        onClick={() =>
+          start(async () => {
+            const r = await startPlanFromAppointment(appointmentId, templateId);
+            setMsg(r.ok ? (r.info ?? "Started") : (r.error ?? "Couldn't start"));
+            if (r.ok && r.id) router.push(`/appointments/plans/${r.id}`);
+          })
+        }
+      >
+        Start plan from this appointment
+      </button>
+      {msg && <span className="text-cara-muted">{msg}</span>}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { TypesSetup } from "@/components/scheduling/TypesSetup";
 import { FlagsSetup } from "@/components/scheduling/FlagsSetup";
 import { MessagesSetup } from "@/components/scheduling/MessagesSetup";
 import { IntakeFormsSetup } from "@/components/scheduling/IntakeFormsSetup";
+import { SeriesSetup } from "@/components/scheduling/SeriesSetup";
 import type { IntakeSchema } from "@/lib/scheduling/intake/schema";
 import { isWhatsAppConfigured } from "@/lib/providers/whatsapp";
 import { isSmsConfigured } from "@/lib/providers/sms";
@@ -33,6 +34,7 @@ const TABS = [
   { key: "types", label: "Appointment types" },
   { key: "messages", label: "Messages & reminders" },
   { key: "intake", label: "Intake forms" },
+  { key: "series", label: "Treatment series" },
   { key: "flags", label: "Patient flags" },
 ] as const;
 
@@ -82,6 +84,7 @@ export default async function SchedulingSetupPage({
       {tab === "types" && <TypesTab branches={branches} />}
       {tab === "messages" && <MessagesTab />}
       {tab === "intake" && <IntakeTab />}
+      {tab === "series" && <SeriesTab />}
       {tab === "flags" && <FlagsTab />}
     </div>
   );
@@ -363,6 +366,38 @@ async function IntakeTab() {
           usedBy: f.appointmentTypes.map((t) => t.name),
           responses: f._count.responses,
         }))}
+    />
+  );
+}
+
+async function SeriesTab() {
+  const [series, types] = await Promise.all([
+    prisma.seriesTemplate.findMany({
+      orderBy: [{ active: "desc" }, { name: "asc" }],
+      include: { steps: { orderBy: { order: "asc" } }, _count: { select: { plans: true } } },
+    }),
+    prisma.appointmentType.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+  ]);
+  return (
+    <SeriesSetup
+      types={types}
+      series={series.map((t) => ({
+        id: t.id,
+        name: t.name,
+        active: t.active,
+        anchorTypeId: t.anchorTypeId ?? "",
+        packageName: t.packageName ?? "",
+        autoStart: t.autoStart,
+        plans: t._count.plans,
+        steps: t.steps.map((st) => ({
+          label: st.label,
+          typeId: st.typeId,
+          offsetValue: st.offsetValue,
+          offsetUnit: st.offsetUnit,
+          toleranceDays: st.toleranceDays,
+          sameDoctor: st.sameDoctor,
+        })),
+      }))}
     />
   );
 }

@@ -173,6 +173,7 @@ model Lead {
   flags               LeadFlag[]
   consents            ConsentRecord[]
   intakeResponses     IntakeResponse[]
+  treatmentPlans      TreatmentPlan[]
 
   @@index([status])
   @@index([phone])
@@ -1586,6 +1587,8 @@ model Appointment {
   reminders       AppointmentReminder[]
   payments        BookingPayment[]
   intakeResponses IntakeResponse[]
+  plannedStep     PlannedStep?
+  anchoredPlans   TreatmentPlan[]       @relation("PlanAnchor")
 
   @@index([branchId, startAt])
   @@index([leadId])
@@ -1922,4 +1925,106 @@ model IntakePhoto {
   createdAt  DateTime       @default(now())
 
   @@index([responseId])
+}
+
+/// A multi-session treatment series (§2.8) — "FUE Hair Transplant Package": the
+/// surgery, then post-op checks, PRP sessions and a 12-month review, each as an offset
+/// from the anchor (Day 0) with a tolerance window. Clinic-editable (2.8.a — intervals
+/// from the clinical lead; 1 month between treatments by default).
+///   anchorTypeId + autoStart: booking an appointment of this type for a patient with a
+///   converted quote for `packageName` starts the plan automatically.
+model SeriesTemplate {
+  id           String   @id @default(cuid())
+  name         String
+  active       Boolean  @default(true)
+  anchorTypeId String?
+  /// The package (quote treatment / catalog item name) this series belongs to.
+  packageName  String?
+  autoStart    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  steps SeriesStep[]
+  plans TreatmentPlan[]
+}
+
+/// One step of a series template. Offset from the anchor in days or calendar months;
+/// the step is "due" between target − tolerance and target + tolerance.
+model SeriesStep {
+  id            String         @id @default(cuid())
+  templateId    String
+  template      SeriesTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  order         Int
+  label         String
+  typeId        String
+  offsetValue   Int
+  offsetUnit    String         @default("months") // days | months
+  toleranceDays Int            @default(7)
+  /// Follow-ups with the surgeon (2.8.f): book the plan's doctor.
+  sameDoctor    Boolean        @default(true)
+
+  @@index([templateId])
+}
+
+/// A patient's own plan (§2.8) — generated from a template (or built by hand), editable
+/// for this patient without touching the template. If the anchor moves (surgery
+/// rescheduled), every dependent step shifts and the plan is flagged for review.
+model TreatmentPlan {
+  id                  String          @id @default(cuid())
+  leadId              String
+  lead                Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  templateId          String?
+  template            SeriesTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  name                String
+  anchorAt            DateTime
+  anchorAppointmentId String?
+  anchorAppointment   Appointment?    @relation("PlanAnchor", fields: [anchorAppointmentId], references: [id], onDelete: SetNull)
+  branchId            String
+  /// The surgeon — follow-ups book them (2.8.f).
+  doctorId            String?
+  /// active | completed | cancelled
+  status              String          @default("active")
+  needsReview         Boolean         @default(false)
+  reviewNote          String?
+  createdById         String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  steps PlannedStep[]
+
+  @@index([leadId])
+  @@index([anchorAppointmentId])
+}
+
+/// One step of a patient's plan. status: planned (not booked yet) | booked |
+/// completed | waived. "Due" and "overdue" are computed from dueFrom / dueTo.
+/// Recall (2.8.d): stage 0 → WhatsApp when the window opens → 1: WhatsApp + SMS three
+/// days later → 2: a call task at seven days (`callRequired`).
+model PlannedStep {
+  id            String        @id @default(cuid())
+  planId        String
+  plan          TreatmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  order         Int
+  label         String
+  typeId        String
+  offsetValue   Int
+  offsetUnit    String        @default("months")
+  toleranceDays Int           @default(7)
+  sameDoctor    Boolean       @default(true)
+  targetAt      DateTime
+  dueFrom       DateTime
+  dueTo         DateTime
+  status        String        @default("planned")
+  appointmentId String?       @unique
+  appointment   Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  recallStage   Int           @default(0)
+  lastRecallAt  DateTime?
+  callRequired  Boolean       @default(false)
+  note          String?
+  completedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([planId])
+  @@index([status, dueFrom])
 }

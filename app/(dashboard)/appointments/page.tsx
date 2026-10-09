@@ -119,6 +119,7 @@ export default async function AppointmentsPage({
               Needs rebooking{openCases ? ` (${openCases})` : ""}
             </Link>
           )}
+          <Link href="/appointments/recall" className="tone-link">Recall list</Link>
           <Link href="/appointments/leave" className="tone-link">Leave</Link>
           {can(user.role, "appointments.configure") && (
             <Link href="/appointments/setup" className="tone-link">Scheduling setup</Link>

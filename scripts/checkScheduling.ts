@@ -21,7 +21,7 @@ import {
   type EngineToggles,
   type Requirement,
 } from "../lib/scheduling/engine";
-import { istInstant, MINUTE_MS } from "../lib/scheduling/time";
+import { istDateKey, istInstant, MINUTE_MS } from "../lib/scheduling/time";
 
 let passed = 0;
 function check(name: string, fn: () => void | Promise<void>) {
@@ -529,6 +529,24 @@ async function spec27Checks() {
   });
 }
 
+async function spec28Checks() {
+  console.log("Spec 2.8 — treatment series (pure)");
+  const { addOffset, stepWindow } = await import("../lib/scheduling/series");
+  await check("Month 1 after 12 Oct is 12 Nov (calendar months, IST)", () => {
+    const a = istInstant("2026-10-12", 8 * 60);
+    assert.equal(addOffset(a, 1, "months").getTime(), istInstant("2026-11-12", 8 * 60).getTime());
+    assert.equal(addOffset(a, 3, "months").getTime(), istInstant("2027-01-12", 8 * 60).getTime());
+  });
+  await check("31 Jan + 1 month lands on the last day of February", () => {
+    assert.equal(addOffset(istInstant("2027-01-31", 9 * 60), 1, "months").getTime(), istInstant("2027-02-28", 9 * 60).getTime());
+  });
+  await check("Day 10 ±2 → due window 20–24 Oct, whole days", () => {
+    const w = stepWindow(istInstant("2026-10-12", 8 * 60), { offsetValue: 10, offsetUnit: "days", toleranceDays: 2 });
+    assert.equal(w.dueFrom.getTime(), istInstant("2026-10-20", 0).getTime());
+    assert.equal(w.dueTo.getTime(), istInstant("2026-10-25", 0).getTime());
+  });
+}
+
 // ── Part 2: database ─────────────────────────────────────────────────────────
 
 async function dbChecks() {
@@ -827,8 +845,8 @@ async function dbChecks() {
 
     await check("while reminders are switched off, due ones are skipped — never saved up", async () => {
       await setBoolSetting("scheduling.remindersEnabled", false);
-      await prisma.appointmentReminder.updateMany({ where: { appointmentId: movedRemId }, data: { dueAt: new Date(Date.now() - 1000) } });
-      await reminders.processDueReminders();
+      await prisma.appointmentReminder.updateMany({ where: { appointmentId: movedRemId }, data: { dueAt: new Date(Date.now() - 2 * 86_400_000) } });
+      await reminders.processDueReminders(istInstant(istDateKey(new Date()), 12 * 60));
       const r = await prisma.appointmentReminder.findFirstOrThrow({ where: { appointmentId: movedRemId } });
       assert.equal(r.status, "skipped");
       assert.match(r.lastError ?? "", /switched off/);
@@ -836,8 +854,10 @@ async function dbChecks() {
 
     await check("switched on, an unconfigured channel is skipped and said so (never silent)", async () => {
       await setBoolSetting("scheduling.remindersEnabled", true);
-      await prisma.appointmentReminder.updateMany({ where: { appointmentId: movedRemId }, data: { status: "pending" } });
-      await reminders.processDueReminders();
+      await prisma.appointmentReminder.updateMany({ where: { appointmentId: movedRemId }, data: { status: "pending", dueAt: new Date(Date.now() - 2 * 86_400_000) } });
+      // Run the tick at midday so the result doesn't depend on when the check runs
+      // (at night, quiet hours would rightly hold it).
+      await reminders.processDueReminders(istInstant(istDateKey(new Date()), 12 * 60));
       const r = await prisma.appointmentReminder.findFirstOrThrow({ where: { appointmentId: movedRemId } });
       assert.equal(r.status, "skipped");
       assert.match(r.whatsapp ?? "", /not configured/);
@@ -1053,6 +1073,98 @@ async function dbChecks() {
       assert.equal(st?.redFlags, 1);
     });
 
+    // §2.8 — treatment plans against the database.
+    const series = await import("../lib/scheduling/series");
+    const drP = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} plan surgeon` } });
+    extraResources.push(drP.id);
+    await prisma.seriesTemplate.create({
+      data: {
+        name: `${tag} package`,
+        anchorTypeId: anyRoom.id,
+        autoStart: true,
+        steps: {
+          create: [
+            { order: 1, label: "Surgery", typeId: anyRoom.id, offsetValue: 0, offsetUnit: "days", toleranceDays: 0 },
+            { order: 2, label: "Post-op check", typeId: anyRoom.id, offsetValue: 1, offsetUnit: "days", toleranceDays: 0 },
+            { order: 3, label: "Scab review", typeId: anyRoom.id, offsetValue: 10, offsetUnit: "days", toleranceDays: 2 },
+            { order: 4, label: "PRP 1", typeId: anyRoom.id, offsetValue: 1, offsetUnit: "months", toleranceDays: 7 },
+            { order: 5, label: "PRP 2", typeId: anyRoom.id, offsetValue: 3, offsetUnit: "months", toleranceDays: 7 },
+          ],
+        },
+      },
+    });
+    const pLead = await prisma.lead.create({ data: { name: `${tag} plan patient`, phone: `+91977${String(Date.now()).slice(-7)}`, source: "manual" } });
+    extraLeads.push(pLead.id);
+    const anchorBooking = await bookAppointment({ leadId: pLead.id, branchId: branch.id, typeId: anyRoom.id, resourceIds: [drP.id], startAt: at(10 * 60), acknowledgeWarnings: true }, actor);
+    const anchorId = anchorBooking.ok ? anchorBooking.appointmentId : "";
+    let planId = "";
+
+    await check("booking the anchor type starts the plan automatically, pre-booking steps due within 30 days with the surgeon", async () => {
+      assert.ok(anchorBooking.ok);
+      const plan = await prisma.treatmentPlan.findFirstOrThrow({ where: { leadId: pLead.id }, include: { steps: { orderBy: { order: "asc" }, include: { appointment: { include: { resources: true } } } } } });
+      planId = plan.id;
+      assert.equal(plan.anchorAppointmentId, anchorId);
+      const st = plan.steps.map((x) => x.status);
+      assert.deepEqual(st.slice(0, 3), ["booked", "booked", "booked"], `steps: ${st.join(",")}`);
+      assert.equal(st[4], "planned");
+      assert.ok(plan.steps[1].appointment!.resources.some((r) => r.resourceId === drP.id), "follow-up is with the surgeon");
+      // Only one plan, even if booked again
+      await series.autoStartFor(anchorId);
+      assert.equal(await prisma.treatmentPlan.count({ where: { leadId: pLead.id } }), 1);
+    });
+
+    await check("moving the anchor shifts the later steps, re-books them, and flags the plan for review", async () => {
+      const before = await prisma.plannedStep.findFirstOrThrow({ where: { planId, order: 2 } });
+      const moved = await rescheduleAppointment(anchorId, { startAt: new Date(at(10 * 60).getTime() + 2 * 86_400_000) }, actor);
+      assert.ok(moved.ok, !moved.ok ? moved.error : "");
+      const plan = await prisma.treatmentPlan.findUniqueOrThrow({ where: { id: planId }, include: { steps: { orderBy: { order: "asc" }, include: { appointment: true } } } });
+      assert.equal(plan.needsReview, true);
+      assert.equal(plan.anchorAppointmentId, moved.ok ? moved.appointmentId : "");
+      const s2 = plan.steps[1];
+      assert.ok(s2.targetAt.getTime() > before.targetAt.getTime(), "post-op check moved later");
+      assert.ok(s2.appointment && s2.appointment.startAt >= s2.dueFrom && s2.appointment.startAt <= s2.dueTo, "and its booking sits in the new window");
+    });
+
+    await check("completing a step counts it; cancelling one puts it back to planned", async () => {
+      const plan = await prisma.treatmentPlan.findUniqueOrThrow({ where: { id: planId }, include: { steps: { orderBy: { order: "asc" } } } });
+      const s2 = plan.steps[1];
+      const s3 = plan.steps[2];
+      await changeAppointmentStatus(s2.appointmentId!, "checked_in", {}, actor);
+      await changeAppointmentStatus(s2.appointmentId!, "completed", {}, actor);
+      assert.equal((await prisma.plannedStep.findUniqueOrThrow({ where: { id: s2.id } })).status, "completed");
+      assert.ok((await prisma.auditLog.count({ where: { action: "series.step.completed", entityId: pLead.id } })) >= 1);
+      await changeAppointmentStatus(s3.appointmentId!, "cancelled", { reason: "travel", cancelledBy: "patient" }, actor);
+      const s3After = await prisma.plannedStep.findUniqueOrThrow({ where: { id: s3.id } });
+      assert.equal(s3After.status, "planned");
+      assert.equal(s3After.appointmentId, null);
+    });
+
+    await check("recall: WhatsApp when the window opens, + SMS at day 3, a call task at day 7", async () => {
+      const { setBoolSetting } = await import("../lib/settings");
+      await setBoolSetting("scheduling.recallEnabled", true);
+      const s5 = await prisma.plannedStep.findFirstOrThrow({ where: { planId, order: 5 } });
+      const open = new Date(s5.dueFrom.getTime());
+      const noonAfter = (days: number) => istInstant(istDateKey(new Date(open.getTime() + days * 86_400_000)), 12 * 60);
+      await series.processRecalls(noonAfter(0));
+      assert.equal((await prisma.plannedStep.findUniqueOrThrow({ where: { id: s5.id } })).recallStage, 1);
+      await series.processRecalls(noonAfter(1));
+      assert.equal((await prisma.plannedStep.findUniqueOrThrow({ where: { id: s5.id } })).recallStage, 1, "nothing more before day 3");
+      await series.processRecalls(noonAfter(3));
+      assert.equal((await prisma.plannedStep.findUniqueOrThrow({ where: { id: s5.id } })).recallStage, 2);
+      await series.processRecalls(noonAfter(7));
+      const after = await prisma.plannedStep.findUniqueOrThrow({ where: { id: s5.id } });
+      assert.equal(after.callRequired, true);
+      await setBoolSetting("scheduling.recallEnabled", false);
+    });
+
+    await check("the recall link verifies and books the step; the recall list buckets by due date", async () => {
+      const s4 = await prisma.plannedStep.findFirstOrThrow({ where: { planId, order: 4 } });
+      assert.equal(series.readRecallToken(series.recallToken(s4.id, s4.dueTo)), s4.id);
+      assert.equal(series.readRecallToken(series.recallToken(s4.id, s4.dueTo) + "x"), null);
+      const list = await series.recallList(branch.id, new Date(s4.dueFrom.getTime() + 86_400_000));
+      assert.ok([...list.thisWeek, ...list.overdue].some((r) => r.id === s4.id));
+    });
+
     await check("every write left an audit row", async () => {
       const ids = (await prisma.appointment.findMany({ where: { typeId: type.id }, select: { id: true } })).map((a) => a.id);
       const n = await prisma.auditLog.count({ where: { entityType: "appointment", entityId: { in: ids } } });
@@ -1062,6 +1174,7 @@ async function dbChecks() {
     await prisma.appointment.deleteMany({ where: { typeId: { in: [type.id, ...extraTypes] } } });
     await prisma.appointmentType.deleteMany({ where: { id: { in: [type.id, ...extraTypes] } } });
     await prisma.intakeForm.deleteMany({ where: { key: `${tag}-intake` } });
+    await prisma.seriesTemplate.deleteMany({ where: { name: `${tag} package` } });
     await prisma.resource.deleteMany({ where: { id: { in: [room.id, doctor.id, ...extraResources] } } });
     await prisma.lead.deleteMany({ where: { id: { in: [lead.id, ...extraLeads] } } });
     await prisma.branch.deleteMany({ where: { id: { in: [branch.id, ...extraBranches] } } });
@@ -1076,6 +1189,7 @@ async function dbChecks() {
   await spec29Checks();
   await spec24Checks();
   await spec27Checks();
+  await spec28Checks();
   if (process.env.CHECK_DB !== "0") await dbChecks();
   console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);
   // The messaging modules (WhatsApp/Redis) keep sockets open; exit explicitly so the

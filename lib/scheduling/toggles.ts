@@ -23,6 +23,7 @@ export const PATIENT_FLAGS_ENABLED = "scheduling.patientFlags";
 export const REMINDERS_ENABLED = "scheduling.remindersEnabled";
 export const SELF_SERVICE_LINKS = "scheduling.selfServiceLinks";
 export const ONLINE_BOOKING = "scheduling.onlineBooking";
+export const RECALL_ENABLED = "scheduling.recallEnabled";
 
 export const SCHEDULING_TOGGLES: SchedulingToggle[] = [
   {
@@ -87,6 +88,13 @@ export const SCHEDULING_TOGGLES: SchedulingToggle[] = [
     description:
       "The public booking page (/book) patients reach from the website. Only appointment types marked online-bookable appear; surgery never does (§2.3). Off: the page says to call the clinic.",
     default: true,
+  },
+  {
+    key: RECALL_ENABLED,
+    label: "Treatment-plan recall messages",
+    description:
+      "When a planned session's window opens and it isn't booked: WhatsApp on the day, WhatsApp + SMS three days later, a call task at seven days (§2.8.d). Off until the recall WhatsApp template is approved. The recall list works either way.",
+    default: false,
   },
   {
     key: PATIENT_FLAGS_ENABLED,

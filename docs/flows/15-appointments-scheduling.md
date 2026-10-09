@@ -26,6 +26,10 @@ recorded.
 > - **2.7 Intake forms:** a form builder with versions, conditional questions, red flags,
 >   the under-18 guardian section, guided photos and separate consents. Code-verified
 >   patient access, field-by-field clinician verification, status on the calendar.
+> - **2.8 Treatment series & recall:** series templates with calendar-month offsets
+>   and windows, plans per patient (auto-started from a sold package or by hand), 30-day
+>   pre-booking with the surgeon, anchor shifts, a recall ladder, a patient recall link
+>   and the branch recall list.
 >
 > 2.5 (walk-in queue/tokens) and 2.6 (no-show tracking and waitlist) are **deferred**
 > by decision; see `docs/deferred-todo.md`.
@@ -74,6 +78,12 @@ recorded.
 | 2.7.c | Block booking until done | **No.** Reminders carry the link instead |
 | 2.7.d | Patient photo upload | Allowed (decided 2026-10-08). Guided angles, resized in the browser, size-capped, stored in the database until 3.12's document store, served only to `appointments.viewIntake` |
 | 2.7.e | Minors | A date-of-birth answer under 18 reveals required guardian details + guardian consent |
+| 2.8.a | Series templates | Clinic-editable (setup → Treatment series); intervals from the clinical lead (Jatin). **1 month between treatments** by default ("+ step one month later") |
+| 2.8.b | Pre-book vs due window | Steps whose target is **within 30 days** are booked at once; later steps wait in their window |
+| 2.8.c | Missed / expired sessions | **Extended manually** (with a reason), or waived with a reason. Both audited |
+| 2.8.d | Recall ladder | WhatsApp when the window opens → WhatsApp + SMS at day 3 → **call task** at day 7. Switch `scheduling.recallEnabled` (off until the template is approved) |
+| 2.8.e | Follow-ups at another branch | Allowed: the patient's recall link offers every branch; staff can book anywhere they may book |
+| 2.8.f | Who does follow-ups | **The surgeon**: steps marked "with the surgeon" book the plan's doctor |
 | 2.7.f | Signature | The code to the patient's own mobile is their acceptance (OTP-based). Surgical consent stays physical/eSign (outside 3.2) |
 | — | Toggles | Global, not per branch |
 | — | Patient = ? | The **Lead**. Cara has no separate patient table |
@@ -428,6 +438,59 @@ patient a tablet: the card's **Open form for patient**.
 - The calendar list and board show *form pending* / *intake complete* (with a red-flag
   marker). Front desk sees status only; answers are health data.
 
+## Feature 2.8: treatment series and recall
+
+**Templates** (`SeriesTemplate`, setup → Treatment series):
+- Steps measured from the anchor (Day 0): name, appointment type, offset in **days or
+  calendar months** (Month 1 after 12 Oct is 12 Nov; 31 Jan + 1 month is the last day
+  of February), tolerance ±days, and whether it's with the surgeon.
+- Optional: the anchor appointment type, the package name (as written on the quote's
+  treatment), and **automatic start**.
+
+**A patient's plan** (`TreatmentPlan` + `PlannedStep`, `lib/scheduling/series.ts`):
+- **Starts:**
+  - automatically, when an appointment of the anchor type is booked for a patient
+    with a converted quote for that package (once per patient per series);
+  - or by hand, from any appointment card ("Start plan from this appointment").
+- The anchor appointment becomes step 1. Its doctor becomes the plan's surgeon and its
+  branch the plan's branch.
+- **Pre-booking (2.8.b):** each step targeted within 30 days is booked on the target
+  day, else the nearest day inside its window, with the surgeon. It prefers the anchor's
+  time of day and never accepts an overbooking warning. A step that can't be fitted
+  stays *planned*.
+- **Follows its appointments:**
+
+  | Appointment event | Effect on the plan |
+  |---|---|
+  | A step is rescheduled | The step follows the new row |
+  | The anchor is rescheduled | Every later step's target and window shift. Booked steps outside their new window are re-booked into it, same surgeon. The plan is flagged *needs review* ("Anchor moved from 12 Oct to 19 Oct — confirm the shifted follow-ups") and the branch manager is told |
+  | A step is completed | Marked completed, progress updates ("4 of 6"), and a `series.step.completed` audit event is written for Billing (3.4) to recognise revenue |
+  | A step is cancelled / a no-show | Goes back to *planned* and recall picks it up again |
+
+- **Per-patient edits** (`/appointments/plans/<id>`, never touching the template):
+  - book a step;
+  - **extend** its window (+days, reason);
+  - **waive** it (reason);
+  - **change the target date**;
+  - set the surgeon (pre-books what's due within 30 days);
+  - mark reviewed;
+  - cancel the plan (reason).
+
+**Recall** (hourly worker tick, `processRecalls`, quiet hours respected):
+
+| When (from the window opening) | What happens |
+|---|---|
+| Day 0 | WhatsApp: the `recall_due` message, "Your PRP session 1 is due between 3 Nov and 17 Nov. Tap to choose a time: {recall_link}" |
+| Day 3 | WhatsApp + SMS |
+| Day 7 | A **call task**: the step shows *call required* on the recall list, and the branch manager gets a bell entry |
+
+- **The recall link** (`/r/<token>`, public, signed, valid 30 days past the window)
+  shows the window and free times with the surgeon, at the plan's branch or any other
+  (2.8.e). Booking it books the step.
+- **Recall list** (`/appointments/recall`): every unbooked step that is **overdue**,
+  **due this week** or **due in the next 30 days**, with recall progress and
+  call-required flags. Branch-scoped unless you see all branches.
+
 ## Reschedule, status, holds
 
 - **Reschedule never edits the time in place.** The old row becomes `rescheduled`, its
@@ -485,6 +548,10 @@ Gated to `appointments.configure`. Every change is audited.
 | `app/(dashboard)/appointments/intake/[id]/` | Staff view + verification |
 | `components/scheduling/IntakeFormsSetup.tsx`, `IntakeFormView.tsx` | Builder, patient form |
 | migration `20261008101458_scheduling_intake_forms` | `IntakeForm`, `IntakeFormVersion`, `IntakeResponse`, `IntakePhoto`, `AppointmentType.intakeFormId`; adds `{intake_link}` to the seeded messages |
+| `lib/scheduling/series.ts` | Plans, offsets/windows, pre-booking, anchor shift, step status, recall, recall list |
+| `app/(dashboard)/appointments/plans/`, `…/recall/`, `app/(public)/r/[token]/` | Plan page, recall list, patient recall booking |
+| `components/scheduling/SeriesSetup.tsx`, `PlanView.tsx`, `RecallBooking.tsx` | Setup, plan, recall link UI |
+| migration `20261008103714_scheduling_treatment_series` | `SeriesTemplate`, `SeriesStep`, `TreatmentPlan`, `PlannedStep`, + the `recall_due` message |
 | `lib/scheduling/leave.ts` | Request / approve / reject / withdraw leave, emergency |
 | `lib/scheduling/conflicts.ts` | Conflict detection, rebooking cases, suggestions, apply, escalation, closures |
 | `lib/scheduling/notify.ts` | Messaging a patient about a change (WhatsApp today; 2.4 extends it) |
@@ -511,6 +578,7 @@ Gated to `appointments.configure`. Every change is audited.
 | `scheduling.remindersEnabled` | **off** | Sending reminders at all |
 | `scheduling.selfServiceLinks` | on | The patient link can change the appointment |
 | `scheduling.quietStartHour` / `quietEndHour` | 21 / 8 | Reminder quiet hours (IST) |
+| `scheduling.recallEnabled` | **off** | Treatment-plan recall messages (the recall list works regardless) |
 | `scheduling.onlineBooking` | on | The /book widget (nothing shows until a type is online-bookable) |
 | `scheduling.onlineMinNoticeHours` / `onlineMaxDays` / `onlineHoldMinutes` | 3 / 90 / 10 | Online lead time and hold |
 
@@ -552,6 +620,14 @@ Environment for 2.4 (all optional; each channel stays off without its own):
   appear.
 - **Prepayment doesn't reach billing (3.4) yet.** It's recorded on the appointment, not
   invoiced. Refunds happen in the Razorpay dashboard.
+- **Series templates come from the clinical lead.** Nothing is pre-loaded; the demo
+  series exists only in local data.
+- **Revenue recognition is an audit event**, not an invoice entry, until Billing (3.4)
+  consumes it.
+- **Automatic start matches the package by quote treatment name** (case-insensitive),
+  because quotes don't carry a catalogue id yet.
+- **Plans don't show on the lead page yet** (they're reached from the appointment card,
+  the recall list and the bell).
 - **Intake forms are English only, and partial answers live only in the browser.** A
   patient who closes the page halfway starts again; there's no autosave.
 - **No paper-scan upload** for a patient who filled in a paper form. The tablet route

@@ -35,6 +35,7 @@ import { campaignsEnabled } from "@/lib/campaigns/types";
 import { expireHolds } from "@/lib/scheduling/booking";
 import { escalateOverdueCases } from "@/lib/scheduling/conflicts";
 import { processDueReminders } from "@/lib/scheduling/reminders";
+import { processRecalls } from "@/lib/scheduling/series";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -252,6 +253,16 @@ const runReminders = () =>
     .catch((err) => logger.error(`Reminder tick error: ${String(err)}`));
 setInterval(runReminders, 60_000);
 logger.info("Appointment reminder tick active (every 1 min)");
+
+// Treatment-plan recall (§3.2 2.8.d) — hourly: WhatsApp when a planned session's
+// window opens, WhatsApp + SMS at day 3, a call task at day 7. A no-op while the
+// clinic's recall switch is off.
+const runRecalls = () =>
+  processRecalls()
+    .then((t) => (t.sent || t.callTasks) && logger.info(`Recall: ${t.sent} message(s), ${t.callTasks} call task(s)`))
+    .catch((err) => logger.error(`Recall tick error: ${String(err)}`));
+setInterval(runRecalls, 60 * 60_000);
+logger.info("Treatment-plan recall active (hourly)");
 
 // Rebooking escalation (§3.2 2.9) — an appointment stranded by leave or a roster change
 // that nobody has rebooked by its due time escalates once to the owner, admins and the

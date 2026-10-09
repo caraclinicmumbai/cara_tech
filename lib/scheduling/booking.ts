@@ -265,6 +265,23 @@ async function remindersAfter(action: "booked" | "moved" | "ended", appointmentI
   }
 }
 
+/// Treatment plans follow the appointment too (§2.8): a booking may start a plan, a
+/// move carries the plan's steps (and shifts it if it's the anchor), a completion or
+/// cancellation updates the step. Same rules: after the commit, never failing it.
+async function seriesAfter(
+  e: { kind: "booked"; id: string } | { kind: "moved"; oldId: string; newId: string } | { kind: "status"; id: string; to: string },
+  actor: Actor,
+) {
+  try {
+    const series = await import("@/lib/scheduling/series");
+    if (e.kind === "booked") await series.autoStartFor(e.id);
+    else if (e.kind === "moved") await series.onAppointmentMoved(e.oldId, e.newId, actor);
+    else await series.onAppointmentStatus(e.id, e.to, actor);
+  } catch (err) {
+    logger.error(`Treatment plan update failed: ${String(err)}`);
+  }
+}
+
 /// Turn a refused evaluation into the answer the form needs. `before` is the same
 /// evaluation run BEFORE taking the locks: if that was fine and the locked one isn't,
 /// somebody else booked those resources in the meantime — say so plainly (§2.1 "the
@@ -400,7 +417,10 @@ export async function bookAppointment(input: BookingInput, actor: Actor): Promis
         warningsAcknowledged: outcome.result.issues.filter((i) => i.severity === "warn").map((i) => i.message),
       },
     });
-    if (!input.holdMinutes) await remindersAfter("booked", outcome.id);
+    if (!input.holdMinutes) {
+      await remindersAfter("booked", outcome.id);
+      await seriesAfter({ kind: "booked", id: outcome.id }, actor);
+    }
     return { ok: true, appointmentId: outcome.id, warnings: outcome.result.issues };
   } catch (err) {
     logger.error(`bookAppointment failed: ${String(err)}`);
@@ -519,6 +539,7 @@ export async function rescheduleAppointment(id: string, input: RescheduleInput, 
       meta: { newAppointmentId: outcome.id, branchId, resourceIds: outcome.result.resourceIds },
     });
     await remindersAfter("moved", outcome.id, id);
+    await seriesAfter({ kind: "moved", oldId: id, newId: outcome.id }, actor);
     return { ok: true, appointmentId: outcome.id, warnings: outcome.result.issues };
   } catch (err) {
     logger.error(`rescheduleAppointment failed: ${String(err)}`);
@@ -583,7 +604,11 @@ export async function changeAppointmentStatus(
       meta: opts.cancelledBy ? { cancelledBy: opts.cancelledBy } : null,
     });
     if (["cancelled", "no_show", "completed", "checked_in", "in_progress"].includes(to)) await remindersAfter("ended", id);
-    else if (appt.status === "tentative" && to === "booked") await remindersAfter("booked", id);
+    else if (appt.status === "tentative" && to === "booked") {
+      await remindersAfter("booked", id);
+      await seriesAfter({ kind: "booked", id }, actor);
+    }
+    if (["completed", "cancelled", "no_show"].includes(to)) await seriesAfter({ kind: "status", id, to }, actor);
     return { ok: true };
   } catch (err) {
     logger.error(`changeAppointmentStatus failed: ${String(err)}`);
@@ -614,6 +639,8 @@ export async function findSlots(params: {
   resourceIds?: string[];
   stepMin?: number;
   excludeNeedsAck?: boolean;
+  /// Treat this appointment as not there — when moving it.
+  ignoreAppointmentIds?: string[];
 }): Promise<SlotOption[]> {
   const t = await typeWithRequirements(prisma, params.typeId);
   if (!t) return [];
@@ -627,6 +654,7 @@ export async function findSlots(params: {
     chosenIds: params.resourceIds ?? [],
     stepMin: params.stepMin,
     excludeNeedsAck: params.excludeNeedsAck,
+    ignoreAppointmentIds: params.ignoreAppointmentIds,
     istInstant,
   });
 }

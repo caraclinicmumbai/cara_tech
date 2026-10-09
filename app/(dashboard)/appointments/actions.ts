@@ -353,6 +353,11 @@ export type AppointmentDetail = {
   /// only for `appointments.viewIntake`; the form link so the desk can hand the patient
   /// a tablet if they haven't filled it in.
   intake: { state: "none" | "pending" | "complete"; redFlags: number; responseId: string | null; canView: boolean; formLink: string | null };
+  /// §2.8 — the plan this appointment is a step of, the patient's other active plans,
+  /// and the series a plan could be started from (anchored here).
+  plan: { planId: string; name: string; step: string; position: string } | null;
+  otherPlans: { id: string; name: string; progress: string }[];
+  seriesOptions: { id: string; name: string }[];
 };
 
 export async function getAppointmentDetail(id: string): Promise<AppointmentDetail | null> {
@@ -417,6 +422,7 @@ export async function getAppointmentDetail(id: string): Promise<AppointmentDetai
       : [],
     patientLink: visible && ["tentative", "booked", "confirmed"].includes(a.status) ? appointmentLink(a.id, a.endAt) : null,
     source: a.source,
+    ...(await planInfo(a.id, a.leadId, visible)),
     intake: await (async () => {
       const st = (await intakeStatus([a.id])).get(a.id) ?? { state: "none" as const, redFlags: 0, responseId: null };
       return {
@@ -462,4 +468,19 @@ export async function setPatientFlag(leadId: string, flagId: string, on: boolean
     logger.error(`setPatientFlag failed: ${String(err)}`);
     return { ok: false, error: "Could not update the flag" };
   }
+}
+
+async function planInfo(appointmentId: string, leadId: string, visible: boolean) {
+  if (!visible) return { plan: null, otherPlans: [], seriesOptions: [] };
+  const [step, plans, series] = await Promise.all([
+    prisma.plannedStep.findUnique({ where: { appointmentId }, include: { plan: { include: { steps: { select: { status: true } } } } } }),
+    prisma.treatmentPlan.findMany({ where: { leadId, status: "active" }, include: { steps: { select: { status: true } } } }),
+    prisma.seriesTemplate.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+  ]);
+  const progress = (st: { status: string }[]) => `${st.filter((x) => ["completed", "waived"].includes(x.status)).length} of ${st.length} done`;
+  return {
+    plan: step ? { planId: step.planId, name: step.plan.name, step: step.label, position: `step ${step.order} of ${step.plan.steps.length} · ${progress(step.plan.steps)}` } : null,
+    otherPlans: plans.filter((p) => p.id !== step?.planId).map((p) => ({ id: p.id, name: p.name, progress: progress(p.steps) })),
+    seriesOptions: step ? [] : series,
+  };
 }

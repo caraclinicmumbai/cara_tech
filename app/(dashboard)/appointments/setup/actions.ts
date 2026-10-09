@@ -904,3 +904,54 @@ export async function setIntakeFormActive(formId: string, active: boolean): Prom
     return fail("setIntakeFormActive", err, "Could not update the form");
   }
 }
+
+// ── Treatment series (§2.8) ──────────────────────────────────────────────────
+
+export type SeriesStepInput = { label: string; typeId: string; offsetValue: number; offsetUnit: string; toleranceDays: number; sameDoctor: boolean };
+export type SeriesTemplateInput = { name: string; anchorTypeId?: string | null; packageName?: string | null; autoStart: boolean; steps: SeriesStepInput[] };
+
+/// Save a series template. Changes apply to plans created from now on — plans already
+/// running belong to their patient and keep their own steps (2.8 "edit one patient's
+/// plan without changing the template", and the reverse).
+export async function saveSeriesTemplate(id: string | null, input: SeriesTemplateInput): Promise<Result> {
+  const actor = await requireCapability("appointments.configure");
+  const name = clean(input.name);
+  if (!name) return { ok: false, error: "Give the series a name" };
+  if (!input.steps.length) return { ok: false, error: "Add at least one step" };
+  const steps: { order: number; label: string; typeId: string; offsetValue: number; offsetUnit: string; toleranceDays: number; sameDoctor: boolean }[] = [];
+  for (const [i, st] of input.steps.entries()) {
+    if (!clean(st.label) || !st.typeId) return { ok: false, error: `Step ${i + 1} needs a name and an appointment type` };
+    const v = Math.round(Number(st.offsetValue));
+    const tol = Math.round(Number(st.toleranceDays));
+    if (!Number.isFinite(v) || v < 0 || v > 3650) return { ok: false, error: `Step ${i + 1}: offset must be 0 or more` };
+    if (!Number.isFinite(tol) || tol < 0 || tol > 120) return { ok: false, error: `Step ${i + 1}: tolerance must be 0–120 days` };
+    steps.push({ order: i + 1, label: clean(st.label)!, typeId: st.typeId, offsetValue: v, offsetUnit: st.offsetUnit === "days" ? "days" : "months", toleranceDays: tol, sameDoctor: !!st.sameDoctor });
+  }
+  if (input.autoStart && !input.anchorTypeId) return { ok: false, error: "Automatic start needs an anchor appointment type" };
+  const data = { name, anchorTypeId: clean(input.anchorTypeId), packageName: clean(input.packageName), autoStart: !!input.autoStart };
+  try {
+    const t = id
+      ? await prisma.$transaction(async (tx) => {
+          await tx.seriesStep.deleteMany({ where: { templateId: id } });
+          return tx.seriesTemplate.update({ where: { id }, data: { ...data, steps: { create: steps } }, select: { id: true } });
+        })
+      : await prisma.seriesTemplate.create({ data: { ...data, steps: { create: steps } }, select: { id: true } });
+    await audit(actor, id ? "scheduling.series.update" : "scheduling.series.create", t.id, `${name} (${steps.length} steps)`, { meta: { steps } });
+    revalidatePath(PATH);
+    return { ok: true, id: t.id, info: "Saved — applies to plans started from now on" };
+  } catch (err) {
+    return fail("saveSeriesTemplate", err, "Could not save the series");
+  }
+}
+
+export async function setSeriesTemplateActive(id: string, active: boolean): Promise<Result> {
+  const actor = await requireCapability("appointments.configure");
+  try {
+    const t = await prisma.seriesTemplate.update({ where: { id }, data: { active }, select: { name: true } });
+    await audit(actor, active ? "scheduling.series.activate" : "scheduling.series.deactivate", id, t.name);
+    revalidatePath(PATH);
+    return { ok: true };
+  } catch (err) {
+    return fail("setSeriesTemplateActive", err, "Could not update the series");
+  }
+}
