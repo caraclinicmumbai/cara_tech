@@ -23,6 +23,7 @@ import { resolveQuoteDocTemplate } from "@/lib/whatsappTemplates";
 import { recordInvoice, InvoiceError } from "@/lib/invoices";
 import { raiseCreditDispute, decideCreditDispute, DisputeError } from "@/lib/branchCredit";
 import { logger } from "@/lib/logger";
+import { QUOTE_MAX_QUANTITY } from "@/lib/quoteStages";
 
 /// `info` carries a note the panel shows on success — used where the action did
 /// something the counsellor should know about, e.g. converting a quote with no invoice
@@ -49,6 +50,7 @@ export async function createLeadQuote(input: {
   leadId: string;
   treatment: string;
   price?: string | number | null;
+  quantity?: string | number | null;
   discountType?: string | null;
   discountValue?: string | number | null;
   gstRate?: string | number | null;
@@ -69,6 +71,8 @@ export async function createLeadQuote(input: {
 
   const price = parsePrice(input.price);
   if (price === "invalid") return { ok: false, error: "Price must be a whole number of rupees" };
+  const quantity = parseQuantity(input.quantity);
+  if (quantity === "invalid") return { ok: false, error: QUANTITY_ERROR };
 
   // GST rate comes from the chosen catalog item (5% or 0% for "NA" items). Clamp to a
   // sane range; fall back to the default when unset so manual quotes are unaffected.
@@ -101,6 +105,7 @@ export async function createLeadQuote(input: {
       leadId: input.leadId,
       treatment,
       price,
+      quantity,
       discountType: discountValue != null ? discountType : null,
       discountValue,
       gstRate,
@@ -123,8 +128,8 @@ export async function createLeadQuote(input: {
     action: "lead.quote.create",
     entityType: "lead",
     entityId: input.leadId,
-    newValue: treatment,
-    meta: { quoteId, treatment },
+    newValue: quantity && quantity > 1 ? `${treatment} × ${quantity}` : treatment,
+    meta: { quoteId, treatment, quantity: quantity ?? 1 },
   });
   logger.info(`Quote created on lead ${input.leadId} by ${user.email ?? "?"}`);
   revalidatePath(`/leads/${input.leadId}`);
@@ -136,6 +141,7 @@ export async function reviseLeadQuotePrice(input: {
   quoteId: string;
   leadId: string;
   price: string | number;
+  quantity?: string | number | null;
   note?: string | null;
 }): Promise<Result> {
   const user = await requireCapability("quotes.manage");
@@ -145,17 +151,20 @@ export async function reviseLeadQuotePrice(input: {
   const price = parsePrice(input.price);
   if (price === "invalid" || price == null)
     return { ok: false, error: "Price must be a whole number of rupees" };
+  const quantity = parseQuantity(input.quantity);
+  if (quantity === "invalid") return { ok: false, error: QUANTITY_ERROR };
 
   // Capture the prior price for the audit trail (reviseQuotePrice returns void).
   const before = await prisma.quote.findUnique({
     where: { id: input.quoteId },
-    select: { price: true },
+    select: { price: true, quantity: true },
   });
 
   try {
     await reviseQuotePrice({
       quoteId: input.quoteId,
       price,
+      quantity,
       note: input.note?.trim().slice(0, NOTE_MAX) || null,
       createdById: user.id,
     });
@@ -170,8 +179,8 @@ export async function reviseLeadQuotePrice(input: {
     action: "lead.quote.revise",
     entityType: "lead",
     entityId: input.leadId,
-    oldValue: before?.price != null ? String(before.price) : null,
-    newValue: String(price),
+    oldValue: before?.price != null ? priceLine(before.price, before.quantity) : null,
+    newValue: priceLine(price, quantity ?? before?.quantity ?? 1),
     reason: input.note?.trim().slice(0, NOTE_MAX) || null,
     meta: { quoteId: input.quoteId },
   });
@@ -279,6 +288,7 @@ export async function sendLeadQuoteWhatsApp(input: {
       treatment: quote.treatment,
       cycle: quote.cycle,
       price: quote.price,
+      quantity: quote.quantity,
       gstRate: quote.gstRate,
       discountType: quote.discountType,
       discountValue: quote.discountValue,
@@ -427,6 +437,21 @@ export async function unlockLeadQuote(input: {
 
 /// Parse a rupee price: whole non-negative integer, or null for blank. "invalid"
 /// signals a parse error the caller turns into a user-facing message.
+const QUANTITY_ERROR = `Quantity must be a whole number from 1 to ${QUOTE_MAX_QUANTITY}`;
+
+/// Sessions / units on a quote. Null = not given (1 on a new quote, unchanged on a revision).
+function parseQuantity(v: string | number | null | undefined): number | null | "invalid" {
+  if (v == null || v === "") return null;
+  const n = typeof v === "number" ? v : Number(String(v).trim());
+  if (!Number.isInteger(n) || n < 1 || n > QUOTE_MAX_QUANTITY) return "invalid";
+  return n;
+}
+
+/// "12000" or "12000 × 6" for the change history.
+function priceLine(price: number, quantity: number): string {
+  return quantity > 1 ? `${price} × ${quantity}` : String(price);
+}
+
 function parsePrice(v: string | number | null | undefined): number | null | "invalid" {
   if (v == null || v === "") return null;
   const n = typeof v === "number" ? v : Number(v.replace(/[,\s₹]/g, ""));

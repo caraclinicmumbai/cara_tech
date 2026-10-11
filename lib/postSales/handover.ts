@@ -43,7 +43,8 @@ export type HandoverSummary = {
   cycle: number; // 1 = first time, 2 = repeat session, …
 
   // Money (no card or bank details — ever, §"The CRM never stores card numbers").
-  price: number | null; // base
+  price: number | null; // unit price (one session)
+  quantity: number; // sessions / units quoted
   totalPayable: number | null; // base − discount + GST
   currency: string;
   discountLabel: string | null;
@@ -78,6 +79,7 @@ const NOTE_LIMIT = 10;
 
 function discountLabel(q: {
   price: number | null;
+  quantity: number;
   gstRate: number;
   discountType: string | null;
   discountValue: number | null;
@@ -85,6 +87,7 @@ function discountLabel(q: {
   if (!q.discountType || !q.discountValue) return null;
   const totals = computeQuoteTotals({
     base: q.price,
+    quantity: q.quantity,
     gstRate: q.gstRate,
     discountType: q.discountType,
     discountValue: q.discountValue,
@@ -164,6 +167,7 @@ export async function buildHandoverSummary(quoteId: string): Promise<HandoverSum
       treatment: true,
       cycle: true,
       price: true,
+      quantity: true,
       totalPayable: true,
       currency: true,
       gstRate: true,
@@ -229,6 +233,7 @@ export async function buildHandoverSummary(quoteId: string): Promise<HandoverSum
     procedure: quote.treatment,
     cycle: quote.cycle,
     price: quote.price,
+    quantity: quote.quantity,
     totalPayable: quote.totalPayable,
     currency: quote.currency,
     discountLabel: discountLabel(quote),

@@ -25,19 +25,22 @@ import {
   SGST_RATE,
   DEFAULT_GST_RATE,
   computeQuoteTotals,
+  QUOTE_MAX_QUANTITY,
   isQuoteLocked,
   isQuoteOpen,
   type QuoteStatus,
 } from "@/lib/quoteStages";
 import { formatIst } from "@/lib/datetime";
 import type { CatalogGroups } from "@/lib/catalog";
+import { TreatmentCombobox } from "@/components/TreatmentCombobox";
 
 export type QuoteView = {
   id: string;
   treatment: string;
   status: string;
   cycle: number;
-  price: number | null;
+  price: number | null; // unit price (one session)
+  quantity: number;
   currency: string;
   gstRate: number;
   discountType: string | null;
@@ -158,8 +161,7 @@ export function QuotesPanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
-  const [nq, setNq] = useState({ catalogItemId: "", treatment: "", price: "", gstRate: String(DEFAULT_GST_RATE), discountValue: "", discountUnit: "percent", source: "" });
-  const [catalogQuery, setCatalogQuery] = useState("");
+  const [nq, setNq] = useState({ catalogItemId: "", treatment: "", price: "", quantity: "1", gstRate: String(DEFAULT_GST_RATE), discountValue: "", discountUnit: "percent", source: "" });
   // The quote+status awaiting a reason (reject → from list, withdraw → free text).
   const [reasonFor, setReasonFor] = useState<{ quoteId: string; status: "rejected" | "withdrawn" } | null>(null);
   // Admin-only manual invoice entry: which quote's form is open, and its fields.
@@ -223,7 +225,10 @@ export function QuotesPanel({
             return (
               <li key={q.id} className="rounded border border-black/10 p-4 dark:border-white/15">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                  <span className="font-medium">{q.treatment}</span>
+                  <span className="font-medium">
+                    {q.treatment}
+                    {q.quantity > 1 && <span className="font-normal text-black/60 dark:text-white/60"> × {q.quantity}</span>}
+                  </span>
                   {q.cycle > 1 && (
                     <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs dark:bg-white/10">
                       cycle {q.cycle}
@@ -242,10 +247,11 @@ export function QuotesPanel({
 
                 {/* Price breakdown: base → −discount → +GST → total. */}
                 {q.price != null && (() => {
-                  const tt = computeQuoteTotals({ base: q.price, gstRate: q.gstRate, discountType: q.discountType, discountValue: q.discountValue });
+                  const tt = computeQuoteTotals({ base: q.price, quantity: q.quantity, gstRate: q.gstRate, discountType: q.discountType, discountValue: q.discountValue });
                   return (
                     <div className="mt-1 text-xs text-black/50 dark:text-white/50">
                       Base {inr(q.price, q.currency)}
+                      {tt.quantity > 1 && ` × ${tt.quantity} = ${inr(tt.base, q.currency)}`}
                       {q.discountType && q.discountValue
                         ? ` · Disc ${q.discountType === "percent" ? `${q.discountValue}%` : inr(q.discountValue, q.currency)} −${inr(tt.discountAmount, q.currency)}`
                         : ""}
@@ -538,12 +544,14 @@ export function QuotesPanel({
                       disabled={pending}
                       className="tone-link text-xs hover:underline"
                       onClick={() => {
-                        const p = window.prompt("New price (whole rupees):", q.price?.toString() ?? "");
+                        const p = window.prompt("New price per session (whole rupees):", q.price?.toString() ?? "");
                         if (p == null || p === "") return;
-                        run(() => reviseLeadQuotePrice({ quoteId: q.id, leadId, price: p }));
+                        const n = window.prompt("Quantity (sessions):", String(q.quantity));
+                        if (n == null) return;
+                        run(() => reviseLeadQuotePrice({ quoteId: q.id, leadId, price: p, quantity: n || null }));
                       }}
                     >
-                      Revise price
+                      Revise price / qty
                     </button>
 
                     <label className="flex items-center gap-1 text-xs text-black/50 dark:text-white/50">
@@ -601,71 +609,46 @@ export function QuotesPanel({
             const gstNum = nq.gstRate !== "" ? Number(nq.gstRate) : DEFAULT_GST_RATE;
             const preview = computeQuoteTotals({
               base: nq.price ? Number(nq.price.replace(/[,\s₹]/g, "")) : 0,
+              quantity: nq.quantity ? Number(nq.quantity) : 1,
               gstRate: gstNum,
               discountType: nq.discountValue ? nq.discountUnit : null,
               discountValue: nq.discountValue ? Number(nq.discountValue) : null,
             });
             const reset = () => {
-              setNq({ catalogItemId: "", treatment: "", price: "", gstRate: String(DEFAULT_GST_RATE), discountValue: "", discountUnit: "percent", source: "" });
-              setCatalogQuery("");
+              setNq({ catalogItemId: "", treatment: "", price: "", quantity: "1", gstRate: String(DEFAULT_GST_RATE), discountValue: "", discountUnit: "percent", source: "" });
             };
 
-            // Flatten the catalog for lookup, and build the filtered <optgroup> list.
-            const q = catalogQuery.trim().toLowerCase();
-            const byId = new Map<string, { name: string; price: number; gstRate: number; discountValue: number | null }>();
-            const groups = catalog.map((g) => ({
-              label: g.label,
-              cats: g.categories
-                .map((c) => ({
-                  category: c.category,
-                  items: c.items.filter((it) => {
-                    byId.set(it.id, { name: it.name, price: it.price, gstRate: it.gstRate, discountValue: it.discountValue });
-                    return !q || it.name.toLowerCase().includes(q) || c.category.toLowerCase().includes(q);
-                  }),
-                }))
-                .filter((c) => c.items.length > 0),
-            }));
-            const optLabel = (it: { name: string; price: number; gstRate: number; discountValue: number | null }) =>
-              it.discountValue
-                ? `${it.name} — ₹${it.price.toLocaleString("en-IN")} · ${it.discountValue}% off`
-                : `${it.name} — ₹${it.price.toLocaleString("en-IN")}${it.gstRate === 0 ? " · no GST" : ""}`;
-            const pickCatalog = (id: string) => {
-              const it = byId.get(id);
-              if (!it) { setNq({ ...nq, catalogItemId: "", treatment: "" }); return; }
-              setNq({
-                ...nq,
-                catalogItemId: id,
-                treatment: it.name,
-                price: String(it.price),
-                gstRate: String(it.gstRate),
-                discountUnit: "percent",
-                discountValue: it.discountValue != null ? String(it.discountValue) : "",
-              });
-            };
             return (
               <div className="space-y-3 rounded border border-black/10 p-3 dark:border-white/15">
-                {/* Treatment picker — search + grouped dropdown from the catalog.
-                    Selecting auto-fills price, GST and any package discount below. */}
-                <div className="space-y-1.5">
-                  <input className={`${inputCls} w-full`} placeholder="Search treatments & packages…" value={catalogQuery}
-                    onChange={(e) => setCatalogQuery(e.target.value)} />
-                  <select className={`${inputCls} w-full`} value={nq.catalogItemId} onChange={(e) => pickCatalog(e.target.value)}>
-                    <option value="">Select a treatment…</option>
-                    {groups.map((g) =>
-                      g.cats.map((c) => (
-                        <optgroup key={`${g.label}-${c.category}`} label={`${g.label} · ${c.category}`}>
-                          {c.items.map((it) => (
-                            <option key={it.id} value={it.id}>{optLabel(it)}</option>
-                          ))}
-                        </optgroup>
-                      )),
-                    )}
-                  </select>
-                </div>
+                {/* Treatment — type to see catalog suggestions; picking one fills the
+                    price, GST and any package discount below. Free text is allowed. */}
+                <TreatmentCombobox
+                  catalog={catalog}
+                  className={`${inputCls} w-full`}
+                  value={nq.treatment}
+                  onType={(text) => setNq({ ...nq, catalogItemId: "", treatment: text })}
+                  onPick={(it) =>
+                    setNq({
+                      ...nq,
+                      catalogItemId: it.id,
+                      treatment: it.name,
+                      price: String(it.price),
+                      gstRate: String(it.gstRate),
+                      discountUnit: "percent",
+                      discountValue: it.discountValue != null ? String(it.discountValue) : "",
+                    })
+                  }
+                />
 
                 <div className="flex flex-wrap items-end gap-2">
-                  <input className={inputCls} placeholder="Base price ₹" inputMode="numeric" value={nq.price}
+                  <input className={inputCls} placeholder="Price per session ₹" inputMode="numeric" value={nq.price}
                     onChange={(e) => setNq({ ...nq, price: e.target.value })} />
+                  <label className="flex items-center gap-1 text-xs text-black/60 dark:text-white/60">
+                    Qty
+                    <input className={`${inputCls} w-16`} type="number" min={1} max={QUOTE_MAX_QUANTITY} step={1}
+                      aria-label="Quantity (sessions)" value={nq.quantity}
+                      onChange={(e) => setNq({ ...nq, quantity: e.target.value })} />
+                  </label>
                   <div className="flex items-stretch">
                     <input className={`${inputCls} w-28 rounded-r-none`} placeholder="Discount" inputMode="decimal" value={nq.discountValue}
                       onChange={(e) => setNq({ ...nq, discountValue: e.target.value })} />
@@ -685,7 +668,13 @@ export function QuotesPanel({
 
                 {/* Live breakdown — discount applied FIRST, then GST on the net. */}
                 <div className="rounded bg-black/3 px-3 py-2 text-xs text-black/60 dark:bg-white/5 dark:text-white/60">
-                  <div className="flex justify-between"><span>Base price</span><span>{inr(preview.base, "INR")}</span></div>
+                  <div className="flex justify-between">
+                    <span>
+                      Base price
+                      {preview.quantity > 1 && ` (${inr(preview.unitPrice, "INR")} × ${preview.quantity})`}
+                    </span>
+                    <span>{inr(preview.base, "INR")}</span>
+                  </div>
                   {preview.discountAmount > 0 && (
                     <div className="flex justify-between">
                       <span>Discount {nq.discountUnit === "percent" ? `${nq.discountValue}%` : inr(preview.discountValue ?? 0, "INR")}</span>
@@ -717,6 +706,7 @@ export function QuotesPanel({
                           leadId,
                           treatment: nq.treatment,
                           price: nq.price || null,
+                          quantity: nq.quantity || null,
                           discountType: nq.discountValue ? nq.discountUnit : null,
                           discountValue: nq.discountValue || null,
                           gstRate: nq.gstRate || null,

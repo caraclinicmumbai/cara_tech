@@ -505,6 +505,7 @@ export default async function LeadDetailPage({
               status: q.status,
               cycle: q.cycle,
               price: q.price,
+              quantity: q.quantity,
               currency: q.currency,
               gstRate: q.gstRate,
               discountType: q.discountType,

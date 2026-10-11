@@ -65,7 +65,9 @@ export type OpenQuoteRow = {
   // ── Money, broken out the way the quote itself computes it: discount off the
   //    base first, GST on the discounted amount (lib/quoteStages.computeQuoteTotals). ──
   currency: string;
-  base: number;
+  unitPrice: number;
+  quantity: number;
+  base: number; // unitPrice × quantity
   discountType: string | null;
   discountValue: number | null;
   discountAmount: number;
@@ -178,6 +180,7 @@ export async function getOpenQuotes(
       cycle: true,
       status: true,
       price: true,
+      quantity: true,
       currency: true,
       gstRate: true,
       discountType: true,
@@ -227,6 +230,7 @@ export async function getOpenQuotes(
   const rows: OpenQuoteRow[] = quotes.map((q) => {
     const totals = computeQuoteTotals({
       base: q.price,
+      quantity: q.quantity,
       gstRate: q.gstRate,
       discountType: q.discountType,
       discountValue: q.discountValue,
@@ -254,6 +258,8 @@ export async function getOpenQuotes(
       source: q.source,
 
       currency: q.currency,
+      unitPrice: totals.unitPrice,
+      quantity: totals.quantity,
       base: totals.base,
       discountType: totals.discountType,
       discountValue: totals.discountValue,
@@ -393,6 +399,7 @@ export async function getConvertedQuotes(
         cycle: true,
         status: true,
         price: true,
+        quantity: true,
         currency: true,
         gstRate: true,
         discountType: true,
@@ -412,6 +419,7 @@ export async function getConvertedQuotes(
   const rows: ConvertedQuoteRow[] = quotes.map((q) => {
     const totals = computeQuoteTotals({
       base: q.price ?? 0,
+      quantity: q.quantity,
       gstRate: q.gstRate,
       discountType: q.discountType,
       discountValue: q.discountValue,

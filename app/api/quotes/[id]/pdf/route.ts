@@ -31,6 +31,7 @@ export async function GET(
     treatment: quote.treatment,
     cycle: quote.cycle,
     price: quote.price,
+    quantity: quote.quantity,
     gstRate: quote.gstRate,
     discountType: quote.discountType,
     discountValue: quote.discountValue,
