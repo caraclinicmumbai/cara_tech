@@ -9,6 +9,7 @@ import axios from "axios";
 import { createHmac, timingSafeEqual } from "crypto";
 import { dialablePhone } from "@/lib/phone";
 import { logger } from "@/lib/logger";
+import { callbackQuery, patientRingSeconds } from "@/lib/clickToCallLog";
 
 const API = "https://api.twilio.com/2010-04-01";
 
@@ -79,7 +80,16 @@ export type ClickToCallResult = { ok: true; sid: string } | { ok: false; error: 
 /// TwiML (which dials the lead + records). `repId` (the rep who initiated it) is
 /// threaded through the callback URLs so the recording is attributed to them.
 /// Returns the parent call SID.
-export async function clickToCall(repPhone: string, leadId: string, repId?: string): Promise<ClickToCallResult> {
+///
+/// `callId` is our Call row (created before this rings, see lib/providers/calling.ts); it
+/// rides on every callback url so each one updates that row. `StatusCallback` reports the
+/// end of the COUNSELLOR's leg — without it, a counsellor who didn't pick up left no trace.
+export async function clickToCall(
+  repPhone: string,
+  leadId: string,
+  repId?: string,
+  callId?: string,
+): Promise<ClickToCallResult> {
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   // This leg rings the counsellor, so it uses the rep caller ID — and never their own
@@ -90,11 +100,14 @@ export async function clickToCall(repPhone: string, leadId: string, repId?: stri
   if (!base) return { ok: false, error: "No public base URL (set TWILIO_PUBLIC_BASE or NEXTAUTH_URL)" };
 
   try {
-    const voiceUrl = `${base}/api/twilio/voice/${leadId}${repId ? `?repId=${encodeURIComponent(repId)}` : ""}`;
+    const qs = callbackQuery({ repId, callId });
+    const voiceUrl = `${base}/api/twilio/voice/${leadId}${qs ? `?${qs}` : ""}`;
     const body = new URLSearchParams({
       To: repPhone,
       From: from,
       Url: voiceUrl,
+      StatusCallback: `${base}/api/twilio/call-status?${callbackQuery({ leadId, repId, callId })}`,
+      StatusCallbackMethod: "POST",
     });
     const res = await axios.post(`${API}/Accounts/${sid}/Calls.json`, body, {
       auth: { username: sid, password: token },
@@ -132,11 +145,14 @@ function xmlEscape(s: string): string {
 /// heard by the patient (it plays before they're connected), so the `<Number url>`
 /// points at a whisper TwiML that Twilio plays to the PATIENT when they answer —
 /// disclosing the recording to them before the two legs bridge.
-export function dialLeadTwiML(leadPhone: string, leadId: string, repId?: string): string {
+///
+/// `timeout` caps how long the patient's phone rings (CLICK_TO_CALL_RING_SECONDS); Twilio's
+/// own default is 30s, which on Indian networks — where a rejected call often keeps ringing
+/// back — had the counsellor waiting long after the patient had declined.
+export function dialLeadTwiML(leadPhone: string, leadId: string, repId?: string, callId?: string): string {
   const base = publicBase();
-  const cb =
-    `${base}/api/webhooks/twilio/recording?leadId=${encodeURIComponent(leadId)}` +
-    (repId ? `&repId=${encodeURIComponent(repId)}` : "");
+  const qs = callbackQuery({ leadId, repId, callId });
+  const cb = `${base}/api/webhooks/twilio/recording?${qs}`;
   // This leg reaches the PATIENT, so it carries the patient-facing caller ID — the
   // Indian number they'll actually answer.
   const from = patientCallerId();
@@ -144,15 +160,14 @@ export function dialLeadTwiML(leadPhone: string, leadId: string, repId?: string)
   // Where Twilio reports how the dial ended. Without it, a leg that never connects
   // (wrong number, busy, no answer) just drops the rep into silence and the CRM
   // never learns the call happened — the recording callback only fires on success.
-  const action =
-    `${base}/api/twilio/dial-result?leadId=${encodeURIComponent(leadId)}` +
-    (repId ? `&repId=${encodeURIComponent(repId)}` : "");
+  const action = `${base}/api/twilio/dial-result?${qs}`;
   const dialable = dialablePhone(leadPhone) ?? leadPhone;
   return (
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<Response>` +
     `<Say>Connecting you to the patient now. This call is recorded.</Say>` +
     `<Dial callerId="${xmlEscape(from)}" record="record-from-answer-dual" ` +
+    `timeout="${patientRingSeconds()}" ` +
     `action="${xmlEscape(action)}" method="POST" ` +
     `recordingStatusCallback="${xmlEscape(cb)}" recordingStatusCallbackEvent="completed">` +
     `<Number url="${xmlEscape(whisper)}">${xmlEscape(dialable)}</Number>` +

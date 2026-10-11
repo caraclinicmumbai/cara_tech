@@ -8,6 +8,7 @@ import { LeadsColumns } from "@/components/dashboard/LeadsColumns";
 import { SourceDonut } from "@/components/dashboard/SourceDonut";
 import { QueueCard } from "@/components/dashboard/QueueCard";
 import { IconPhone, IconHandover } from "@/components/Icon";
+import { callOutcomeLabel } from "@/lib/clickToCallLog";
 
 export const dynamic = "force-dynamic";
 
@@ -148,7 +149,7 @@ export default async function DashboardPage() {
                     </Link>
                   </td>
                   <td className="text-cara-muted">{call.callType}</td>
-                  <td className="text-cara-muted">{call.outcome ?? "—"}</td>
+                  <td className="text-cara-muted">{callOutcomeLabel(call.outcome, call.createdAt)}</td>
                   <td className="text-cara-muted">{call.sentiment ?? "—"}</td>
                   <td className="text-cara-muted">{formatIst(call.createdAt)}</td>
                 </tr>

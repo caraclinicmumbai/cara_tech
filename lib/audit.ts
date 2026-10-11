@@ -267,6 +267,7 @@ export function actionLabel(action: string): string {
     "lead.access.grant": "Access granted",
     "lead.access.revoke": "Access revoked",
     "lead.merge": "Merged duplicate",
+    "lead.call": "Call placed",
     "lead.quote.create": "Quote created",
     "lead.quote.status": "Quote status",
     "lead.quote.owner": "Quote owner",

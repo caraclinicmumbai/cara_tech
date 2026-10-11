@@ -7,16 +7,21 @@ import { prisma } from "@/lib/prisma";
 import { dialLeadTwiML, verifyTwilioSignature, publicBase } from "@/lib/providers/twilio";
 import { logger } from "@/lib/logger";
 
-async function twiml(leadId: string, repId?: string): Promise<NextResponse> {
+async function twiml(leadId: string, repId?: string, callId?: string): Promise<NextResponse> {
   const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { phone: true } });
   const xml = lead
-    ? dialLeadTwiML(lead.phone, leadId, repId)
+    ? dialLeadTwiML(lead.phone, leadId, repId, callId)
     : `<?xml version="1.0" encoding="UTF-8"?><Response><Say>Lead not found.</Say><Hangup/></Response>`;
   return new NextResponse(xml, { status: 200, headers: { "Content-Type": "text/xml" } });
 }
 
 function repIdFrom(req: Request): string | undefined {
   return new URL(req.url).searchParams.get("repId") ?? undefined;
+}
+
+/// Our Call row for this click-to-call, passed on to the dial and recording callbacks.
+function callIdFrom(req: Request): string | undefined {
+  return new URL(req.url).searchParams.get("callId") ?? undefined;
 }
 
 // Verify the Twilio signature over the exact public URL Twilio signed (base + path
@@ -38,10 +43,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ leadId:
   const body: Record<string, string> = {};
   for (const [k, v] of form.entries()) body[k] = String(v);
   if (!verify(req, body)) return forbidden();
-  return twiml((await params).leadId, repIdFrom(req));
+  return twiml((await params).leadId, repIdFrom(req), callIdFrom(req));
 }
 export async function GET(req: Request, { params }: { params: Promise<{ leadId: string }> }) {
   // GET requests are signed over the full URL alone (no body params).
   if (!verify(req, {})) return forbidden();
-  return twiml((await params).leadId, repIdFrom(req));
+  return twiml((await params).leadId, repIdFrom(req), callIdFrom(req));
 }

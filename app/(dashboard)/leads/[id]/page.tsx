@@ -33,6 +33,7 @@ import { getLeadCampaign } from "@/lib/campaigns/enrollments";
 import { LeadCampaignCard } from "@/components/LeadCampaignCard";
 import { LeadComments } from "@/components/LeadComments";
 import { listFollowUpSteps, followUpQueue } from "@/lib/followups";
+import { callOutcomeLabel } from "@/lib/clickToCallLog";
 
 export const dynamic = "force-dynamic";
 
@@ -618,7 +619,7 @@ export default async function LeadDetailPage({
                       Handled by {call.handledBy?.name ?? "—"}
                     </span>
                   )}
-                  <span>Outcome: {call.outcome ?? "—"}</span>
+                  <span>Outcome: {callOutcomeLabel(call.outcome, call.createdAt)}</span>
                   <span>Sentiment: {call.sentiment ?? "—"}</span>
                   <span>Duration: {call.duration ? `${call.duration}s` : "—"}</span>
                   {typeof call.cqs === "number" && (

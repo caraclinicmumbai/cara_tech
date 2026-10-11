@@ -1,10 +1,11 @@
-// Session-gated proxy that streams a stored handover-call recording. Twilio media
+// Session-gated proxy that streams a stored handover-call recording. Provider media
 // URLs need Basic auth, so the browser <audio> points here and we fetch the bytes
-// server-side. Only serves recordings we logged against a Call.
+// server-side. Only serves recordings we logged against a Call. The path still says
+// twilio for the old links; the audio is fetched from whichever provider made it.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/apiAuth";
-import { fetchTwilioRecording } from "@/lib/providers/twilio";
+import { fetchRecording } from "@/lib/providers/recordings";
 
 export async function GET(
   _req: Request,
@@ -16,11 +17,11 @@ export async function GET(
   const { callId } = await params;
   const call = await prisma.call.findUnique({
     where: { id: callId },
-    select: { recordingUrl: true },
+    select: { recordingUrl: true, provider: true },
   });
   if (!call?.recordingUrl) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const audio = await fetchTwilioRecording(call.recordingUrl);
+  const audio = await fetchRecording(call.recordingUrl, call.provider);
   if (!audio) return NextResponse.json({ error: "Recording unavailable" }, { status: 502 });
 
   return new NextResponse(new Uint8Array(audio.buffer), {

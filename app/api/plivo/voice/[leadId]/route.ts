@@ -7,16 +7,21 @@ import { prisma } from "@/lib/prisma";
 import { dialLeadPlivoXML, verifyPlivoSignature, publicBase } from "@/lib/providers/plivo";
 import { logger } from "@/lib/logger";
 
-async function xmlFor(leadId: string, repId?: string): Promise<NextResponse> {
+async function xmlFor(leadId: string, repId?: string, callId?: string): Promise<NextResponse> {
   const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { phone: true } });
   const body = lead
-    ? dialLeadPlivoXML(lead.phone, leadId, repId)
+    ? dialLeadPlivoXML(lead.phone, leadId, repId, callId)
     : `<?xml version="1.0" encoding="UTF-8"?><Response><Speak>Lead not found.</Speak><Hangup/></Response>`;
   return new NextResponse(body, { status: 200, headers: { "Content-Type": "text/xml" } });
 }
 
 function repIdFrom(req: Request): string | undefined {
   return new URL(req.url).searchParams.get("repId") ?? undefined;
+}
+
+/// Our Call row for this click-to-call, passed on to the dial and recording callbacks.
+function callIdFrom(req: Request): string | undefined {
+  return new URL(req.url).searchParams.get("callId") ?? undefined;
 }
 
 /// Verify over the exact PUBLIC url Plivo signed. `req.url` is the internal url the platform
@@ -44,11 +49,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ leadId:
   const body: Record<string, string> = {};
   for (const [k, v] of form.entries()) body[k] = String(v);
   if (!verify(req, body, "POST")) return forbidden();
-  return xmlFor((await params).leadId, repIdFrom(req));
+  return xmlFor((await params).leadId, repIdFrom(req), callIdFrom(req));
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ leadId: string }> }) {
   // GET is signed over the url alone — there is no body to fold in.
   if (!verify(req, {}, "GET")) return forbidden();
-  return xmlFor((await params).leadId, repIdFrom(req));
+  return xmlFor((await params).leadId, repIdFrom(req), callIdFrom(req));
 }

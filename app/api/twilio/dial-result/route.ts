@@ -4,14 +4,18 @@
 // on a call that actually happened, so without this a failed call left no trace at
 // all: the rep heard "connecting you…", then silence, and the CRM showed nothing.
 //
-// A connected call is left alone here — the recording webhook owns that row, and it
-// arrives with the audio. This route only records the failures, and tells the rep
-// out loud why the call is ending.
+// The Call row already exists — created when the counsellor pressed Call, its id on this
+// url (lib/clickToCallLog.ts). This route is authoritative about the patient leg, so it
+// always writes: "connected" with the talk time, or why it never connected. It used to
+// leave connected calls to the recording callback, and a connected call whose recording
+// never arrived was never logged. Requests without a callId (placed before that change)
+// keep the old failures-only behaviour.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyTwilioSignature, publicBase, dialFailedTwiML, patientCallerId } from "@/lib/providers/twilio";
 import { endConsultation } from "@/lib/presence";
 import { notifyRep } from "@/lib/notifications";
+import { findClickToCall } from "@/lib/clickToCallLog";
 import { logger } from "@/lib/logger";
 
 /// Twilio's DialCallStatus values that mean "no conversation took place".
@@ -45,9 +49,25 @@ export async function POST(req: Request) {
       headers: { "Content-Type": "text/xml" },
     });
 
-  // Connected → the recording callback will file the Call row with its audio.
+  const call = await findClickToCall(url.searchParams.get("callId"), leadId);
+
   if (status === "completed" || status === "answered") {
-    logger.info(`Click-to-call to lead ${leadId} connected (${params.DialCallDuration ?? "?"}s)`);
+    const talk = parseInt(params.DialCallDuration ?? "", 10);
+    logger.info(`Click-to-call to lead ${leadId} connected (${Number.isFinite(talk) ? talk : "?"}s)`);
+    if (call) {
+      await prisma.call
+        .update({
+          where: { id: call.id },
+          data: {
+            outcome: "connected",
+            // Talk time with the patient — authoritative over the counsellor-leg length the
+            // status callback may have written first.
+            ...(Number.isFinite(talk) ? { duration: talk } : {}),
+            ...(params.CallSid && !call.providerSid ? { providerSid: params.CallSid } : {}),
+          },
+        })
+        .catch((err) => logger.error(`Twilio dial-result: could not update call ${call.id}: ${String(err)}`));
+    }
     return xml();
   }
 
@@ -63,24 +83,42 @@ export async function POST(req: Request) {
       ` — dialled from ${patientCallerId() || "unset"}`,
   );
 
-  // File it as an attempt so the lead's history shows the try. Idempotent on the
-  // leg's CallSid, because Twilio retries webhooks.
-  if (params.DialCallSid) {
-    const seen = await prisma.call.findUnique({ where: { providerSid: params.DialCallSid } });
-    if (seen) return xml();
+  const outcome = status === "no-answer" || status === "busy" ? "no_answer" : "unreachable";
+  const note = `Call not connected — ${summary}${lead?.phone ? ` (dialled ${lead.phone})` : ""}.`;
+
+  if (call) {
+    // Twilio retries webhooks; a row already carrying this outcome has been told.
+    if (call.outcome === outcome) return xml();
+    await prisma.call
+      .update({
+        where: { id: call.id },
+        data: {
+          outcome,
+          transcript: note,
+          ...(params.CallSid && !call.providerSid ? { providerSid: params.CallSid } : {}),
+        },
+      })
+      .catch((err) => logger.error(`Twilio dial-result: could not update call ${call.id}: ${String(err)}`));
+  } else {
+    // Legacy: a call placed before rows were created at the click. Idempotent on the
+    // leg's CallSid, because Twilio retries webhooks.
+    if (params.DialCallSid) {
+      const seen = await prisma.call.findUnique({ where: { providerSid: params.DialCallSid } });
+      if (seen) return xml();
+    }
+    await prisma.call
+      .create({
+        data: {
+          leadId,
+          callType: "human_handover",
+          outcome,
+          providerSid: params.DialCallSid || undefined,
+          handledById: repId,
+          transcript: note,
+        },
+      })
+      .catch((err) => logger.error(`Failed to log unconnected call for lead ${leadId}: ${String(err)}`));
   }
-  await prisma.call
-    .create({
-      data: {
-        leadId,
-        callType: "human_handover",
-        outcome: status === "no-answer" || status === "busy" ? "no_answer" : "unreachable",
-        providerSid: params.DialCallSid || undefined,
-        handledById: repId,
-        transcript: `Call not connected — ${summary}${lead?.phone ? ` (dialled ${lead.phone})` : ""}.`,
-      },
-    })
-    .catch((err) => logger.error(`Failed to log unconnected call for lead ${leadId}: ${String(err)}`));
 
   // The rep is off the phone again — undo the auto "in consultation" from the click.
   if (repId) await endConsultation(repId).catch(() => {});
