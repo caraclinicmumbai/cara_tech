@@ -6,12 +6,16 @@
 //   • the correlation id is `CallUUID`, and duration comes as `RecordingDuration` seconds;
 //   • the row is stamped `provider: "plivo"`, which is what lets the audio be fetched or
 //     ERASED later. Without it a DPDP erasure would be dispatched at Twilio and fail quietly.
+//
+// A click-to-call already has its row (created at the click, id on this url as `callId`), so
+// the recording is attached to it rather than filed as a second call.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyPlivoSignature, publicBase } from "@/lib/providers/plivo";
 import { transcribeAndScoreCall } from "@/lib/callTranscription";
 import { endConsultation } from "@/lib/presence";
 import { logger } from "@/lib/logger";
+import { findClickToCall } from "@/lib/clickToCallLog";
 
 export async function POST(req: Request) {
   const url = new URL(req.url);
@@ -48,32 +52,57 @@ export async function POST(req: Request) {
       : undefined;
   void rawDuration;
 
-  // Idempotency: Plivo retries callbacks. The unique providerSid would reject a duplicate
-  // anyway, but transcription and CQS scoring must not run twice.
   const sid = params.CallUUID;
-  if (sid) {
-    const existing = await prisma.call.findUnique({ where: { providerSid: sid } });
-    if (existing) {
-      logger.info(`Duplicate Plivo recording callback for ${sid} — already stored (call ${existing.id})`);
+  const existingRow = await findClickToCall(url.searchParams.get("callId"), leadId);
+
+  let call: { id: string };
+  if (existingRow) {
+    // Plivo retries callbacks, and transcription + CQS scoring must not run twice — so the
+    // recording is attached only if none is yet, in one statement two retries can't both win.
+    const claimed = await prisma.call.updateMany({
+      where: { id: existingRow.id, recordingUrl: null },
+      data: {
+        // A recording only exists for a call that connected, whatever arrived first.
+        outcome: "connected",
+        recordingUrl,
+        ...(Number.isFinite(duration) ? { duration } : {}),
+        ...(sid && !existingRow.providerSid ? { providerSid: sid } : {}),
+        // The patient heard the disclosure via `confirmSound` before the legs bridged (§C1).
+        recordingConsent: true,
+      },
+    });
+    if (claimed.count === 0) {
+      logger.info(`Duplicate Plivo recording callback for call ${existingRow.id} — already stored`);
       return NextResponse.json({ ok: true, duplicate: true }, { status: 200 });
     }
+    call = existingRow;
+  } else {
+    // Idempotency: Plivo retries callbacks. The unique providerSid would reject a duplicate
+    // anyway, but transcription and CQS scoring must not run twice.
+    if (sid) {
+      const existing = await prisma.call.findUnique({ where: { providerSid: sid } });
+      if (existing) {
+        logger.info(`Duplicate Plivo recording callback for ${sid} — already stored (call ${existing.id})`);
+        return NextResponse.json({ ok: true, duplicate: true }, { status: 200 });
+      }
+    }
+
+    const isInbound = url.searchParams.get("inbound") === "1";
+
+    call = await prisma.call.create({
+      data: {
+        leadId,
+        callType: isInbound ? "inbound" : "human_handover",
+        provider: "plivo",
+        recordingUrl,
+        duration: Number.isFinite(duration) ? duration : undefined,
+        providerSid: sid || undefined,
+        handledById: repId,
+        // The patient heard the disclosure via `confirmSound` before the legs bridged (§C1).
+        recordingConsent: true,
+      },
+    });
   }
-
-  const isInbound = url.searchParams.get("inbound") === "1";
-
-  const call = await prisma.call.create({
-    data: {
-      leadId,
-      callType: isInbound ? "inbound" : "human_handover",
-      provider: "plivo",
-      recordingUrl,
-      duration: Number.isFinite(duration) ? duration : undefined,
-      providerSid: sid || undefined,
-      handledById: repId,
-      // The patient heard the disclosure via `confirmSound` before the legs bridged (§C1).
-      recordingConsent: true,
-    },
-  });
   logger.info(`Stored Plivo handover recording for lead ${leadId} (call ${call.id}, ${duration ?? "?"}s)`);
 
   // §presence auto-detect: the click-to-call has ended → revert the rep from

@@ -20,6 +20,7 @@ import axios from "axios";
 import { createHmac, timingSafeEqual } from "crypto";
 import { dialablePhone } from "@/lib/phone";
 import { logger } from "@/lib/logger";
+import { callbackQuery, patientRingSeconds } from "@/lib/clickToCallLog";
 
 const API = "https://api.plivo.com/v1/Account";
 
@@ -71,10 +72,18 @@ export type PlivoCallResult = { ok: true; requestUuid: string } | { ok: false; e
 ///
 /// Returns the REQUEST uuid, which is not the call id — Plivo assigns `CallUUID` when the
 /// leg actually goes up, and that arrives on the callbacks.
+///
+/// `callId` is our Call row (created before this rings, see lib/providers/calling.ts). It
+/// rides on every callback url so each one updates that row.
+///
+/// `hangup_url` is set explicitly. Left unset, Plivo sends the hang-up of the counsellor's
+/// leg to `answer_url`, which answered it with dial XML that nobody would ever play — so a
+/// counsellor who didn't pick up their own phone left no trace anywhere.
 export async function plivoClickToCall(
   repPhone: string,
   leadId: string,
   repId?: string,
+  callId?: string,
 ): Promise<PlivoCallResult> {
   const id = process.env.PLIVO_AUTH_ID;
   const token = process.env.PLIVO_AUTH_TOKEN;
@@ -85,8 +94,9 @@ export async function plivoClickToCall(
 
   const repDialable = dialablePhone(repPhone) ?? repPhone;
   try {
-    const answerUrl =
-      `${base}/api/plivo/voice/${leadId}${repId ? `?repId=${encodeURIComponent(repId)}` : ""}`;
+    const qs = callbackQuery({ repId, callId });
+    const answerUrl = `${base}/api/plivo/voice/${leadId}${qs ? `?${qs}` : ""}`;
+    const hangupUrl = `${base}/api/plivo/hangup?${callbackQuery({ leadId, repId, callId })}`;
     const res = await axios.post(
       `${API}/${id}/Call/`,
       {
@@ -94,6 +104,8 @@ export async function plivoClickToCall(
         to: repDialable.replace(/^\+/, ""),
         answer_url: answerUrl,
         answer_method: "POST",
+        hangup_url: hangupUrl,
+        hangup_method: "POST",
       },
       {
         auth: { username: id, password: token },
@@ -136,9 +148,22 @@ function xmlEscape(s: string): string {
 /// Recording-consent disclosure (§compliance C1): `<Speak>` here is heard only by the
 /// counsellor, so the patient's disclosure rides on `confirmSound`, which Plivo fetches and
 /// plays TO THE CALLEE when they answer, before the legs bridge.
-export function dialLeadPlivoXML(leadPhone: string, leadId: string, repId?: string): string {
+///
+/// On the `<Dial>`:
+///   timeout     — how long the patient's phone rings (CLICK_TO_CALL_RING_SECONDS).
+///   dialMusic="real" — the counsellor hears the patient's ACTUAL network audio while it
+///                 rings, not Plivo's synthetic ringtone. Indian carriers rarely send a
+///                 clean "rejected": they play "the number you are calling is busy" over
+///                 early media and keep the leg up. The synthetic tone hid that, so a
+///                 patient who declined after three rings sounded like ten more rings.
+export function dialLeadPlivoXML(
+  leadPhone: string,
+  leadId: string,
+  repId?: string,
+  callId?: string,
+): string {
   const base = publicBase();
-  const qs = `leadId=${encodeURIComponent(leadId)}` + (repId ? `&repId=${encodeURIComponent(repId)}` : "");
+  const qs = callbackQuery({ leadId, repId, callId });
   const recordingCb = `${base}/api/webhooks/plivo/recording?${qs}`;
   const action = `${base}/api/plivo/dial-result?${qs}`;
   const whisper = `${base}/api/plivo/whisper`;
@@ -155,6 +180,7 @@ export function dialLeadPlivoXML(leadPhone: string, leadId: string, repId?: stri
     `fileFormat="mp3" maxLength="${maxLength}" recordChannelType="stereo" ` +
     `callbackUrl="${xmlEscape(recordingCb)}" callbackMethod="POST"/>` +
     `<Dial callerId="${xmlEscape(from)}" action="${xmlEscape(action)}" method="POST" ` +
+    `timeout="${patientRingSeconds()}" dialMusic="real" ` +
     `confirmSound="${xmlEscape(whisper)}">` +
     `<Number>${xmlEscape(dialable)}</Number>` +
     `</Dial>` +

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatIst } from "@/lib/datetime";
 import { currentUser, leadWhereForUser } from "@/lib/authz";
+import { callOutcomeLabel } from "@/lib/clickToCallLog";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export default async function CallsPage() {
                     ? (call.handledBy?.name ?? "—")
                     : "AI"}
                 </td>
-                <td>{call.outcome ?? "—"}</td>
+                <td>{callOutcomeLabel(call.outcome, call.createdAt)}</td>
                 <td>{call.sentiment ?? "—"}</td>
                 <td>{call.duration ? `${call.duration}s` : "—"}</td>
                 <td className="text-cara-muted">{formatIst(call.createdAt)}</td>
