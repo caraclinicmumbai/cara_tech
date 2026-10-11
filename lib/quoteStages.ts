@@ -134,6 +134,16 @@ export const QUOTE_DEFAULT_VALIDITY_DAYS = 30;
 // 2.5% CGST + 2.5% SGST = 5%) is charged on the discounted amount. A percentage
 // discount is a percentage of the base. Total = (base − discount) + GST.
 
+/// Most sessions/units one quote can be for — a typo guard, not a business rule.
+export const QUOTE_MAX_QUANTITY = 100;
+
+/// A whole number of units, at least 1. Anything unusable (null, 0, NaN) reads as 1, which is
+/// what every quote raised before quantity existed was.
+export function normaliseQuantity(q: number | null | undefined): number {
+  const n = Math.round(Number(q ?? 1));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, QUOTE_MAX_QUANTITY) : 1;
+}
+
 export const CGST_RATE = 2.5;
 export const SGST_RATE = 2.5;
 export const DEFAULT_GST_RATE = CGST_RATE + SGST_RATE; // 5
@@ -141,7 +151,9 @@ export const DEFAULT_GST_RATE = CGST_RATE + SGST_RATE; // 5
 export type DiscountType = "percent" | "inr";
 
 export type QuoteTotals = {
-  base: number;
+  unitPrice: number; // one session / unit
+  quantity: number;
+  base: number; // unitPrice × quantity — what the discount and GST work on
   discountType: DiscountType | null;
   discountValue: number | null;
   discountAmount: number;
@@ -152,15 +164,19 @@ export type QuoteTotals = {
 };
 
 /// Pure price calculator (usable on client + server). Rounds to whole rupees.
-/// Discount is applied to the base FIRST, then GST is charged on the discounted
-/// amount. A percentage discount is a percentage of the base.
+/// `base` is the UNIT price (Quote.price); the line is unit × quantity. Discount is applied
+/// to that line FIRST, then GST is charged on the discounted amount. A percentage discount
+/// is a percentage of the line; a flat ₹ discount comes off the line once, not per session.
 export function computeQuoteTotals(input: {
   base: number | null | undefined;
+  quantity?: number | null;
   gstRate?: number | null;
   discountType?: string | null;
   discountValue?: number | null;
 }): QuoteTotals {
-  const base = Math.max(0, Math.round(input.base ?? 0));
+  const unitPrice = Math.max(0, Math.round(input.base ?? 0));
+  const quantity = normaliseQuantity(input.quantity);
+  const base = unitPrice * quantity;
   const gstRate = input.gstRate ?? DEFAULT_GST_RATE;
 
   const type: DiscountType | null =
@@ -175,6 +191,8 @@ export function computeQuoteTotals(input: {
   const gstAmount = Math.round((afterDiscount * gstRate) / 100);
 
   return {
+    unitPrice,
+    quantity,
     base,
     discountType: type,
     discountValue: value,

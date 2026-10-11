@@ -74,7 +74,9 @@ export type PatientHistory = {
   cycle: number;
   quoteStatusLabel: string;
   quoteSourceLabel: string | null;
-  base: number;
+  unitPrice: number;
+  quantity: number;
+  base: number; // unitPrice × quantity
   discountLabel: string | null;
   discountAmount: number;
   gstRate: number;
@@ -167,6 +169,7 @@ export async function getPatientHistory(quoteId: string): Promise<PatientHistory
 
   const totals = computeQuoteTotals({
     base: quote.price,
+    quantity: quote.quantity,
     gstRate: quote.gstRate,
     discountType: quote.discountType,
     discountValue: quote.discountValue,
@@ -317,6 +320,8 @@ export async function getPatientHistory(quoteId: string): Promise<PatientHistory
     cycle: quote.cycle,
     quoteStatusLabel: QUOTE_STATUS_LABELS[quote.status as QuoteStatus] ?? quote.status,
     quoteSourceLabel: quote.source ? (QUOTE_SOURCE_LABELS[quote.source as QuoteSource] ?? quote.source) : null,
+    unitPrice: totals.unitPrice,
+    quantity: totals.quantity,
     base: totals.base,
     discountLabel,
     discountAmount: totals.discountAmount,
