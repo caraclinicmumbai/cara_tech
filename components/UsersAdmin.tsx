@@ -14,6 +14,7 @@ import {
   setRepActive,
   setRepSalesHead,
   setRepSpeciality,
+  removeRep,
 } from "@/app/(dashboard)/users/actions";
 import { availabilityMeta } from "@/lib/presenceStatus";
 import { SPECIALITIES, isSpeciality, specialityLabel } from "@/lib/specialities";
@@ -37,6 +38,7 @@ type RepRow = {
   speciality: string | null;
   availability: string;
   userEmail: string | null;
+  leadCount: number;
 };
 type Opt = { value: string; label: string };
 type BranchOpt = { id: string; label: string };
@@ -68,6 +70,12 @@ export function UsersAdmin({
 
   // New-login form state
   const [nu, setNu] = useState({ email: "", name: "", password: "", role: "telecaller", salesRepId: "" });
+  // Rep being removed, and who receives their leads.
+  const [removing, setRemoving] = useState<{ repId: string; toRepId: string } | null>(null);
+  // Who can receive a removed rep's work — same rule as the rota (lib/salesReps.ts
+  // ASSIGNABLE_REP): active, not a sales head, has a login.
+  const receivers = (excludeId: string) =>
+    reps.filter((r) => r.id !== excludeId && r.active && !r.salesHead && r.userEmail);
   // New-rep form state
   const [nr, setNr] = useState({ name: "", phone: "", slackUserId: "", speciality: "", salesHead: false });
 
@@ -170,8 +178,9 @@ export function UsersAdmin({
         <h2 className="text-lg font-semibold">Sales reps ({reps.length})</h2>
         <p className="text-sm text-black/60 dark:text-white/60">
           Rep identities are the assignable owners: leads round-robin to <em>active</em>,
-          non-sales-head reps who are <em>Active</em> right now, and handovers / click-to-call
-          target them. Link a login to a rep above so a telecaller receives their leads.
+          non-sales-head reps <em>with a linked login</em>, and handovers / click-to-call
+          target them. A rep with no login receives no leads — link one above first.
+          Removing a rep hands their leads, open quotes and follow-ups to a colleague.
           Status is live presence (counsellors set it themselves); speciality steers an
           offline counsellor&apos;s leads to a colleague with the same skill.
         </p>
@@ -213,6 +222,8 @@ export function UsersAdmin({
                 <th className="px-3 py-2">Branch</th>
                 <th className="px-3 py-2">Active</th>
                 <th className="px-3 py-2">Sales head</th>
+                <th className="px-3 py-2 text-right">Leads</th>
+                <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -245,7 +256,13 @@ export function UsersAdmin({
                       )}
                     </select>
                   </td>
-                  <td className="px-3 py-2">{r.userEmail ?? "—"}</td>
+                  <td className="px-3 py-2">
+                    {r.userEmail ?? (
+                      <span className="txt-bad text-xs" title="Without a login this rep can't open a lead, so none are assigned to them">
+                        No login — gets no leads
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     <select className={inputCls} defaultValue={r.branchId ?? ""} disabled={pending}
                       onChange={(e) => run(() => setRepBranch(r.id, e.target.value || null))}>
@@ -260,6 +277,41 @@ export function UsersAdmin({
                   <td className="px-3 py-2">
                     <input type="checkbox" checked={r.salesHead} disabled={pending}
                       onChange={(e) => run(() => setRepSalesHead(r.id, e.target.checked))} />
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{r.leadCount}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right">
+                    {removing?.repId === r.id ? (
+                      <span className="inline-flex items-center gap-2">
+                        <select className={inputCls} value={removing.toRepId} disabled={pending}
+                          aria-label={`Who receives ${r.name}'s leads`}
+                          onChange={(e) => setRemoving({ repId: r.id, toRepId: e.target.value })}>
+                          <option value="">Hand work to…</option>
+                          {receivers(r.id).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                        </select>
+                        <button disabled={pending || !removing.toRepId} className="txt-bad text-xs hover:underline disabled:opacity-50"
+                          onClick={() => {
+                            const to = reps.find((o) => o.id === removing.toRepId)?.name ?? "them";
+                            if (!window.confirm(`Remove ${r.name}? Their ${r.leadCount} lead(s), open quotes and pending follow-ups go to ${to}.`)) return;
+                            startTransition(async () => {
+                              const res = await removeRep(r.id, removing.toRepId);
+                              if (!res.ok) return window.alert(res.error ?? "Action failed");
+                              window.alert(`${r.name} removed. Moved to ${to}: ${res.moved}.`);
+                              setRemoving(null);
+                              refresh();
+                            });
+                          }}>
+                          Remove
+                        </button>
+                        <button disabled={pending} className="text-xs hover:underline" onClick={() => setRemoving(null)}>
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button disabled={pending} className="txt-bad text-xs hover:underline"
+                        onClick={() => setRemoving({ repId: r.id, toRepId: "" })}>
+                        Remove
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

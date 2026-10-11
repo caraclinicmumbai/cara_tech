@@ -14,6 +14,7 @@ import { writeAudit } from "@/lib/audit";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
 import { notifyRep, notifyUser } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
+import { ASSIGNABLE_REP } from "@/lib/salesReps";
 
 export class OwnershipError extends Error {}
 
@@ -39,12 +40,12 @@ export async function handoverLead(input: {
   });
   if (!lead) throw new OwnershipError("Lead not found");
 
-  const toRep = await prisma.salesRep.findUnique({
-    where: { id: input.toRepId },
+  const toRep = await prisma.salesRep.findFirst({
+    where: { ...ASSIGNABLE_REP, id: input.toRepId },
     select: { id: true, name: true, active: true, branchId: true, slackUserId: true },
   });
-  if (!toRep) throw new OwnershipError("Counsellor not found");
-  if (!toRep.active) throw new OwnershipError("That counsellor is inactive");
+  // Same rule as the rota: the picker only offers these, but the action is reachable directly.
+  if (!toRep) throw new OwnershipError("That counsellor can't take leads (inactive, or no login)");
   if (lead.assignedRepId === toRep.id) throw new OwnershipError("That counsellor already owns this lead");
 
   // Only the current owner or a manager/admin may hand over (a covering colleague can't).
@@ -63,7 +64,20 @@ export async function handoverLead(input: {
     if (!reason) throw new OwnershipError("A written reason is required for a cross-branch handover");
   }
 
-  await prisma.lead.update({ where: { id: lead.id }, data: { assignedRepId: toRep.id, assignedAt: new Date() } });
+  // The lead's pending follow-ups go with it. Left behind, they kept reminding the previous
+  // owner about a patient they no longer had — and the new owner never saw them due.
+  const [, movedSteps] = await prisma.$transaction([
+    prisma.lead.update({ where: { id: lead.id }, data: { assignedRepId: toRep.id, assignedAt: new Date() } }),
+    prisma.leadFollowUpStep.updateMany({
+      where: {
+        leadId: lead.id,
+        status: "pending",
+        ownerKind: "rep",
+        ownerRepId: lead.assignedRepId,
+      },
+      data: { ownerRepId: toRep.id },
+    }),
+  ]);
   await writeAudit({
     actorId: input.actor.id,
     actorEmail: input.actor.email,
@@ -75,7 +89,7 @@ export async function handoverLead(input: {
     reason: reason || null,
     // fromRepId lets the lead page recognise the person who just gave the lead away
     // and show them "handed over to X" instead of a bare 404 (§handover).
-    meta: { crossBranch, toRepId: toRep.id, fromRepId: lead.assignedRepId },
+    meta: { crossBranch, toRepId: toRep.id, fromRepId: lead.assignedRepId, followUpsMoved: movedSteps.count },
   });
   // In-app bell first — a colleague handing you a lead is exactly the kind of thing
   // you must see in the software, not only in Slack. Skipped when a manager hands the
