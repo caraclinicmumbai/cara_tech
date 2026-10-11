@@ -95,6 +95,8 @@ export function LeadOwnershipPanel({
   const crossBranch = !!ownerBranchId && !!selRep?.branchId && selRep.branchId !== ownerBranchId;
 
   const historyLine = (t: Timeline) => {
+    if (t.action === "lead.assign")
+      return { icon: "", text: `Assigned to ${t.newValue ?? "?"}` };
     if (t.action === "lead.handover")
       return { icon: "", text: `Handover — ${t.oldValue ?? "?"} → ${t.newValue ?? "?"}` };
     if (t.action === "lead.access.grant")

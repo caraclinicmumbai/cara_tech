@@ -120,6 +120,17 @@ access** panel on the lead page.
 
 - **Who may.** The current owner or a manager/admin. Cross-branch (both branches known
   and different) additionally requires a manager **and** a written reason.
+- **The receiver must be assignable** — active, with a login (`ASSIGNABLE_REP`).
+- **Pending follow-ups move with the lead** (rep-owned steps of the old owner), in the
+  same transaction as the owner change. Left behind, they reminded the previous owner
+  about a patient they no longer had.
+- **The ownership history starts at the first owner** (`lead.assign` — "Assigned to X",
+  rota or creator), not at the first handover.
+- **Removing a rep** (Users → Sales reps → Remove, `removeRep` in `lib/salesReps.ts`):
+  their leads, open quotes and pending follow-ups go to a colleague you pick (must be
+  assignable), in one transaction; each lead gets a `lead.handover` audit entry
+  ("X was removed from the roster"), then the rep is soft-deleted (`SalesRep.deletedAt`)
+  and unlinked from its login. Soft so past calls and audit entries keep their name.
 - **The receiver is told in-app**, same as an AI handover: a bell naming who handed it
   over and why, plus the Slack DM when configured. A **temporary access grant** raises
   its own bell for the grantee.

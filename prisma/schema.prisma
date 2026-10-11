@@ -220,9 +220,14 @@ model SalesRep {
   branchId String?
   branch   Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
-  leads        Lead[]             @relation("LeadAssignee")
-  handledCalls Call[]             @relation("CallHandler")
-  ownedQuotes  Quote[]            @relation("QuoteOwner")
+  // Removed from the roster (lib/salesReps.ts removeRep). Soft, not a delete: the row stays
+  // so past calls and audit entries keep the name of the person who actually spoke. Its
+  // leads, open quotes and pending follow-ups were handed to a colleague first.
+  deletedAt DateTime?
+
+  leads         Lead[]             @relation("LeadAssignee")
+  handledCalls  Call[]             @relation("CallHandler")
+  ownedQuotes   Quote[]            @relation("QuoteOwner")
   followUpSteps LeadFollowUpStep[] @relation("FollowUpOwner")
   user         User? // the login account linked to this rep (§3.1 RBAC)
 

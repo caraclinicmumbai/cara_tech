@@ -34,6 +34,7 @@ import { LeadCampaignCard } from "@/components/LeadCampaignCard";
 import { LeadComments } from "@/components/LeadComments";
 import { listFollowUpSteps, followUpQueue } from "@/lib/followups";
 import { callOutcomeLabel } from "@/lib/clickToCallLog";
+import { ASSIGNABLE_REP } from "@/lib/salesReps";
 
 export const dynamic = "force-dynamic";
 
@@ -185,10 +186,10 @@ export default async function LeadDetailPage({
   // on top of `quotes.view` — matching the route that serves it.
   const canViewQuoteHistory = canViewQuotes && can(viewer.role, "calls.view");
   const quoteSummary = summariseQuotes(lead.quotes);
-  // Assignable owners for the per-quote owner picker (active, non-sales-head reps).
+  // Assignable owners for the per-quote owner picker (active, non-sales-head, with a login).
   const quoteReps = canManageQuotes
     ? await prisma.salesRep.findMany({
-        where: { active: true, salesHead: false },
+        where: ASSIGNABLE_REP,
         select: { id: true, name: true },
         orderBy: { name: "asc" },
       })
@@ -217,7 +218,7 @@ export default async function LeadDetailPage({
   const [handoverReps, granteeUsers, activeGrants, ownershipHistory] = await Promise.all([
     canHandover
       ? prisma.salesRep.findMany({
-          where: { active: true, salesHead: false },
+          where: ASSIGNABLE_REP,
           select: { id: true, name: true, branchId: true, branch: { select: { name: true } } },
           orderBy: { name: "asc" },
         })

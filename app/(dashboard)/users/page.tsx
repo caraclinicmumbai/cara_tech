@@ -16,6 +16,8 @@ export default async function UsersPage() {
       select: { id: true, email: true, name: true, role: true, salesRepId: true, branchId: true },
     }),
     prisma.salesRep.findMany({
+      // Removed reps stay in the table for history (past calls name them), not the roster.
+      where: { deletedAt: null },
       orderBy: { name: "asc" },
       select: {
         id: true,
@@ -28,6 +30,7 @@ export default async function UsersPage() {
         speciality: true,
         availability: true,
         user: { select: { email: true } },
+        _count: { select: { leads: true } },
       },
     }),
     prisma.branch.findMany({
@@ -50,6 +53,7 @@ export default async function UsersPage() {
     speciality: r.speciality,
     availability: r.availability,
     userEmail: r.user?.email ?? null,
+    leadCount: r._count.leads,
   }));
 
   return (

@@ -6,7 +6,7 @@ import type { Lead } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { placeOutboundCall } from "@/lib/providers/elevenlabs";
 import { scheduleCallAttempt, cancelScheduledCalls, aiCallsPaused } from "@/lib/queue";
-import { pickOwnerRep, assignLeadToRep } from "@/lib/salesReps";
+import { pickOwnerRep, assignLeadToRep, ASSIGNABLE_REP } from "@/lib/salesReps";
 import { dialablePhone } from "@/lib/phone";
 import { seedFollowUpStepsSafe } from "@/lib/followups";
 import { isWithinDnd } from "@/lib/callWindow";
@@ -24,6 +24,21 @@ export type LeadSource =
   | "google"
   | "whatsapp"
   | "inbound_call";
+
+/// The creator's own rep, if a lead they create can be theirs (see the ownership note in
+/// ingestLead). Null sends the lead to the rota.
+async function creatorAsOwner(userId: string): Promise<{ id: string; email: string } | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, salesRepId: true },
+  });
+  if (!user?.salesRepId) return null;
+  const rep = await prisma.salesRep.findFirst({
+    where: { ...ASSIGNABLE_REP, id: user.salesRepId },
+    select: { id: true },
+  });
+  return rep ? { id: rep.id, email: user.email } : null;
+}
 
 export type NormalizedLead = {
   name: string;
@@ -231,11 +246,22 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
   // this owner (see notifyHandover). pickOwnerRep prefers an available counsellor
   // but falls back to any active one, so a team that's all on break still leaves
   // the lead owned. Best-effort — only a roster with NO active rep leaves it blank.
+  //
+  // A lead a counsellor types in themselves is THEIRS: the creator owns it when they are an
+  // assignable rep (lib/salesReps.ts ASSIGNABLE_REP). The rota only decides for leads that
+  // arrive on their own (forms, ads, WhatsApp) or are entered by someone who isn't a
+  // counsellor (front desk without a rep, admins, sales heads). Before this, a counsellor
+  // adding their own patient watched it go to a colleague — and both could see it.
   let ownerRepId: string | null = null;
   try {
-    const owner = await pickOwnerRep();
+    const creatorRep = input.createdById ? await creatorAsOwner(input.createdById) : null;
+    const owner = creatorRep ?? (await pickOwnerRep());
     if (owner) {
-      await assignLeadToRep(lead.id, owner.id);
+      await assignLeadToRep(
+        lead.id,
+        owner.id,
+        creatorRep ? { reason: "Created the lead", actor: { id: input.createdById, email: creatorRep.email } } : {},
+      );
       ownerRepId = owner.id;
     } else {
       logger.warn(`Lead ${lead.id} created with no owner — no active sales rep on the roster`);
