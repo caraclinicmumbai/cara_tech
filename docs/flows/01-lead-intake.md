@@ -58,6 +58,16 @@ handover. `pickOwnerRep` (`lib/salesReps.ts`) takes the least-recently-assigned 
 counsellor (sales heads excluded, `SalesRep.lastAssignedAt` is the rota cursor) and
 `assignLeadToRep` records it on the lead + the audit trail as a system assignment.
 
+- **A lead a counsellor creates is theirs.** When the creator (`createdById`) is an
+  assignable rep, they become the owner directly (audited `lead.assign`, reason "Created
+  the lead", actor = them) and the rota is skipped. The rota decides only for leads that
+  arrive on their own, or are entered by someone who isn't a counsellor (front desk
+  without a rep, admins, sales heads). Field test 2026-10: a counsellor's own patient
+  went to a colleague, and both of them could see it.
+- **Only reps with a login are assignable** (`ASSIGNABLE_REP`: active, not a sales head,
+  not removed, linked to a `User`). A rep record with no login used to sort first in
+  the rota (never assigned → `lastAssignedAt` null) and collect leads nobody could open.
+  The same rule gates the handover and quote-owner pickers and `handoverLead` itself.
 - Applies to **every** lead — walk-ins, duplicates, held-for-review, and a cold
   WhatsApp enquiry that auto-creates a lead (`findOrCreateLeadByPhone`, flow 6).
 - **Presence is a preference, not a filter.** An `available` counsellor is picked

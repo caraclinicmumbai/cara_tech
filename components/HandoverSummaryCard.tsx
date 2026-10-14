@@ -77,13 +77,17 @@ export function HandoverSummaryCard({
 
         <Field label="Procedure">
           {summary.procedure}
+          {summary.quantity > 1 && <span> × {summary.quantity}</span>}
           {summary.cycle > 1 && <span className="text-cara-muted"> · session {summary.cycle}</span>}
         </Field>
 
         <Field label="Price">
           {inr(summary.totalPayable, summary.currency)}
-          {summary.price != null && summary.totalPayable !== summary.price && (
-            <div className="text-cara-muted">base {inr(summary.price, summary.currency)}</div>
+          {summary.price != null && (summary.quantity > 1 || summary.totalPayable !== summary.price) && (
+            <div className="text-cara-muted">
+              base {inr(summary.price, summary.currency)}
+              {summary.quantity > 1 && ` × ${summary.quantity}`}
+            </div>
           )}
           {summary.discountLabel && <div className="text-cara-muted">discount {summary.discountLabel}</div>}
         </Field>

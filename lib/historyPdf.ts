@@ -146,7 +146,7 @@ export function buildPatientHistoryPdf(h: PatientHistory): Promise<Buffer> {
       ["Status", h.quoteStatusLabel],
       ["Quoted on", istDate(h.quotedAt)],
       ["Attribution", h.quoteSourceLabel ?? "-"],
-      ["Base price", rs(h.base)],
+      ["Base price", h.quantity > 1 ? `${rs(h.unitPrice)} x ${h.quantity} = ${rs(h.base)}` : rs(h.base)],
       ["Discount", h.discountLabel ?? "none"],
       [`GST (${h.gstRate}%)`, rs(h.gstAmount)],
       ["Total payable", rs(h.total)],

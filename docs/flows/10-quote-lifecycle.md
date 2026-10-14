@@ -42,9 +42,17 @@ the lead's follow-up roadmap ([lib/followups.ts](../../lib/followups.ts)).
 
 `createLeadQuote()` → `createQuote()`.
 
-- **Treatment** comes from the catalog picker ([lib/catalog.ts](../../lib/catalog.ts)),
-  which reads the clinic's `CatalogItem` master list and auto-fills base price, GST rate,
-  and a package's built-in discount %. Free text is still accepted for anything off-list.
+- **Treatment** is a type-ahead field
+  ([components/TreatmentCombobox.tsx](../../components/TreatmentCombobox.tsx)): suggestions
+  from the clinic's `CatalogItem` master list ([lib/catalog.ts](../../lib/catalog.ts)) open
+  under it as you type (every word must match the name or category, in any order). Picking
+  one auto-fills the price, GST rate and a package's built-in discount %. Free text is
+  accepted for anything off-list — the typed text is the treatment and the price is typed
+  by hand. (It used to be a search box above a separate `<select>`, which in practice
+  read as a dropdown that ignored typing, and the Add button silently required a pick.)
+- **Quantity** — sessions/units, 1–100, default 1. `price` is the price of ONE; the line
+  the discount and GST work on is `price × quantity`. A quote is still one treatment:
+  two treatments are two quotes, each converting on its own (the structural rule above).
 - **Source is compulsory** — `ad` | `asked_during_consultation` | `post_op_upsell` |
   `existing_patient_repeat`. Attribution stops at the door the patient came through *for
   this treatment*; it does not follow them around. Enforced server-side, because the
@@ -68,6 +76,8 @@ discount is taken off the BASE first
 GST (2.5% CGST + 2.5% SGST = 5%) is charged on the DISCOUNTED amount
         ↓
 total payable = (base − discount) + GST
+
+where base = unit price × quantity
 ```
 
 One pure function — `computeQuoteTotals()` in
@@ -80,15 +90,16 @@ never take the base below zero.
 quote keeps the rate it was raised under. Catalog items marked "NA" carry 0%.
 
 Discount is either `percent` (of the base, decimals allowed — `12.5`) or `inr` (a flat
-rupee amount).
+rupee amount, taken off the whole line once — not per session).
 
 ### 3. Revise — never re-raise
 
 `reviseLeadQuotePrice()` → `reviseQuotePrice()`.
 
 Revising **replaces the live version**: the current `QuoteVersion` is marked `replaced`, a
-new one is appended with an optional note, and the quote's `price` / `totalPayable` are
-recomputed off the *existing* GST and discount. The quote keeps its id, its cycle, and its
+new one is appended with an optional note, and the quote's `price` / `quantity` /
+`totalPayable` are recomputed off the *existing* GST and discount. The quantity is optional
+on a revision — left out, the quote keeps its current one. `QuoteVersion` records both. The quote keeps its id, its cycle, and its
 full price trail. All three writes are one `$transaction`.
 
 Refused on a locked quote.
@@ -339,6 +350,9 @@ The one release valve (`lib/branchCredit.ts`):
 
 ## Limitations
 
+- **Invoices don't carry a quantity yet.** An `Invoice` is one amount against one quote;
+  the session count lives on the quote only. Linking quantity to invoices (sessions billed
+  vs. quoted) is planned, not built.
 - **Nothing expires a quote automatically.** `expiresAt` is written at creation and read
   for display, but no sweep ever flips a lapsed quote to `expired` — it sits in
   `OPEN_QUOTE_STATUSES` indefinitely, still counting toward pipeline value and still

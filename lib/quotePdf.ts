@@ -21,7 +21,8 @@ export type QuotePdfData = {
   quoteId: string;
   treatment: string;
   cycle: number;
-  price: number | null;
+  price: number | null; // unit price
+  quantity?: number; // sessions / units — 1 when absent
   gstRate: number;
   discountType: string | null;
   discountValue: number | null;
@@ -58,6 +59,7 @@ export function quoteRef(quoteId: string, cycle: number): string {
 export function buildQuotePdf(d: QuotePdfData): Promise<Buffer> {
   const totals = computeQuoteTotals({
     base: d.price ?? 0,
+    quantity: d.quantity,
     gstRate: d.gstRate,
     discountType: d.discountType,
     discountValue: d.discountValue,
@@ -150,7 +152,13 @@ export function buildQuotePdf(d: QuotePdfData): Promise<Buffer> {
     // Order of operations: discount applied to the base FIRST, then GST on the net.
     doc.rect(left, y, width, rowH).fill("#f4f4f4");
     doc.fillColor("#111");
-    row("Base treatment price", rs(totals.base), { bold: true });
+    row(
+      totals.quantity > 1
+        ? `Treatment price (${rs(totals.unitPrice)} x ${totals.quantity})`
+        : "Base treatment price",
+      rs(totals.base),
+      { bold: true },
+    );
     doc.moveTo(left, y).lineTo(right, y).strokeColor("#eee").stroke();
     if (totals.discountAmount > 0) {
       const disc = d.discountType === "percent" ? `${d.discountValue}%` : rs(d.discountValue);

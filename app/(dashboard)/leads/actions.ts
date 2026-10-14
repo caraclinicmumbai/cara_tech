@@ -174,7 +174,7 @@ export async function callLeadAndRecord(
   const leadDial = toDialable(lead.phone);
   if (!leadDial.ok) return { ok: false, error: `This lead's number ${leadDial.reason}` };
 
-  const res = await startClickToCall(repDial.e164, leadId, rep.id);
+  const res = await startClickToCall(repDial.e164, leadId, rep.id, { id: user.id, email: user.email });
   if (!res.ok) return { ok: false, error: res.error };
   // §presence auto-detect: the rep is now on a call on their work number — mark them
   // In-Consultation without asking. The Twilio recording webhook reverts them when

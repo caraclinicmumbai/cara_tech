@@ -368,6 +368,22 @@ rest of "Connecting to Calendar and Billing", not new ideas.
 
 _Added 2026-08-18._
 
+## From the October 2026 field test
+
+- **Link quote quantity to invoices (M).** Quotes now carry a quantity (sessions × unit
+  price, `fa68861`); invoices still carry one amount against one quote. The clinic wants
+  the two linked — sessions billed against sessions quoted. Needs a quantity (or line
+  items) on `Invoice` and on the billing webhook payload, then a "sessions remaining" view.
+- **Should a lead's creator keep access after handing it over? (S, decision).** The creator
+  now owns the lead (`adcd565`), and `leadWhereForUser` still lets a creator see a lead
+  forever, even once it has moved to a colleague. Left as it was; drop the `createdById`
+  clause for telecallers if the clinic wants handovers to remove access.
+- **Field-test reps with no login (ops, not code).** Kamal Asif and Mini Sharma still own
+  the leads round-robin gave them before the fix. Either link each to a login, or Remove
+  them under Users → Sales reps, which hands their work to a colleague.
+
+_Added 2026-10-12._
+
 ---
 
 ## Done

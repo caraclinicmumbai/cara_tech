@@ -17,6 +17,7 @@ import {
   QUOTE_REJECTION_REASONS,
   WON_QUOTE_STATUSES,
   computeQuoteTotals,
+  normaliseQuantity,
   isQuoteOpen,
   isQuoteLocked,
   isQuoteStatus,
@@ -67,6 +68,7 @@ export async function createQuote(input: {
   leadId: string;
   treatment: string;
   price?: number | null;
+  quantity?: number | null;
   discountType?: string | null;
   discountValue?: number | null;
   gstRate?: number | null;
@@ -100,8 +102,10 @@ export async function createQuote(input: {
   // Total in whole rupees (discount off the base, then GST on the rest), stored for
   // display + reporting.
   const gstRate = input.gstRate ?? DEFAULT_GST_RATE;
+  const quantity = normaliseQuantity(input.quantity);
   const totals = computeQuoteTotals({
     base: input.price ?? 0,
+    quantity,
     gstRate,
     discountType: input.discountType,
     discountValue: input.discountValue,
@@ -114,6 +118,7 @@ export async function createQuote(input: {
       status: DEFAULT_QUOTE_STATUS,
       cycle,
       price: input.price ?? null,
+      quantity,
       gstRate,
       discountType: totals.discountType,
       discountValue: totals.discountValue,
@@ -125,7 +130,7 @@ export async function createQuote(input: {
       expiresAt,
       versions:
         input.price != null
-          ? { create: [{ price: input.price, createdById: input.createdById ?? null }] }
+          ? { create: [{ price: input.price, quantity, createdById: input.createdById ?? null }] }
           : undefined,
     },
     select: { id: true },
@@ -133,18 +138,19 @@ export async function createQuote(input: {
   return created.id;
 }
 
-/// Revise a quote's price. Marks the current version replaced and appends a new one
-/// — the quote keeps its identity and full price trail (§multi-quote). Refuses on a
-/// locked (converted) quote.
+/// Revise a quote's price and/or quantity. Marks the current version replaced and appends a
+/// new one — the quote keeps its identity and full price trail (§multi-quote). Refuses on a
+/// locked (converted) quote. A quantity left out keeps the quote's current one.
 export async function reviseQuotePrice(input: {
   quoteId: string;
   price: number;
+  quantity?: number | null;
   note?: string | null;
   createdById?: string | null;
 }): Promise<void> {
   const quote = await prisma.quote.findUnique({
     where: { id: input.quoteId },
-    select: { status: true, gstRate: true, discountType: true, discountValue: true },
+    select: { status: true, gstRate: true, discountType: true, discountValue: true, quantity: true },
   });
   if (!quote) throw new QuoteError("Quote not found");
   if (isQuoteLocked(quote.status)) {
@@ -152,8 +158,10 @@ export async function reviseQuotePrice(input: {
   }
 
   // Recompute the total off the new base, keeping the quote's existing GST + discount.
+  const quantity = input.quantity != null ? normaliseQuantity(input.quantity) : quote.quantity;
   const totals = computeQuoteTotals({
     base: input.price,
+    quantity,
     gstRate: quote.gstRate,
     discountType: quote.discountType,
     discountValue: quote.discountValue,
@@ -168,13 +176,14 @@ export async function reviseQuotePrice(input: {
       data: {
         quoteId: input.quoteId,
         price: input.price,
+        quantity,
         note: input.note ?? null,
         createdById: input.createdById ?? null,
       },
     }),
     prisma.quote.update({
       where: { id: input.quoteId },
-      data: { price: input.price, totalPayable: totals.total },
+      data: { price: input.price, quantity, totalPayable: totals.total },
     }),
   ]);
 }

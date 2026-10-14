@@ -220,9 +220,14 @@ model SalesRep {
   branchId String?
   branch   Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
-  leads        Lead[]             @relation("LeadAssignee")
-  handledCalls Call[]             @relation("CallHandler")
-  ownedQuotes  Quote[]            @relation("QuoteOwner")
+  // Removed from the roster (lib/salesReps.ts removeRep). Soft, not a delete: the row stays
+  // so past calls and audit entries keep the name of the person who actually spoke. Its
+  // leads, open quotes and pending follow-ups were handed to a colleague first.
+  deletedAt DateTime?
+
+  leads         Lead[]             @relation("LeadAssignee")
+  handledCalls  Call[]             @relation("CallHandler")
+  ownedQuotes   Quote[]            @relation("QuoteOwner")
   followUpSteps LeadFollowUpStep[] @relation("FollowUpOwner")
   user         User? // the login account linked to this rep (§3.1 RBAC)
 
@@ -930,8 +935,12 @@ model Quote {
   // Cycle: 1 = first time we've quoted this person for this treatment, 2 = repeat, …
   cycle Int @default(1)
 
-  price    Int? // BASE treatment price, whole rupees (no card/bank data here)
+  price    Int? // UNIT price of the treatment (one session), whole rupees (no card/bank data here)
   currency String @default("INR")
+  // How many sessions / units the quote is for. The base the discount and GST work on is
+  // price × quantity (computeQuoteTotals). A quote is still ONE treatment — several
+  // treatments are several quotes, each converting on its own (§multi-quote).
+  quantity Int    @default(1)
 
   // ── Pricing breakdown (§multi-quote) — the DISCOUNT comes off the base FIRST, then
   //    GST is charged on the discounted amount. GST is fixed at 5% (2.5% CGST + 2.5%
@@ -1003,7 +1012,8 @@ model QuoteVersion {
   id          String   @id @default(cuid())
   quoteId     String
   quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  price       Int
+  price       Int // unit price at this version
+  quantity    Int      @default(1)
   note        String?
   replaced    Boolean  @default(false)
   createdById String?

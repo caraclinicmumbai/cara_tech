@@ -218,7 +218,9 @@ export async function readLeadAudit(leadId: string, actions?: string[]): Promise
 }
 
 // Back-compat alias used by the ownership panel (handover/access history).
-export const OWNERSHIP_ACTIONS = ["lead.handover", "lead.access.grant", "lead.access.revoke"];
+// `lead.assign` is the first owner (rota or creator) — without it the history started at the
+// first handover and never said who the lead was given to in the first place.
+export const OWNERSHIP_ACTIONS = ["lead.assign", "lead.handover", "lead.access.grant", "lead.access.revoke"];
 export function readLeadTimeline(leadId: string): Promise<AuditEntry[]> {
   return readLeadAudit(leadId, OWNERSHIP_ACTIONS);
 }
@@ -267,6 +269,7 @@ export function actionLabel(action: string): string {
     "lead.access.grant": "Access granted",
     "lead.access.revoke": "Access revoked",
     "lead.merge": "Merged duplicate",
+    "lead.call": "Call placed",
     "lead.quote.create": "Quote created",
     "lead.quote.status": "Quote status",
     "lead.quote.owner": "Quote owner",
@@ -289,6 +292,7 @@ export function actionLabel(action: string): string {
     "role.permissions.reset": "Role permissions reset",
     "presence.change": "Status changed",
     "presence.auto": "Status auto-changed",
+    "rep.remove": "Rep removed",
   };
   return map[action] ?? action;
 }

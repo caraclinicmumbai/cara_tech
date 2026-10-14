@@ -336,7 +336,14 @@ export default async function OpenQuotesPage({
                       <span className="cara-badge cara-badge-warning">Unassigned</span>
                     )}
                   </td>
-                  <td className="text-right tabular-nums">{inr(r.base)}</td>
+                  <td className="text-right tabular-nums">
+                    {inr(r.base)}
+                    {r.quantity > 1 && (
+                      <div className="text-[11px] text-cara-faint">
+                        {inr(r.unitPrice)} × {r.quantity}
+                      </div>
+                    )}
+                  </td>
                   <td className="text-right tabular-nums">{discountCell(r)}</td>
                   <td className="text-right tabular-nums text-cara-muted">
                     {inr(r.gstAmount)}

@@ -7,6 +7,43 @@ Format: newest first.
 
 ---
 
+## 2026-10-14 — Fixes from the October field test: calls, lead ownership, quotes
+
+Commits `012cea3`, `adcd565`, `fa68861`, `40bc6d3`, cherry-picked from `dev` without the
+Appointments module, which stays on `dev`. Flow docs updated:
+**[01-lead-intake.md](flows/01-lead-intake.md)** (ownership),
+**[04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**
+(click-to-call log, staff handover, removing a rep),
+**[10-quote-lifecycle.md](flows/10-quote-lifecycle.md)** (quantity, type-ahead), and
+[deferred-todo.md](deferred-todo.md). Migrations `20261011203048_rep_soft_delete` and
+`20261011205025_quote_quantity` only add columns.
+
+**Calls.** The clinic made test calls that never reached the call log: a counsellor's phone
+that rang out, a 10-second connected call, and a recorded call with no transcript. All three
+had one cause. The `Call` row was written only at the end of a call, and one callback the row
+depended on is not guaranteed to arrive. The row is now created when Call is pressed; its id
+travels on every Plivo/Twilio callback, and each callback updates it. A new counsellor-leg
+callback (`/api/plivo/hangup`, `/api/twilio/call-status`) settles calls nothing else
+reported. The patient leg rings for `CLICK_TO_CALL_RING_SECONDS` (25). Plivo's
+`dialMusic="real"` lets the counsellor hear a rejection the moment it happens, instead of a
+synthetic ringtone that ran on to the timeout.
+
+**Ownership.** Leads were going to sales-rep records that had no login, so they could never
+be opened. Assignment now requires a linked login (`ASSIGNABLE_REP`). A lead a counsellor
+adds is theirs, not the next person on the rota's. Reps can be removed (soft delete), and
+their leads, open quotes and follow-ups are handed to a colleague first. A handover now
+moves the lead's pending follow-ups too.
+
+**Quotes.** Each quote has a quantity (unit price × quantity), carried through totals, the
+PDF, the desks and the reports. The treatment field is now a type-ahead over the catalog.
+Invoices don't carry a quantity yet (deferred).
+
+**Worth knowing generally:** don't build a log row from the callback that only arrives if
+everything went well. Write the row when the action starts, and let every later signal
+improve it.
+
+---
+
 ## 2026-10-04 — Calling moves to Plivo, and the clinic gets an Indian number
 
 Flow doc added: **[indian-telephony-migration.md](indian-telephony-migration.md)** — the

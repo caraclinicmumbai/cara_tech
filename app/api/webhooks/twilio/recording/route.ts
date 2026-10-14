@@ -1,12 +1,14 @@
 // Twilio recording webhook (§3.1). Fired when a handover call's recording is
 // ready. Verifies the Twilio signature, then stores the recording as a Call on
-// the lead so it shows up in the CRM.
+// the lead so it shows up in the CRM. A click-to-call already has its row (created at the
+// click, id on this url as `callId`), so the recording is attached to it instead.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyTwilioSignature, publicBase } from "@/lib/providers/twilio";
 import { transcribeAndScoreCall } from "@/lib/callTranscription";
 import { endConsultation } from "@/lib/presence";
 import { logger } from "@/lib/logger";
+import { findClickToCall } from "@/lib/clickToCallLog";
 
 export async function POST(req: Request) {
   const url = new URL(req.url);
@@ -34,34 +36,59 @@ export async function POST(req: Request) {
   const recordingUrl = params.RecordingUrl ? `${params.RecordingUrl}.mp3` : undefined;
   const duration = params.RecordingDuration ? parseInt(params.RecordingDuration, 10) : undefined;
 
-  // Idempotency: Twilio retries recording callbacks. Skip if we've already stored
-  // this CallSid (the unique providerSid would otherwise reject the duplicate, and
-  // we must not re-run transcription/scoring).
-  if (params.CallSid) {
-    const existing = await prisma.call.findUnique({ where: { providerSid: params.CallSid } });
-    if (existing) {
-      logger.info(`Duplicate Twilio recording callback for ${params.CallSid} — already stored (call ${existing.id})`);
+  const existingRow = await findClickToCall(url.searchParams.get("callId"), leadId);
+
+  let call: { id: string };
+  if (existingRow) {
+    // Twilio retries recording callbacks, and transcription/scoring must not run twice — so
+    // the recording is attached only if none is yet, in one statement retries can't both win.
+    const claimed = await prisma.call.updateMany({
+      where: { id: existingRow.id, recordingUrl: null },
+      data: {
+        // A recording only exists for a call that connected, whatever arrived first.
+        outcome: "connected",
+        recordingUrl,
+        ...(Number.isFinite(duration) ? { duration } : {}),
+        ...(params.CallSid && !existingRow.providerSid ? { providerSid: params.CallSid } : {}),
+        // The patient heard the recording-disclosure whisper before bridging (§C1).
+        recordingConsent: true,
+      },
+    });
+    if (claimed.count === 0) {
+      logger.info(`Duplicate Twilio recording callback for call ${existingRow.id} — already stored`);
       return NextResponse.json({ ok: true, duplicate: true }, { status: 200 });
     }
+    call = existingRow;
+  } else {
+    // Idempotency: Twilio retries recording callbacks. Skip if we've already stored
+    // this CallSid (the unique providerSid would otherwise reject the duplicate, and
+    // we must not re-run transcription/scoring).
+    if (params.CallSid) {
+      const existing = await prisma.call.findUnique({ where: { providerSid: params.CallSid } });
+      if (existing) {
+        logger.info(`Duplicate Twilio recording callback for ${params.CallSid} — already stored (call ${existing.id})`);
+        return NextResponse.json({ ok: true, duplicate: true }, { status: 200 });
+      }
+    }
+
+    // Same webhook serves both directions: a click-to-call the rep started, and a
+    // patient call that came in on the clinic line (§presence inbound routing). The
+    // inbound adapter marks its callbacks so the Call row records which it was.
+    const isInbound = url.searchParams.get("inbound") === "1";
+
+    call = await prisma.call.create({
+      data: {
+        leadId,
+        callType: isInbound ? "inbound" : "human_handover",
+        recordingUrl,
+        duration: Number.isFinite(duration) ? duration : undefined,
+        providerSid: params.CallSid,
+        handledById: repId, // the rep who initiated the click-to-call
+        // The patient heard the recording-disclosure whisper before bridging (§C1).
+        recordingConsent: true,
+      },
+    });
   }
-
-  // Same webhook serves both directions: a click-to-call the rep started, and a
-  // patient call that came in on the clinic line (§presence inbound routing). The
-  // inbound adapter marks its callbacks so the Call row records which it was.
-  const isInbound = url.searchParams.get("inbound") === "1";
-
-  const call = await prisma.call.create({
-    data: {
-      leadId,
-      callType: isInbound ? "inbound" : "human_handover",
-      recordingUrl,
-      duration: Number.isFinite(duration) ? duration : undefined,
-      providerSid: params.CallSid,
-      handledById: repId, // the rep who initiated the click-to-call
-      // The patient heard the recording-disclosure whisper before bridging (§C1).
-      recordingConsent: true,
-    },
-  });
   logger.info(`Stored human-handover recording for lead ${leadId} (call ${call.id}, ${duration ?? "?"}s)`);
 
   // §presence auto-detect: the click-to-call has ended → revert the rep from

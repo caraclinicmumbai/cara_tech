@@ -50,7 +50,7 @@ thresholds.
    **🔥 hot lead — close now** message (leads with the score) instead of the generic
    🤝 handover, so a ready-to-buy lead is visually distinct from a problem-handover.
 5. **Counsellor oversight copy** is sent in parallel (flow 5).
-6. **Recorded click-to-call (Twilio).** From the lead page, a counsellor hits "📞 Call &
+6. **Recorded click-to-call (Plivo; Twilio kept for rollback — `CALL_PROVIDER`).** From the lead page, a counsellor hits "📞 Call &
    record": Twilio rings **their own** phone, then dials the lead, bridges, and records
    dual-channel. The recording webhook stores it as a `Call` (`human_handover`) and an
    in-app player streams it (session-gated proxy). The recording is then transcribed +
@@ -84,12 +84,31 @@ thresholds.
      so `preflight.ts` asks the account directly (`callerIdStatus`) rather than trusting
      the variable. Without that check the only witness is Twilio's call log, which is
      how a `+1` survived being "fixed" twice.
-   - **A call that never connects is recorded too.** The `<Dial action>` callback
-     (`/api/twilio/dial-result`) fires whatever the outcome — busy, no answer, carrier
-     rejection — files a `Call` with the outcome, rings the rep's bell, reverts their
-     In-Consultation status, and *tells them out loud* why the call is ending. Before
-     this, the recording callback was the only one that fired, so a failed call left
-     the rep in silence and the CRM with no record of it.
+   - **Every press of the button is in the call log** (`lib/clickToCallLog.ts`). The
+     `Call` row is created **at the click**, outcome `ringing`, and its id rides on every
+     provider callback url as `callId=`. Each callback *updates* that row:
+     - **dial-result** (`<Dial action>`) — authoritative about the patient leg: `connected`
+       with the talk time, or `no_answer` / `unreachable` with why. It rings the rep's
+       bell and tells them out loud why a failed call is ending.
+     - **recording** — attaches the audio (one conditional update, so a retried callback
+       can't transcribe twice), then transcription + CQS (flow 3).
+     - **counsellor-leg hang-up** (Plivo `hangup_url`, Twilio `StatusCallback`) — the
+       safety net. Writes only while the row is still `ringing`: `rep_missed` if the
+       counsellor's own phone wasn't answered (no other callback fires then), `cancelled`
+       if they hung up before the patient answered. Always reverts In-Consultation.
+     - A row still `ringing` after 15 minutes reads **"No result from the phone
+       provider"** — almost always callbacks being refused (signature / public url).
+     - Each call also writes a `lead.call` entry to the lead's change history.
+
+     Before this (field test, 2026-10), the row was only written at the *end*: by
+     dial-result for a failure, by the recording callback for a success. A counsellor
+     who missed their own phone, or a connected call whose recording callback never
+     landed, left no trace at all.
+   - **The patient's phone rings for `CLICK_TO_CALL_RING_SECONDS` (25s)** — `timeout` on
+     the `<Dial>`. On Plivo, `dialMusic="real"` plays the patient's actual network audio to
+     the counsellor instead of a synthetic ringtone: Indian carriers rarely send a clean
+     "rejected", they play an announcement over early media and keep the leg up, and the
+     synthetic tone made a call declined after three rings sound like ten more.
 7. **Hot-call escalation (human path).** If a recorded human call itself scores ≥
    threshold, `escalateHotCall` raises the escalation flag and pings the owning rep.
 
@@ -101,6 +120,17 @@ access** panel on the lead page.
 
 - **Who may.** The current owner or a manager/admin. Cross-branch (both branches known
   and different) additionally requires a manager **and** a written reason.
+- **The receiver must be assignable** — active, with a login (`ASSIGNABLE_REP`).
+- **Pending follow-ups move with the lead** (rep-owned steps of the old owner), in the
+  same transaction as the owner change. Left behind, they reminded the previous owner
+  about a patient they no longer had.
+- **The ownership history starts at the first owner** (`lead.assign` — "Assigned to X",
+  rota or creator), not at the first handover.
+- **Removing a rep** (Users → Sales reps → Remove, `removeRep` in `lib/salesReps.ts`):
+  their leads, open quotes and pending follow-ups go to a colleague you pick (must be
+  assignable), in one transaction; each lead gets a `lead.handover` audit entry
+  ("X was removed from the roster"), then the rep is soft-deleted (`SalesRep.deletedAt`)
+  and unlinked from its login. Soft so past calls and audit entries keep their name.
 - **The receiver is told in-app**, same as an AI handover: a bell naming who handed it
   over and why, plus the Slack DM when configured. A **temporary access grant** raises
   its own bell for the grantee.
@@ -129,7 +159,9 @@ Skips if superseded by a newer handover or the lead is gone.
 - `components/NotificationBell.tsx` + `app/api/notifications` — the header bell and its feed
 - `lib/providers/twilio.ts` — recorded click-to-call + end-of-dial TwiML
 - `lib/phone.ts` — `dialablePhone` / `toDialable` (E.164 normalisation + sanity check)
-- `app/api/twilio/dial-result` — how a click-to-call ended (logs the failures)
+- `lib/clickToCallLog.ts` — the click-time `Call` row: outcomes, labels, callback precedence
+- `app/api/{twilio,plivo}/dial-result` — how the patient leg ended (updates the row)
+- `app/api/plivo/hangup`, `app/api/twilio/call-status` — the counsellor leg ended
 - `lib/handoverSla.ts` — 2h unattended-handover escalation (worker queue)
 - `app/api/twilio/*`, `app/api/webhooks/twilio/recording` — TwiML + recording webhook
 
@@ -142,6 +174,8 @@ Skips if superseded by a newer handover or the lead is gone.
 | `HANDOVER_SLA_HOURS` | `2` | Hours before an unattended handover escalates |
 | `HANDOVER_ESCALATION_CHANNEL` | → counsellor channel | Where the SLA escalation goes |
 | `TWILIO_*` | — | Account SID, auth token, caller id, public base |
+| `CALL_PROVIDER` | `twilio` | `plivo` in production; flip back to roll back |
+| `CLICK_TO_CALL_RING_SECONDS` | `25` | How long the patient's phone rings on a click-to-call |
 
 ## Limitations
 

@@ -1,10 +1,23 @@
 // Sales rep roster + round-robin assignment (§3.1). Handovers are distributed
 // to the least-recently-assigned active rep, so load spreads evenly across the
 // team. Assignment is recorded on both the rep (cursor) and the lead.
-import type { SalesRep } from "@prisma/client";
+import type { Prisma, SalesRep } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
+import { OPEN_QUOTE_STATUSES } from "@/lib/quoteStages";
 import { logger } from "@/lib/logger";
+
+/// Who can be GIVEN a lead — by the rota, a handover, or a quote-owner pick: an active,
+/// non-sales-head rep on the roster WITH A LOGIN. The login is the point. A rep record is
+/// just a name and a phone number, and one added "to be set up later" used to go straight
+/// to the front of the rota (never assigned → sorts first) and collect leads that nobody
+/// could ever open. A rep without a login can't see a single lead, so they can't own one.
+export const ASSIGNABLE_REP: Prisma.SalesRepWhereInput = {
+  active: true,
+  salesHead: false,
+  deletedAt: null,
+  user: { isNot: null },
+};
 
 /// Pick the next rep round-robin (least-recently-assigned AVAILABLE rep) and advance
 /// the cursor. Sales heads are excluded — they're managers, not the rota. Only reps
@@ -13,7 +26,7 @@ import { logger } from "@/lib/logger";
 /// who's stepped away. Returns null when no eligible reps are free.
 export async function pickNextRep(): Promise<SalesRep | null> {
   const rep = await prisma.salesRep.findFirst({
-    where: { active: true, salesHead: false, availability: "available" },
+    where: { ...ASSIGNABLE_REP, availability: "available" },
     orderBy: [{ lastAssignedAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }],
   });
   if (!rep) return null;
@@ -34,7 +47,7 @@ export async function pickNextRep(): Promise<SalesRep | null> {
 export async function pickOwnerRep(
   opts: { preferAvailable?: boolean } = {},
 ): Promise<SalesRep | null> {
-  const base = { active: true, salesHead: false };
+  const base = ASSIGNABLE_REP;
   const order = [
     { lastAssignedAt: { sort: "asc" as const, nulls: "first" as const } },
     { createdAt: "asc" as const },
@@ -57,9 +70,8 @@ export async function pickOwnerRep(
 export async function pickReplacementFor(
   unavailable: { id: string; speciality: string | null },
 ): Promise<SalesRep | null> {
-  const base = {
-    active: true,
-    salesHead: false,
+  const base: Prisma.SalesRepWhereInput = {
+    ...ASSIGNABLE_REP,
     availability: "available",
     NOT: { id: unavailable.id },
   };
@@ -84,7 +96,7 @@ export async function pickReplacementFor(
 /// The sales head (a manager, notified only on CQS extremes). Returns the first
 /// active sales-head rep, or null if none is configured.
 export async function getSalesHead(): Promise<SalesRep | null> {
-  return prisma.salesRep.findFirst({ where: { active: true, salesHead: true } });
+  return prisma.salesRep.findFirst({ where: { active: true, salesHead: true, deletedAt: null } });
 }
 
 /// The rep who owns a lead (assigned at intake / handover), or null.
@@ -96,10 +108,15 @@ export async function getLeadOwner(leadId: string): Promise<SalesRep | null> {
   return lead?.assignedRep ?? null;
 }
 
-/// Assign a lead to a rep (records who + when on the lead). Audited as a system
-/// assignment (no human actor) — e.g. the round-robin at intake — so the ownership
-/// trail is complete alongside manual handovers.
-export async function assignLeadToRep(leadId: string, repId: string): Promise<void> {
+/// Assign a lead to a rep (records who + when on the lead). Audited so the ownership trail
+/// is complete alongside manual handovers: as a system assignment (no human actor, "assigned
+/// automatically") for the round-robin, or with the actor and reason when a person caused it
+/// — the creator of a lead becoming its owner.
+export async function assignLeadToRep(
+  leadId: string,
+  repId: string,
+  opts: { reason?: string; actor?: { id?: string; email?: string | null } } = {},
+): Promise<void> {
   const before = await prisma.lead.findUnique({ where: { id: leadId }, select: { assignedRep: { select: { name: true } } } });
   const rep = await prisma.salesRep.findUnique({ where: { id: repId }, select: { name: true } });
   await prisma.lead.update({
@@ -109,7 +126,97 @@ export async function assignLeadToRep(leadId: string, repId: string): Promise<vo
   await writeAudit({
     action: "lead.assign", entityType: "lead", entityId: leadId,
     oldValue: before?.assignedRep?.name ?? "Unassigned", newValue: rep?.name ?? repId,
-    meta: { repId, system: true },
+    actorId: opts.actor?.id, actorEmail: opts.actor?.email,
+    reason: opts.reason ?? "Assigned automatically",
+    meta: { repId, system: !opts.actor },
   });
   logger.info(`Lead ${leadId} assigned to rep ${repId}`);
+}
+
+/// Is this rep someone a lead can be given to right now (see ASSIGNABLE_REP)?
+export async function isAssignableRep(repId: string): Promise<boolean> {
+  return (await prisma.salesRep.count({ where: { ...ASSIGNABLE_REP, id: repId } })) > 0;
+}
+
+/// Remove a rep from the roster, handing everything they were responsible for to `toRepId`
+/// first: the leads they own, their open quotes, and their pending follow-up steps. Then the
+/// rep is soft-deleted (`deletedAt`) and unlinked from any login.
+///
+/// Soft, because the rep is history as well as a roster entry: past calls (`handledBy`) and
+/// audit entries name them, and a hard delete would null every one of those — the record of
+/// who spoke to a patient would read "—". The receiving rep must be assignable, which is
+/// what stops the leads of a rep with no login being moved to another one.
+///
+/// The moves and the removal are one transaction, so a failure leaves nothing half-moved.
+/// Each lead's move is then audited as a handover, the same entry a manual one writes.
+export async function removeRep(input: {
+  repId: string;
+  toRepId: string;
+  actor: { id?: string; email?: string | null };
+}): Promise<{ leads: number; quotes: number; followUps: number }> {
+  if (input.repId === input.toRepId) throw new Error("Pick a different counsellor to receive the leads");
+  const rep = await prisma.salesRep.findUnique({
+    where: { id: input.repId },
+    select: { id: true, name: true, deletedAt: true },
+  });
+  if (!rep || rep.deletedAt) throw new Error("That rep has already been removed");
+  const toRep = await prisma.salesRep.findFirst({
+    where: { ...ASSIGNABLE_REP, id: input.toRepId },
+    select: { id: true, name: true },
+  });
+  if (!toRep) throw new Error("The receiving counsellor must be active and have a login");
+
+  // For the per-lead audit below; the move itself matches on the owner, inside the transaction.
+  const leadIds = (
+    await prisma.lead.findMany({ where: { assignedRepId: rep.id }, select: { id: true } })
+  ).map((l) => l.id);
+
+  const [, quotes, followUps] = await prisma.$transaction([
+    prisma.lead.updateMany({
+      where: { assignedRepId: rep.id },
+      data: { assignedRepId: toRep.id, assignedAt: new Date() },
+    }),
+    prisma.quote.updateMany({
+      where: { ownerRepId: rep.id, status: { in: [...OPEN_QUOTE_STATUSES] } },
+      data: { ownerRepId: toRep.id },
+    }),
+    prisma.leadFollowUpStep.updateMany({
+      where: { ownerRepId: rep.id, status: "pending" },
+      data: { ownerRepId: toRep.id },
+    }),
+    prisma.user.updateMany({ where: { salesRepId: rep.id }, data: { salesRepId: null } }),
+    prisma.salesRep.update({
+      where: { id: rep.id },
+      data: { active: false, deletedAt: new Date(), onCall: false, availability: "offline" },
+    }),
+  ]);
+
+  for (const leadId of leadIds) {
+    await writeAudit({
+      actorId: input.actor.id,
+      actorEmail: input.actor.email,
+      action: "lead.handover",
+      entityType: "lead",
+      entityId: leadId,
+      oldValue: rep.name,
+      newValue: toRep.name,
+      reason: `${rep.name} was removed from the roster`,
+      meta: { toRepId: toRep.id, fromRepId: rep.id, repRemoved: true },
+    });
+  }
+  await writeAudit({
+    actorId: input.actor.id,
+    actorEmail: input.actor.email,
+    action: "rep.remove",
+    entityType: "rep",
+    entityId: rep.id,
+    oldValue: rep.name,
+    newValue: `Work handed to ${toRep.name}`,
+    meta: { toRepId: toRep.id, leads: leadIds.length, quotes: quotes.count, followUps: followUps.count },
+  });
+  logger.info(
+    `Rep ${rep.id} (${rep.name}) removed by ${input.actor.email ?? "?"}: ` +
+      `${leadIds.length} leads, ${quotes.count} quotes, ${followUps.count} follow-ups → ${toRep.name}`,
+  );
+  return { leads: leadIds.length, quotes: quotes.count, followUps: followUps.count };
 }

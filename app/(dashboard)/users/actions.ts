@@ -11,6 +11,7 @@ import { hashPassword } from "@/lib/password";
 import { isRole } from "@/lib/rbac";
 import { SPECIALITIES, isSpeciality } from "@/lib/specialities";
 import { logger } from "@/lib/logger";
+import { removeRep as removeRepFromRoster } from "@/lib/salesReps";
 
 type Result = { ok: boolean; error?: string };
 
@@ -194,4 +195,20 @@ export async function setRepSpeciality(repId: string, speciality: string): Promi
   });
   revalidatePath("/users");
   return { ok: true };
+}
+
+/// Remove a rep from the roster. Their leads, open quotes and pending follow-ups go to
+/// `toRepId` first (lib/salesReps.ts removeRep), so nothing is left with nobody.
+export async function removeRep(repId: string, toRepId: string): Promise<Result & { moved?: string }> {
+  const me = await requireCapability("reps.manage");
+  try {
+    const n = await removeRepFromRoster({ repId, toRepId, actor: { id: me.id, email: me.email } });
+    revalidatePath("/users");
+    return {
+      ok: true,
+      moved: `${n.leads} lead${n.leads === 1 ? "" : "s"}, ${n.quotes} open quote${n.quotes === 1 ? "" : "s"}, ${n.followUps} follow-up${n.followUps === 1 ? "" : "s"}`,
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not remove the rep" };
+  }
 }
