@@ -173,6 +173,7 @@ model Lead {
   appointments        Appointment[]
   flags               LeadFlag[]
   consents            ConsentRecord[]
+  credits             PatientCredit[]
   intakeResponses     IntakeResponse[]
   treatmentPlans      TreatmentPlan[]
 
@@ -673,6 +674,8 @@ model CatalogItem {
 
   appointmentTypes AppointmentType[]
 
+  quotes           Quote[]
+
   @@unique([type, name])
   @@index([active])
   @@index([category])
@@ -954,6 +957,10 @@ model Quote {
   leadId    String
   lead      Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
   treatment String // e.g. "Hair transplant (FUE)", "PRP"
+  /// The catalogue item it was picked from, when it was (free text has none). Lets an
+  /// appointment type or a treatment series match the quote by item, not by name.
+  catalogItemId String?
+  catalogItem   CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
 
   // Quote lifecycle — independent of the lead's person-track stage.
   // drafted | sent | viewed | accepted | awaiting_payment | converted |
@@ -1845,12 +1852,74 @@ model BookingPayment {
   currency      String      @default("INR")
   orderId       String      @unique
   paymentId     String?
-  /// created | paid | failed
+  /// created | paid | failed | refunded
   status        String      @default("created")
   paidAt        DateTime?
+  /// How the payment was confirmed: the patient's browser (checkout callback) or
+  /// Razorpay's own server webhook — the webhook is what rescues a closed tab.
+  confirmedVia  String?
   createdAt     DateTime    @default(now())
 
+  credit PatientCredit?
+
   @@index([appointmentId])
+}
+
+/// Money a patient has with the clinic (§3, decision 3.c). A deposit paid online for an
+/// appointment that then didn't happen — no-show, cancelled, or a hold that lapsed after
+/// the money was taken — is KEPT AS CREDIT for the next booking, never forfeited by the
+/// system. Applying it, or refunding it, is a person's decision and is recorded here.
+model PatientCredit {
+  id              String          @id @default(cuid())
+  leadId          String
+  lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  amountPaise     Int
+  currency        String          @default("INR")
+  /// The payment it came from — one credit per payment.
+  paymentId       String?         @unique
+  payment         BookingPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  /// The appointment that didn't happen.
+  appointmentId   String?
+  /// no_show | late_cancel | cancelled | clinic_cancelled | hold_lapsed — for the desk, not a rule.
+  reason          String
+  /// available | applied | refunded
+  status          String          @default("available")
+  appliedToId     String? // the appointment it was used for
+  appliedAt       DateTime?
+  appliedById     String?
+  refundedAt      DateTime?
+  refundedById    String?
+  refundReason    String?
+  /// Razorpay refund id, or "recorded" when the refund was made outside the CRM.
+  refundRef       String?
+  createdAt       DateTime        @default(now())
+
+  @@index([leadId, status])
+}
+
+/// A completed session, handed to Billing (§3, 3.4 "completed sessions trigger revenue
+/// recognition"). The CRM records the fact — which visit, for which quote, which session
+/// of how many, and the per-session value — and Billing (or the clinic's accounting
+/// export) consumes it. One row per appointment.
+model RevenueEvent {
+  id            String    @id @default(cuid())
+  kind          String    @default("session_completed")
+  appointmentId String    @unique
+  leadId        String
+  quoteId       String?
+  planId        String?
+  /// 1-based session number within the quote / plan, and the total — "3 of 6".
+  sessionNo     Int?
+  sessions      Int?
+  /// Per-session value in whole rupees (quote total ÷ sessions); null when unknown.
+  amount        Int?
+  branchId      String
+  occurredAt    DateTime
+  /// Set by the consumer once it has taken the row.
+  exportedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([exportedAt, occurredAt])
 }
 
 /// A pre-consultation intake form (§2.7) — "hair loss consultation", "surgery pre-op".

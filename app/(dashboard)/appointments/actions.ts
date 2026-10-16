@@ -33,6 +33,7 @@ import { STATUS_TRANSITIONS, isAppointmentStatus } from "@/lib/scheduling/status
 import type { Issue } from "@/lib/scheduling/engine";
 import { appointmentLink } from "@/lib/scheduling/links";
 import { intakeLinkFor, intakeStatus } from "@/lib/scheduling/intake/service";
+import { applyCredit, availableCredits, CREDIT_REASON_LABELS, refundCredit } from "@/lib/scheduling/billing";
 
 const PATH = "/appointments";
 
@@ -349,6 +350,11 @@ export type AppointmentDetail = {
   source: string;
   /// §2.3.b — paid online at booking (so the desk doesn't charge again).
   payment: { status: string; amount: number; discountPct: number } | null;
+  /// §3 (3.c) — the patient's unused credit (kept from a missed visit), any credit already
+  /// used for THIS appointment, and whether this viewer may apply / refund it.
+  credits: { id: string; amount: number; reason: string; createdAt: string }[];
+  creditApplied: number;
+  canRefund: boolean;
   /// §2.7 — intake form: status for everyone who sees the appointment; the answers link
   /// only for `appointments.viewIntake`; the form link so the desk can hand the patient
   /// a tablet if they haven't filled it in.
@@ -432,7 +438,47 @@ export async function getAppointmentDetail(id: string): Promise<AppointmentDetai
       };
     })(),
     payment: visible && a.payments[0] ? { status: a.payments[0].status, amount: a.payments[0].amountPaise / 100, discountPct: a.payments[0].discountPct } : null,
+    ...(await creditInfo(a.id, a.leadId, visible, can(user.role, "appointments.refund"))),
   };
+}
+
+async function creditInfo(appointmentId: string, leadId: string, visible: boolean, canRefund: boolean) {
+  if (!visible) return { credits: [], creditApplied: 0, canRefund: false };
+  const [credits, applied] = await Promise.all([
+    availableCredits(leadId),
+    prisma.patientCredit.aggregate({ where: { appliedToId: appointmentId, status: "applied" }, _sum: { amountPaise: true } }),
+  ]);
+  return {
+    credits: credits.map((c) => ({
+      id: c.id,
+      amount: c.amountPaise / 100,
+      reason: CREDIT_REASON_LABELS[c.reason] ?? c.reason,
+      createdAt: c.createdAt.toISOString(),
+    })),
+    creditApplied: (applied._sum.amountPaise ?? 0) / 100,
+    canRefund,
+  };
+}
+
+/// Use a patient's credit for this appointment (the desk, when they come back).
+export async function applyPatientCredit(creditId: string, appointmentId: string): Promise<{ ok: boolean; error?: string }> {
+  const user = await requireCapability("appointments.book");
+  const r = await applyCredit(creditId, appointmentId, { id: user.id, email: user.email });
+  if (r.ok) revalidatePath("/appointments");
+  return r;
+}
+
+/// Refund a patient's credit — a manager's decision (decision 3.c), never automatic.
+export async function refundPatientCredit(
+  creditId: string,
+  reason: string,
+  mode: "razorpay" | "recorded",
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await requireCapability("appointments.refund");
+  if (mode !== "razorpay" && mode !== "recorded") return { ok: false, error: "Unknown refund method" };
+  const r = await refundCredit(creditId, { reason, mode }, { id: user.id, email: user.email });
+  if (r.ok) revalidatePath("/appointments");
+  return r;
 }
 
 /// Pin / unpin a patient flag (★ Priority …) from the appointment card.

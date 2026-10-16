@@ -147,6 +147,35 @@ How appointments meet the rest of the CRM (spec §3). Decisions 3.a–3.d above.
   intake answers aren't linked. **Change history now includes appointment events**
   (`readLeadHistory`): bookings, moves, status changes, payments, intake and plan events.
 
+### 3.4 Billing: deposits, credit, sessions
+
+[lib/scheduling/billing.ts](../../lib/scheduling/billing.ts), with decision 3.c.
+
+- **Payments are confirmed twice-safe.** The patient's browser (checkout callback) and
+  Razorpay's server webhook ([app/api/webhooks/razorpay](../../app/api/webhooks/razorpay/route.ts),
+  `RAZORPAY_WEBHOOK_SECRET`, events `payment.captured` + `order.paid`) both go through
+  `markPaid`, which pays an order once. **A paid hold whose browser never came back is
+  booked and confirmed by the webhook**; one that had already lapsed keeps the money as
+  credit. Before, a closed tab meant a paid-for hold quietly expired. `BookingPayment.confirmedVia`
+  says which path confirmed it.
+- **A missed visit's deposit becomes patient credit** (`PatientCredit`), never forfeited by
+  the system: no-show, cancelled (in time / inside the cut-off / by the clinic) or a hold
+  that lapsed after payment. The reason is recorded for the desk.
+  - **Use it:** the appointment card shows the patient's credit; "Use for this visit"
+    (`appointments.book`) applies it once, and the card then says not to charge again.
+  - **Refund it:** a manager (`appointments.refund` — branch manager, sales head, admin)
+    refunds through Razorpay, or records a refund already made another way. A reason is
+    required; the payment becomes `refunded`. Audited `lead.credit.add / apply / refund`.
+- **A completed visit is a `RevenueEvent` for Billing:** which appointment, quote and plan,
+  "session 3 of 6", and the per-session value (quote total ÷ sessions — plan steps when the
+  visit is a plan step, else the quote's quantity). One row per appointment. Billing pulls
+  them from `GET /api/billing/revenue-events` (`x-webhook-secret`) and marks them taken
+  with `POST {ids}`. The CRM records the fact; it never books revenue. Rows carry ids only
+  (no patient details), so they outlive an erased lead as anonymous accounting facts.
+- **Quotes remember their catalogue item** (`Quote.catalogItemId`, set when the treatment
+  was picked from the catalogue and not typed over). Booking ↔ quote matching and the
+  package → series auto-start use it as well as the name.
+
 ## Trigger
 
 Any booking, reschedule or status change, from any screen (front desk, call centre, the
@@ -676,14 +705,16 @@ Environment for 2.4 (all optional; each channel stays off without its own):
   clinic".
 - **No CAPTCHA yet:** honeypot + rate limits + OTP only. Turnstile can be added if bots
   appear.
-- **Prepayment doesn't reach billing (3.4) yet.** It's recorded on the appointment, not
-  invoiced. Refunds happen in the Razorpay dashboard.
+- **Prepayment isn't invoiced.** It's a `BookingPayment` (and, if the visit didn't
+  happen, a `PatientCredit`); turning it into an `Invoice` is Billing's job once 3.4
+  exists.
 - **Series templates come from the clinical lead.** Nothing is pre-loaded; the demo
   series exists only in local data.
-- **Revenue recognition is an audit event**, not an invoice entry, until Billing (3.4)
-  consumes it.
-- **Automatic start matches the package by quote treatment name** (case-insensitive),
-  because quotes don't carry a catalogue id yet.
+- **Nothing consumes `RevenueEvent` yet.** The rows and the pull endpoint exist; Billing
+  (3.4) or an accounting export has to take them.
+- **Automatic start matches the package by name** — the quote's text or its catalogue
+  item's name against `SeriesTemplate.packageName`. A template can't point at a catalogue
+  item directly yet.
 - **Plans don't show on the lead page yet** (they're reached from the appointment card,
   the recall list and the bell).
 - **Intake forms are English only, and partial answers live only in the browser.** A

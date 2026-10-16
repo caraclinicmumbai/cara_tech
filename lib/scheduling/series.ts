@@ -193,7 +193,17 @@ export async function autoStartFor(appointmentId: string): Promise<void> {
     const existing = await prisma.treatmentPlan.count({ where: { leadId: a.leadId, templateId: t.id, status: "active" } });
     if (existing) continue;
     if (t.packageName) {
-      const sold = await prisma.quote.count({ where: { leadId: a.leadId, status: { in: ["converted", "in_treatment"] }, treatment: { equals: t.packageName, mode: "insensitive" } } });
+      // The package sold: by the quote's text, or by the catalogue item it was picked from.
+      const sold = await prisma.quote.count({
+        where: {
+          leadId: a.leadId,
+          status: { in: ["converted", "in_treatment"] },
+          OR: [
+            { treatment: { equals: t.packageName, mode: "insensitive" } },
+            { catalogItem: { name: { equals: t.packageName, mode: "insensitive" } } },
+          ],
+        },
+      });
       if (!sold) continue;
     }
     const r = await createPlan({ leadId: a.leadId, templateId: t.id, anchorAppointmentId: a.id });

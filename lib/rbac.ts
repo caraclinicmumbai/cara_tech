@@ -112,6 +112,9 @@ export const CAPABILITIES = [
   // verified (clinicians).
   "appointments.viewIntake",
   "appointments.verifyIntake",
+  // §3, decision 3.c — refund a patient's credit (a deposit kept from a missed visit).
+  // Applying credit to a booking needs only `book`; giving money back is a manager's call.
+  "appointments.refund",
   "calls.view",
   "analytics.view",
   // Reports (§reports) — the management read-outs, split in two because they answer to
@@ -215,6 +218,7 @@ export const CAPABILITY_GROUPS: {
       { key: "appointments.approveLeave", label: "Approve doctors' leave / mark emergency" },
       { key: "appointments.viewIntake", label: "Read intake forms (health data)" },
       { key: "appointments.verifyIntake", label: "Verify intake answers (clinical)" },
+      { key: "appointments.refund", label: "Refund a patient's credit" },
     ],
   },
   {
@@ -383,6 +387,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "appointments.viewAllBranches",
     "appointments.bookAnyBranch",
     "appointments.viewIntake",
+    "appointments.refund",
   ],
   sales_head: [
     "leads.view",
@@ -424,6 +429,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "appointments.viewAllBranches",
     "appointments.bookAnyBranch",
     "appointments.approveLeave",
+    "appointments.refund",
   ],
 
   // ── The post-sales / clinical roles (§post-sales). Note what is ABSENT from all

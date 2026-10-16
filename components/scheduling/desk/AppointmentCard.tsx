@@ -9,6 +9,8 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  applyPatientCredit,
+  refundPatientCredit,
   getAppointmentDetail,
   rescheduleFromDesk,
   setAppointmentStatus,
@@ -173,6 +175,58 @@ export function AppointmentCard({ id, onClose }: { id: string; onClose: () => vo
                       {d.payment.discountPct ? ` (−${d.payment.discountPct}%)` : ""}
                     </span>
                   )}
+                </div>
+              )}
+              {/* Patient credit (§3, decision 3.c): deposits kept from missed visits. */}
+              {d.visible && (d.credits.length > 0 || d.creditApplied > 0) && (
+                <div className="space-y-1 border-t border-cara-rule pt-3 text-[12.5px]">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-cara-muted">Patient credit</div>
+                  {d.creditApplied > 0 && (
+                    <div className="txt-good">₹{d.creditApplied.toLocaleString("en-IN")} credit used for this visit — don&apos;t charge it again</div>
+                  )}
+                  {d.credits.map((c) => (
+                    <div key={c.id} className="flex flex-wrap items-center gap-2">
+                      <span className="tag tag-aqua">₹{c.amount.toLocaleString("en-IN")}</span>
+                      <span className="text-cara-muted">{c.reason}, {fmtDay(keyOf(c.createdAt))}</span>
+                      {d.canAct && ["booked", "confirmed", "checked_in", "in_progress"].includes(d.status) && (
+                        <button
+                          disabled={pending}
+                          className="tone-link"
+                          onClick={() =>
+                            startTransition(async () => {
+                              const r = await applyPatientCredit(c.id, d.id);
+                              if (!r.ok) return setMsg({ ok: false, error: r.error ?? "Could not apply the credit" });
+                              setD(await getAppointmentDetail(d.id));
+                              router.refresh();
+                            })
+                          }
+                        >
+                          Use for this visit
+                        </button>
+                      )}
+                      {d.canRefund && (
+                        <button
+                          disabled={pending}
+                          className="txt-bad hover:underline"
+                          onClick={() => {
+                            const reason = window.prompt(`Refund ₹${c.amount.toLocaleString("en-IN")} to the patient? Reason:`);
+                            if (!reason?.trim()) return;
+                            const viaRazorpay = window.confirm(
+                              "Refund it through Razorpay now?\n\nOK = Razorpay sends the money back.\nCancel = I've already refunded it another way; just record it.",
+                            );
+                            startTransition(async () => {
+                              const r = await refundPatientCredit(c.id, reason, viaRazorpay ? "razorpay" : "recorded");
+                              if (!r.ok) return setMsg({ ok: false, error: r.error ?? "Refund failed" });
+                              setD(await getAppointmentDetail(d.id));
+                              router.refresh();
+                            });
+                          }}
+                        >
+                          Refund
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
               {d.doctorOverbooked && (

@@ -1191,6 +1191,10 @@ async function section3Checks() {
   const { MISSED_TITLE } = await import("../lib/scheduling/crm");
   const { leadSchedulingTimeline } = await import("../lib/scheduling/leadTimeline");
   const { readLeadHistory } = await import("../lib/audit");
+  const billing = await import("../lib/scheduling/billing");
+  const { onRazorpayPaid } = await import("../lib/scheduling/online");
+  const { verifyRazorpayWebhook } = await import("../lib/providers/razorpay");
+  const { createHmac } = await import("node:crypto");
   const { messageBlockFor } = await import("../lib/messages");
   const { userSeesIntake } = await import("../lib/scheduling/calendar");
   const tag = `s3-${Date.now()}`;
@@ -1281,6 +1285,66 @@ async function section3Checks() {
       assert.ok(hist.some((h) => h.action === "lead.stage.move"));
     });
 
+    const pay = (appointmentId: string, n: number) =>
+      prisma.bookingPayment.create({ data: { appointmentId, amountPaise: 50_000, listPaise: 50_000, orderId: `${tag}-order-${n}` } });
+
+    await check("a paid deposit on a no-show becomes credit; it can be used once, or refunded", async () => {
+      const b = await bookAppointment({ ...base, startAt: at(15 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const id = b.ok ? b.appointmentId : "";
+      await pay(id, 1);
+      assert.equal((await billing.markPaid(`${tag}-order-1`, "pay_1", "checkout")).paid, true);
+      assert.equal((await billing.markPaid(`${tag}-order-1`, "pay_1", "webhook")).paid, false, "paid once");
+      assert.ok((await changeAppointmentStatus(id, "no_show", {}, actor)).ok);
+      const [credit] = await billing.availableCredits(lead.id);
+      assert.ok(credit && credit.amountPaise === 50_000 && credit.reason === "no_show");
+      const next = await bookAppointment({ ...base, startAt: at(16 * 60) }, actor);
+      assert.ok(next.ok);
+      const nextId = next.ok ? next.appointmentId : "";
+      assert.ok((await billing.applyCredit(credit.id, nextId, actor)).ok);
+      assert.equal((await billing.applyCredit(credit.id, nextId, actor)).ok, false, "a credit is used once");
+      assert.equal((await billing.refundCredit(credit.id, { reason: "x", mode: "recorded" }, actor)).ok, false, "used credit can't be refunded");
+    });
+
+    await check("Razorpay's webhook rescues a paid hold whose browser never came back, and credits a lapsed one", async () => {
+      const held = await bookAppointment({ ...base, startAt: at(17 * 60), holdMinutes: 10 }, actor);
+      assert.ok(held.ok, !held.ok ? held.error : "");
+      const heldId = held.ok ? held.appointmentId : "";
+      await pay(heldId, 2);
+      assert.equal(await onRazorpayPaid(`${tag}-order-2`, "pay_2"), "booked from the webhook");
+      assert.equal((await prisma.appointment.findUniqueOrThrow({ where: { id: heldId } })).status, "confirmed");
+      assert.equal(await onRazorpayPaid(`${tag}-order-2`, "pay_2"), "already recorded");
+
+      const lapsed = await bookAppointment({ ...base, startAt: at(18 * 60), holdMinutes: 10 }, actor);
+      const lapsedId = lapsed.ok ? lapsed.appointmentId : "";
+      await pay(lapsedId, 3);
+      assert.ok((await changeAppointmentStatus(lapsedId, "cancelled", { reason: "Hold expired", cancelledBy: "patient" }, actor)).ok);
+      assert.equal(await onRazorpayPaid(`${tag}-order-3`, "pay_3"), "kept as credit");
+      const c = await prisma.patientCredit.findFirstOrThrow({ where: { appointmentId: lapsedId } });
+      assert.equal(c.reason, "hold_lapsed");
+      assert.ok((await billing.refundCredit(c.id, { reason: "patient asked", mode: "recorded" }, actor)).ok);
+      assert.equal((await prisma.bookingPayment.findUniqueOrThrow({ where: { orderId: `${tag}-order-3` } })).status, "refunded");
+
+      process.env.RAZORPAY_WEBHOOK_SECRET = "whsec";
+      const body = JSON.stringify({ event: "payment.captured" });
+      assert.ok(verifyRazorpayWebhook(body, createHmac("sha256", "whsec").update(body).digest("hex")));
+      assert.equal(verifyRazorpayWebhook(body, "00"), false);
+      delete process.env.RAZORPAY_WEBHOOK_SECRET;
+    });
+
+    await check("a completed session is handed to Billing: session 1 of 3, a third of the quote", async () => {
+      await prisma.quote.create({ data: { leadId: lead.id, treatment: type.name, status: "converted", quantity: 3, price: 1000, totalPayable: 3150 } });
+      const b = await bookAppointment({ ...base, startAt: at(19 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const id = b.ok ? b.appointmentId : "";
+      assert.ok((await changeAppointmentStatus(id, "checked_in", {}, actor)).ok);
+      assert.ok((await changeAppointmentStatus(id, "completed", {}, actor)).ok);
+      const ev = await prisma.revenueEvent.findUniqueOrThrow({ where: { appointmentId: id } });
+      assert.equal(ev.sessionNo, 1);
+      assert.equal(ev.sessions, 3);
+      assert.equal(ev.amount, 1050);
+    });
+
     await check("trashing a lead cancels its upcoming appointments and frees their rooms", async () => {
       const b = await bookAppointment({ ...base, startAt: at(12 * 60) }, actor);
       assert.ok(b.ok, !b.ok ? b.error : "");
@@ -1293,6 +1357,7 @@ async function section3Checks() {
       assert.equal(live, 0);
     });
   } finally {
+    await prisma.revenueEvent.deleteMany({ where: { leadId: lead.id } });
     await prisma.appointment.deleteMany({ where: { typeId: type.id } });
     await prisma.quote.deleteMany({ where: { leadId: lead.id } });
     await prisma.appointmentType.delete({ where: { id: type.id } });

@@ -49,6 +49,7 @@ async function assertCanSeeLead(
 export async function createLeadQuote(input: {
   leadId: string;
   treatment: string;
+  catalogItemId?: string | null;
   price?: string | number | null;
   quantity?: string | number | null;
   discountType?: string | null;
@@ -104,6 +105,9 @@ export async function createLeadQuote(input: {
     quoteId = await createQuote({
       leadId: input.leadId,
       treatment,
+      // Only an item that exists, and only when the text is still its name — a pick that was
+      // then typed over is free text, not that item.
+      catalogItemId: await catalogItemFor(input.catalogItemId, treatment),
       price,
       quantity,
       discountType: discountValue != null ? discountType : null,
@@ -437,6 +441,12 @@ export async function unlockLeadQuote(input: {
 
 /// Parse a rupee price: whole non-negative integer, or null for blank. "invalid"
 /// signals a parse error the caller turns into a user-facing message.
+async function catalogItemFor(id: string | null | undefined, treatment: string): Promise<string | null> {
+  if (!id) return null;
+  const item = await prisma.catalogItem.findUnique({ where: { id }, select: { name: true } });
+  return item && item.name.trim().toLowerCase() === treatment.trim().toLowerCase() ? id : null;
+}
+
 const QUANTITY_ERROR = `Quantity must be a whole number from 1 to ${QUOTE_MAX_QUANTITY}`;
 
 /// Sessions / units on a quote. Null = not given (1 on a new quote, unchanged on a revision).

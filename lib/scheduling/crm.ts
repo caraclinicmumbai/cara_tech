@@ -116,14 +116,13 @@ async function missed(appointmentId: string, title: string, actor: Actor): Promi
   });
 }
 
-/// The patient's quote this booking is for: same treatment as the appointment type (its
-/// catalogue item's name, or the type's own name), still open or won, newest first. Quotes
-/// carry treatment names, not catalogue ids, so this is a case-insensitive name match —
-/// the same rule the treatment-series auto-start uses.
+/// The patient's quote this booking is for: same treatment as the appointment type, still
+/// open or won, newest first. Matched by catalogue item when both carry one, else by name
+/// (the item's or the type's, case-insensitive) — free-text and older quotes have no item.
 export async function matchingQuoteId(leadId: string, typeId: string): Promise<string | null> {
   const t = await prisma.appointmentType.findUnique({
     where: { id: typeId },
-    select: { name: true, catalogItem: { select: { name: true } } },
+    select: { name: true, catalogItemId: true, catalogItem: { select: { name: true } } },
   });
   if (!t) return null;
   const names = [t.catalogItem?.name, t.name].filter((n): n is string => !!n);
@@ -131,7 +130,11 @@ export async function matchingQuoteId(leadId: string, typeId: string): Promise<s
     where: {
       leadId,
       status: { in: [...OPEN_QUOTE_STATUSES, ...WON_QUOTE_STATUSES] },
-      OR: names.map((n) => ({ treatment: { equals: n, mode: "insensitive" as const } })),
+      OR: [
+        // By catalogue item first-class; by name for free-text quotes and older ones.
+        ...(t.catalogItemId ? [{ catalogItemId: t.catalogItemId }] : []),
+        ...names.map((n) => ({ treatment: { equals: n, mode: "insensitive" as const } })),
+      ],
     },
     orderBy: { createdAt: "desc" },
     select: { id: true },

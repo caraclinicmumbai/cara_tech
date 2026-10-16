@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { writeAudit } from "@/lib/audit";
 import { matchingQuoteId } from "@/lib/scheduling/crm";
+import { creditDeposit, markPaid } from "@/lib/scheduling/billing";
 import { getBoolSetting, getNumberSetting } from "@/lib/settings";
 import { advanceStage } from "@/lib/leadStages";
 import { findLeadByPhone } from "@/lib/messages";
@@ -397,11 +398,38 @@ export async function confirmPayment(input: { holdToken: string; orderId: string
     await prisma.bookingPayment.update({ where: { id: pay.id }, data: { status: "failed" } });
     return { ok: false, error: "We couldn't verify the payment. If money was taken, the clinic will sort it out — please call." };
   }
-  await prisma.bookingPayment.update({ where: { id: pay.id }, data: { status: "paid", paymentId: input.paymentId, paidAt: new Date() } });
-  await writeAudit({ action: "appointment.payment", entityType: "appointment", entityId: id, newValue: `₹${pay.amountPaise / 100} paid online`, meta: { orderId: input.orderId, paymentId: input.paymentId } });
+  // The Razorpay webhook may have got there first; either way it's paid exactly once.
+  await markPaid(input.orderId, input.paymentId, "checkout");
   const done = await finalise(id);
   if (done.ok && done.done) await changeAppointmentStatus(id, "confirmed", {}, ONLINE); // paid = confirmed
   return done;
+}
+
+/// Razorpay's server webhook says an order was paid (app/api/webhooks/razorpay). The
+/// patient's browser normally confirms first; this is for the times it doesn't — a closed
+/// tab, a dropped connection. Still held → booked and confirmed, as if the callback had
+/// arrived. Already lapsed → the money is kept as credit (decision 3.c), never lost.
+export async function onRazorpayPaid(orderId: string, paymentId: string): Promise<string> {
+  const r = await markPaid(orderId, paymentId, "webhook");
+  if (!r.appointmentId) return "unknown order";
+  if (!r.paid) return "already recorded";
+  const a = await prisma.appointment.findUnique({ where: { id: r.appointmentId }, select: { status: true } });
+  if (!a) return "appointment gone";
+  if (a.status === "tentative") {
+    const done = await finalise(r.appointmentId);
+    if (done.ok && done.done) await changeAppointmentStatus(r.appointmentId, "confirmed", {}, ONLINE);
+    return done.ok ? "booked from the webhook" : "hold could not be booked";
+  }
+  if (a.status === "booked") {
+    await changeAppointmentStatus(r.appointmentId, "confirmed", {}, ONLINE);
+    return "confirmed";
+  }
+  if (a.status === "cancelled" || a.status === "no_show") {
+    const credit = await creditDeposit(r.appointmentId, a.status, "patient", ONLINE);
+    logger.warn(`Razorpay paid ${orderId} after appointment ${r.appointmentId} was ${a.status} — kept as credit ${credit ?? "(exists)"}`);
+    return "kept as credit";
+  }
+  return "nothing to do";
 }
 
 /// Dates the widget's date strip should offer.

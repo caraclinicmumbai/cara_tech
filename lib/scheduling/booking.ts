@@ -42,6 +42,7 @@ import { branchDay } from "@/lib/scheduling/hours";
 import { dateColumn, istDateKey, istInstant, weekdayOfKey, MINUTE_MS } from "@/lib/scheduling/time";
 import type { SlotResult } from "@/lib/scheduling/engine";
 import { crmAfterStatus, matchingQuoteId } from "@/lib/scheduling/crm";
+import { billingAfterStatus } from "@/lib/scheduling/billing";
 import {
   canTransition,
   isAppointmentStatus,
@@ -615,6 +616,8 @@ export async function changeAppointmentStatus(
     if (["completed", "cancelled", "no_show"].includes(to)) await seriesAfter({ kind: "status", id, to }, actor);
     // §3 (3.1/3.b): attended → "Consultation done"; no-show / patient cancel → a call-to-rebook follow-up.
     await crmAfterStatus({ appointmentId: id, from: appt.status, to, cancelledBy: opts.cancelledBy, actor });
+    // §3 (3.4/3.c): a missed visit's deposit becomes credit; a completed one is a session for Billing.
+    await billingAfterStatus({ appointmentId: id, to, cancelledBy: opts.cancelledBy, actor });
     return { ok: true };
   } catch (err) {
     logger.error(`changeAppointmentStatus failed: ${String(err)}`);

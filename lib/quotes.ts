@@ -67,6 +67,7 @@ export class QuoteError extends Error {}
 export async function createQuote(input: {
   leadId: string;
   treatment: string;
+  catalogItemId?: string | null;
   price?: number | null;
   quantity?: number | null;
   discountType?: string | null;
@@ -118,6 +119,7 @@ export async function createQuote(input: {
       status: DEFAULT_QUOTE_STATUS,
       cycle,
       price: input.price ?? null,
+      catalogItemId: input.catalogItemId ?? null,
       quantity,
       gstRate,
       discountType: totals.discountType,

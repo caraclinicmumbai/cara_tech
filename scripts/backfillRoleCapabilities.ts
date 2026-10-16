@@ -57,6 +57,8 @@ const NEW_CAPABILITIES: Capability[] = [
   "appointments.approveLeave",
   "appointments.viewIntake",
   "appointments.verifyIntake",
+  // Appointments §3 (credit refunds), 2026-10-17.
+  "appointments.refund",
 ];
 
 /// Every capability that now gates a top-level route. A customised role missing one of
