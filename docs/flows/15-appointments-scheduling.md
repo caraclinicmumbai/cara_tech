@@ -123,6 +123,30 @@ How appointments meet the rest of the CRM (spec §3). Decisions 3.a–3.d above.
   (`lead.stage.move`, which also resets the stuck-stage timer) and the hold being claimed
   by the patient (`appointment.claim`).
 
+### 3.1 CRM: what an appointment tells the lead
+
+[lib/scheduling/crm.ts](../../lib/scheduling/crm.ts), called from every status change.
+
+- **Attended (completed) → "Consultation done"**, forward only (a converted patient isn't
+  pulled back). Audited `lead.stage.move`, reason "Attended: {type}". Nothing set that
+  stage automatically before; leads sat at "Appointment scheduled" after their visit.
+- **No-show, or cancelled by the patient → a follow-up for the owner, due now:** "Missed
+  appointment — call to rebook" / "Patient cancelled — call to rebook" (decision 3.b). The
+  stage stays; an appointment never marks a lead Lost. One per appointment (recognised by
+  `note = appointment:{id}`). Skipped when the patient already has another live booking,
+  for a lapsed online hold, and for clinic-side cancellations (the 2.9 worklist owns those).
+- **Booking links the quote.** `Appointment.quoteId` is set to the patient's open or won
+  quote for the same treatment (the type's catalogue name, or its own name,
+  case-insensitive), newest first, from the desk and when an online hold is claimed. It was
+  never set before.
+- **`utm_medium` is kept** (`Lead.medium`), beside source / campaign / ad from online booking.
+- **The lead page shows the calendar** ([lib/scheduling/leadTimeline.ts](../../lib/scheduling/leadTimeline.ts)):
+  "Appointments & treatment plans" lists visits (with doctor and status), each plan's
+  progress and next session, and intake forms with red flags. The calendar's privacy rule
+  holds: another branch's appointment shows as "Booked" with no service or doctor, and its
+  intake answers aren't linked. **Change history now includes appointment events**
+  (`readLeadHistory`): bookings, moves, status changes, payments, intake and plan events.
+
 ## Trigger
 
 Any booking, reschedule or status change, from any screen (front desk, call centre, the

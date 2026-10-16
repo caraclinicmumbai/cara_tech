@@ -1187,7 +1187,10 @@ async function dbChecks() {
 async function section3Checks() {
   console.log("§3 integrations");
   const { prisma } = await import("../lib/prisma");
-  const { bookAppointment, cancelUpcomingForLead } = await import("../lib/scheduling/booking");
+  const { bookAppointment, cancelUpcomingForLead, changeAppointmentStatus } = await import("../lib/scheduling/booking");
+  const { MISSED_TITLE } = await import("../lib/scheduling/crm");
+  const { leadSchedulingTimeline } = await import("../lib/scheduling/leadTimeline");
+  const { readLeadHistory } = await import("../lib/audit");
   const { messageBlockFor } = await import("../lib/messages");
   const { userSeesIntake } = await import("../lib/scheduling/calendar");
   const tag = `s3-${Date.now()}`;
@@ -1239,16 +1242,59 @@ async function section3Checks() {
       await prisma.intakeForm.delete({ where: { id: form.id } });
     });
 
+    await check("a booking links itself to the patient's quote for the same treatment", async () => {
+      const q = await prisma.quote.create({ data: { leadId: lead.id, treatment: type.name, status: "sent" } });
+      const b = await bookAppointment({ ...base, startAt: at(11 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const a = await prisma.appointment.findUniqueOrThrow({ where: { id: b.ok ? b.appointmentId : "" } });
+      assert.equal(a.quoteId, q.id);
+    });
+
+    await check("attended → 'Consultation done'; never backwards", async () => {
+      await prisma.lead.update({ where: { id: lead.id }, data: { stage: "appointment_scheduled" } });
+      const a = await prisma.appointment.findFirstOrThrow({ where: { leadId: lead.id, startAt: at(11 * 60) } });
+      assert.ok((await changeAppointmentStatus(a.id, "checked_in", {}, actor)).ok);
+      assert.ok((await changeAppointmentStatus(a.id, "completed", {}, actor)).ok);
+      assert.equal((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).stage, "consultation_done");
+    });
+
+    await check("no-show → one 'call to rebook' follow-up for the owner, stage unchanged; none if already rebooked", async () => {
+      const b = await bookAppointment({ ...base, startAt: at(14 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      // The 10:00 booking from the intake check is still live → the patient "has another booking".
+      const first = await prisma.appointment.findFirstOrThrow({ where: { leadId: lead.id, startAt: at(14 * 60) } });
+      assert.ok((await changeAppointmentStatus(first.id, "no_show", {}, actor)).ok);
+      assert.equal(await prisma.leadFollowUpStep.count({ where: { leadId: lead.id, title: MISSED_TITLE } }), 0, "rebooked → no chase");
+      const ten = await prisma.appointment.findFirstOrThrow({ where: { leadId: lead.id, startAt: at(10 * 60) } });
+      assert.ok((await changeAppointmentStatus(ten.id, "no_show", {}, actor)).ok);
+      assert.equal(await prisma.leadFollowUpStep.count({ where: { leadId: lead.id, title: MISSED_TITLE } }), 1);
+      assert.equal((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).stage, "consultation_done");
+    });
+
+    await check("the lead page sees its appointments (masked for an outside-branch viewer) and their history", async () => {
+      const mine = await leadSchedulingTimeline(lead.id, { id: outsider.id, role: "crm_admin" });
+      assert.ok(mine.appointments.length >= 3 && mine.appointments.every((a) => a.typeName));
+      const theirs = await leadSchedulingTimeline(lead.id, { id: outsider.id, role: "doctor" });
+      assert.ok(theirs.appointments.every((a) => !a.visible && a.typeName === null));
+      const hist = await readLeadHistory(lead.id);
+      assert.ok(hist.some((h) => h.action === "appointment.book"));
+      assert.ok(hist.some((h) => h.action === "lead.stage.move"));
+    });
+
     await check("trashing a lead cancels its upcoming appointments and frees their rooms", async () => {
       const b = await bookAppointment({ ...base, startAt: at(12 * 60) }, actor);
       assert.ok(b.ok, !b.ok ? b.error : "");
       const n = await cancelUpcomingForLead(lead.id, "trashed", actor);
-      assert.ok(n >= 2, `expected ≥2 cancelled, got ${n}`);
-      const live = await prisma.appointmentResource.count({ where: { resourceId: room.id, blocking: true } });
+      assert.ok(n >= 1, `expected ≥1 cancelled, got ${n}`);
+      // Completed visits keep their room (history); no LIVE booking may.
+      const live = await prisma.appointmentResource.count({
+        where: { resourceId: room.id, blocking: true, appointment: { status: { in: ["tentative", "booked", "confirmed"] } } },
+      });
       assert.equal(live, 0);
     });
   } finally {
     await prisma.appointment.deleteMany({ where: { typeId: type.id } });
+    await prisma.quote.deleteMany({ where: { leadId: lead.id } });
     await prisma.appointmentType.delete({ where: { id: type.id } });
     await prisma.resource.deleteMany({ where: { id: { in: [room.id, doctor.id] } } });
     await prisma.user.delete({ where: { id: outsider.id } });

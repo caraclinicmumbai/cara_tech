@@ -18,7 +18,9 @@ import { listCatalogGroups } from "@/lib/catalog";
 import { listInvoicesForQuotes } from "@/lib/invoices";
 import { resolveQuoteDocTemplate } from "@/lib/whatsappTemplates";
 import { getCreditState } from "@/lib/branchCredit";
-import { readLeadTimeline, readLeadAudit } from "@/lib/audit";
+import { readLeadTimeline, readLeadHistory } from "@/lib/audit";
+import { leadSchedulingTimeline } from "@/lib/scheduling/leadTimeline";
+import { istDateKey } from "@/lib/scheduling/time";
 import {
   listActiveGrants,
   recentHandoverForViewer,
@@ -238,7 +240,10 @@ export default async function LeadDetailPage({
   // Follow-up campaign (§follow-up): the lead's active/most-recent enrollment + who may stop it.
   const leadCampaign = await getLeadCampaign(lead.id);
   const canManageCampaigns = can(viewer.role, "campaigns.manage");
-  const changeHistory = await readLeadAudit(lead.id);
+  // Appointment events are audited against the appointment; readLeadHistory folds them in.
+  const changeHistory = await readLeadHistory(lead.id);
+  // §3 (3.1/3.3) — the patient's visits, plans and intake forms.
+  const scheduling = can(viewer!.role, "appointments.view") ? await leadSchedulingTimeline(lead.id, viewer!) : null;
   // Staff notes / comments (§notes). Author or a manager (all-leads scope) may delete.
   const canComment = can(viewer.role, "leads.comment");
   const comments = await prisma.leadComment.findMany({
@@ -474,6 +479,85 @@ export default async function LeadDetailPage({
           canGrant={canGrant}
         />
       </section>
+
+      {scheduling && (
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold">
+            Appointments &amp; treatment plans ({scheduling.appointments.length})
+          </h2>
+          {scheduling.appointments.length === 0 && scheduling.plans.length === 0 && scheduling.intake.length === 0 ? (
+            <p className="rounded border border-black/10 px-3 py-6 text-center text-sm text-black/50 dark:border-white/15 dark:text-white/50">
+              No appointments yet.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {scheduling.plans.map((p) => (
+                <div key={p.id} className="rounded border border-black/10 p-3 text-sm dark:border-white/15">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link href={`/appointments/plans/${p.id}`} className="font-medium hover:underline">{p.name}</Link>
+                    <span className="text-black/50 dark:text-white/50">
+                      {p.done} of {p.total} sessions done · {p.status}
+                    </span>
+                    {p.needsReview && <span className="tag tag-tangerine">needs review</span>}
+                  </div>
+                  {p.next && (
+                    <div className="mt-1 text-xs text-black/50 dark:text-white/50">
+                      Next: {p.next.label}, from {formatIstDate(p.next.dueFrom)}
+                      {p.next.booked ? " (booked)" : " (not booked yet)"}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {scheduling.appointments.length > 0 && (
+                <div className="overflow-x-auto rounded border border-black/10 dark:border-white/15">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-black/5 text-left dark:bg-white/10">
+                      <tr>
+                        <th className="px-3 py-2">When</th>
+                        <th className="px-3 py-2">Appointment</th>
+                        <th className="px-3 py-2">Doctor</th>
+                        <th className="px-3 py-2">Branch</th>
+                        <th className="px-3 py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scheduling.appointments.map((a) => (
+                        <tr key={a.id} className="border-t border-black/5 dark:border-white/10">
+                          <td className="whitespace-nowrap px-3 py-2">
+                            <Link href={`/appointments?date=${istDateKey(a.startAt)}&branch=${a.branchId}`} className="hover:underline">
+                              {formatIst(a.startAt)}
+                            </Link>
+                          </td>
+                          <td className="px-3 py-2">{a.visible ? a.typeName : <span className="text-black/40 dark:text-white/40">Booked</span>}</td>
+                          <td className="px-3 py-2">{a.doctorName ?? "—"}</td>
+                          <td className="px-3 py-2">{a.branchName}</td>
+                          <td className="px-3 py-2">
+                            {a.statusLabel}
+                            {a.cancelReason && <span className="text-xs text-black/50 dark:text-white/50"> — {a.cancelReason}</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {scheduling.intake.length > 0 && (
+                <ul className="space-y-1 text-sm">
+                  {scheduling.intake.map((r) => (
+                    <li key={r.id}>
+                      Intake form: {r.formName}, {formatIst(r.submittedAt)}
+                      {r.redFlags > 0 && <span className="tag tag-tangerine ml-2">{r.redFlags} red flag{r.redFlags === 1 ? "" : "s"}</span>}
+                      {r.canOpen && can(viewer!.role, "appointments.viewIntake") && (
+                        <Link href={`/appointments/intake/${r.id}`} className="tone-link ml-2">View answers</Link>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">Change history</h2>

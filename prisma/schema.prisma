@@ -147,6 +147,7 @@ model Lead {
   externalId String? // provider's lead id (Meta leadgen_id, Google lead_id) — dedup key
   campaign   String? // campaign id/name
   adId       String? // ad / adgroup / creative id
+  medium     String? // utm_medium (cpc, social, email…) — how the click arrived, from online booking
 
   // ── Soft delete / trash (§3.1) — a staff-removed lead. When set it's excluded
   //    from lists, metrics, dedup, and calling; it shows in the Deleted section,

@@ -11,6 +11,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { writeAudit } from "@/lib/audit";
+import { matchingQuoteId } from "@/lib/scheduling/crm";
 import { getBoolSetting, getNumberSetting } from "@/lib/settings";
 import { advanceStage } from "@/lib/leadStages";
 import { findLeadByPhone } from "@/lib/messages";
@@ -277,6 +278,7 @@ export async function completeBooking(input: CompleteInput): Promise<CompleteRes
         source: sourceFromUtm(utm.source),
         campaign: utm.campaign?.slice(0, 200) || null,
         adId: utm.content?.slice(0, 200) || null,
+        medium: utm.medium?.slice(0, 100) || null,
         interest: appt.type.name,
         status: "confirmed",
         stage: "appointment_scheduled",
@@ -335,7 +337,10 @@ export async function completeBooking(input: CompleteInput): Promise<CompleteRes
 
   // Move the held slot onto the patient.
   const heldBy = appt.leadId;
-  await prisma.appointment.update({ where: { id }, data: { leadId: lead.id, notes: "Booked online" } });
+  await prisma.appointment.update({
+    where: { id },
+    data: { leadId: lead.id, notes: "Booked online", quoteId: await matchingQuoteId(lead.id, appt.typeId) },
+  });
   await writeAudit({
     action: "appointment.claim",
     entityType: "appointment",
