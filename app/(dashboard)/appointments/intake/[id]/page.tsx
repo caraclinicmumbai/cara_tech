@@ -7,6 +7,7 @@ import { formatIst } from "@/lib/datetime";
 import { writeAudit } from "@/lib/audit";
 import { isVisible, PHOTO_SLOT_LABELS, type Answers, type IntakeSchema } from "@/lib/scheduling/intake/schema";
 import { VerifyToggle } from "@/components/scheduling/VerifyToggle";
+import { userSeesIntake } from "@/lib/scheduling/calendar";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,8 @@ export default async function IntakeResponsePage({ params }: { params: Promise<{
       photos: { select: { id: true, slot: true } },
     },
   });
-  if (!r) notFound();
+  // The role is not enough: the viewer must be able to see this appointment's branch.
+  if (!r || !(await userSeesIntake(user, r.id))) notFound();
   await writeAudit({ actorId: user.id, actorEmail: user.email, action: "record.view", entityType: "lead", entityId: r.leadId, newValue: "intake form", meta: { responseId: r.id } });
   const consents = await prisma.consentRecord.findMany({
     where: { leadId: r.leadId, source: "intake_form", createdAt: { gte: new Date(r.submittedAt.getTime() - 60_000), lte: new Date(r.submittedAt.getTime() + 60_000) } },

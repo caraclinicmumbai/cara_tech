@@ -188,6 +188,16 @@ export async function submitIntake(input: {
     return r;
   });
 
+  // A marketing consent on the form is the lead's marketing consent too (campaigns read the
+  // Lead columns). Other purposes stay in the consent log, which messageBlock reads.
+  const marketing = consentFields.find((f) => f.consentPurpose === "marketing");
+  if (marketing) {
+    await prisma.lead.update({
+      where: { id: ctx.leadId },
+      data: { consentMarketing: clean[marketing.key] === true || clean[marketing.key] === "true", consentUpdatedAt: new Date() },
+    });
+  }
+
   await writeAudit({
     action: "intake.submit",
     entityType: "lead",

@@ -14,6 +14,7 @@ import { applyStageChangeToRoadmap } from "@/lib/followups";
 import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
 import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
 import { startClickToCall, isCallingConfigured } from "@/lib/providers/calling";
+import { cancelUpcomingForLead } from "@/lib/scheduling/booking";
 import { deleteRecording } from "@/lib/providers/recordings";
 import { toDialable } from "@/lib/phone";
 import { beginConsultation } from "@/lib/presence";
@@ -398,7 +399,22 @@ export async function softDeleteLead(leadId: string): Promise<{ ok: boolean; err
   await cancelScheduledCalls(leadId).catch((err) =>
     logger.error(`Failed to cancel calls for deleted lead ${leadId}: ${String(err)}`),
   );
-  await writeAudit({ actorId: user.id, actorEmail: user.email, action: "lead.softDelete", entityType: "lead", entityId: leadId });
+  // …and its upcoming appointments, which would otherwise keep their rooms and reminders.
+  const cancelled = await cancelUpcomingForLead(leadId, "Patient record moved to the trash", {
+    id: user.id,
+    email: user.email,
+  }).catch((err) => {
+    logger.error(`Failed to cancel appointments for deleted lead ${leadId}: ${String(err)}`);
+    return 0;
+  });
+  await writeAudit({
+    actorId: user.id,
+    actorEmail: user.email,
+    action: "lead.softDelete",
+    entityType: "lead",
+    entityId: leadId,
+    meta: cancelled ? { appointmentsCancelled: cancelled } : null,
+  });
   logger.info(`Lead ${leadId} moved to trash by ${user.email ?? "?"}`);
   revalidatePath("/leads");
   revalidatePath("/leads/deleted");

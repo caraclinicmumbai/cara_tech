@@ -15,7 +15,7 @@ import { logger } from "@/lib/logger";
 import { writeAudit } from "@/lib/audit";
 import { notifyUser } from "@/lib/notifications";
 import { getBoolSetting, getNumberSetting } from "@/lib/settings";
-import { isServiceWindowOpen, sendLeadTemplate, sendLeadText } from "@/lib/messages";
+import { isServiceWindowOpen, messageBlockFor, sendLeadTemplate, sendLeadText } from "@/lib/messages";
 import { isWhatsAppConfigured } from "@/lib/providers/whatsapp";
 import { sendSms } from "@/lib/providers/sms";
 import { bookAppointment, findSlots, rescheduleAppointment, type Actor } from "@/lib/scheduling/booking";
@@ -361,6 +361,9 @@ async function sendRecall(stepId: string, withSms: boolean): Promise<string> {
     recall_link: `${appBaseUrl()}/r/${recallToken(s.id, s.dueTo)}`,
     clinic: "Cara Clinic",
   };
+  // Consent for every channel — the SMS below used to skip it (see lib/messages.ts messageBlock).
+  const blocked = await messageBlockFor(s.plan.lead.id, { clinical: true });
+  if (blocked) return `not sent: ${blocked}`;
   const text = fillTemplate(tpl.body, vars);
   const out: string[] = [];
   let waOk = false;

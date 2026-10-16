@@ -85,9 +85,43 @@ recorded.
 | 2.8.e | Follow-ups at another branch | Allowed: the patient's recall link offers every branch; staff can book anywhere they may book |
 | 2.8.f | Who does follow-ups | **The surgeon**: steps marked "with the surgeon" book the plan's doctor |
 | 2.7.f | Signature | The code to the patient's own mobile is their acceptance (OTP-based). Surgical consent stays physical/eSign (outside 3.2) |
+| 3.a | Modules not built yet (EMR 3.3, Inventory 3.5, HR 3.8, Assets 3.9, Documents 3.12) | **Prepare the hand-off** (2026-10-16): build our side only — the records and feeds each module plugs into later. No stock, EMR or HR screens here |
+| 3.b | Appointment outcome → lead stage | **Attended consultation → "Consultation done".** No-show / cancellation keep the stage and give the owner a follow-up ("missed — call to rebook"). An appointment never marks a lead Lost |
+| 3.c | Prepaid deposit on no-show / cancel | **Kept as credit** on the patient for their next booking. A refund is a manager's decision, recorded in the CRM. No-show and late cancel are flagged, never auto-forfeited |
+| 3.d | Quiet hours | **One per-branch window** for campaigns and appointment messages, edited on the Branches page. AI calls keep their own stricter 22:00–10:00 window (TRAI rules for calls differ) |
 | — | Toggles | Global, not per branch |
 | — | Patient = ? | The **Lead**. Cara has no separate patient table |
 | — | Zenoti history | Not imported now. Build first, import after |
+
+## §3 Integrations
+
+How appointments meet the rest of the CRM (spec §3). Decisions 3.a–3.d above.
+
+### Consent, privacy and the trash (fixes found by the §3 audit)
+
+- **One consent rule for every channel** — `messageBlock` in
+  [lib/messages.ts](../../lib/messages.ts). Reminders and recall SMS / email used to go
+  straight to the provider, so a patient who withheld consent was only spared the
+  WhatsApp. Now every care message checks, in order: lead not in the trash →
+  `consentClinical` not `false` → the patient's **latest** `appointment_messages` answer
+  in the consent log not "no". Marketing messages keep following the opt-out.
+- **Rebooking notices (2.9) are care messages**, so a marketing opt-out no longer blocks
+  them.
+- **A marketing answer reaches the lead.** Online booking (and an intake form with a
+  `marketing` consent) now sets `Lead.consentMarketing` + `consentUpdatedAt`, which is
+  what campaigns and win-back read. Before, the answer sat only in the consent log.
+- **Intake answers and photos follow the calendar's privacy rule** (2.2.b) —
+  `userSeesIntake` in [lib/scheduling/calendar.ts](../../lib/scheduling/calendar.ts):
+  all-branch viewers, the appointment's own branch, or a doctor booked on it. The role
+  (`appointments.viewIntake`) alone used to be enough, so any doctor could open another
+  branch's patient photos by id. Not allowed answers like not found.
+- **Trashing a lead cancels its upcoming appointments** (`cancelUpcomingForLead`, reason
+  "Patient record moved to the trash", cancelled by the clinic). They used to stay live,
+  holding rooms and due their reminders. Restoring the lead does not rebook them; the
+  trash confirmation says so.
+- **Two online-booking writes are now audited:** the stage move on an existing lead
+  (`lead.stage.move`, which also resets the stuck-stage timer) and the hold being claimed
+  by the patient (`appointment.claim`).
 
 ## Trigger
 

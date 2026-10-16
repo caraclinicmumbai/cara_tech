@@ -18,7 +18,7 @@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getBoolSetting, getNumberSetting } from "@/lib/settings";
-import { isServiceWindowOpen, leadIdsSharingPhone, sendLeadTemplate, sendLeadText } from "@/lib/messages";
+import { isServiceWindowOpen, leadIdsSharingPhone, messageBlockFor, sendLeadTemplate, sendLeadText } from "@/lib/messages";
 import { isWhatsAppConfigured } from "@/lib/providers/whatsapp";
 import { sendSms } from "@/lib/providers/sms";
 import { sendEmail } from "@/lib/providers/email";
@@ -163,6 +163,11 @@ async function deliver(reminderId: string): Promise<{ status: string; outcome: O
   const a = rem.appointment;
   const vars = await appointmentVariables(a.id);
   if (!vars) return { status: "skipped", outcome: {}, error: "Appointment gone" };
+  // Consent first, for EVERY channel. WhatsApp checked it inside sendLead*, but SMS and
+  // email used to go straight to the provider, so a patient who withheld consent for
+  // care messages still got the SMS.
+  const blocked = await messageBlockFor(a.leadId, { clinical: true });
+  if (blocked) return { status: "skipped", outcome: {}, error: blocked };
   const text = fillTemplate(rem.template.body, vars);
   const outcome: Outcome = {};
   let anySent = false;
@@ -291,13 +296,18 @@ export async function processDueReminders(now = new Date()): Promise<{ sent: num
 export async function onWhatsAppStatus(waId: string, status: string): Promise<void> {
   const rem = await prisma.appointmentReminder.findFirst({
     where: { waId },
-    include: { template: true, appointment: { select: { id: true, status: true, lead: { select: { phone: true } } } } },
+    include: { template: true, appointment: { select: { id: true, status: true, leadId: true, lead: { select: { phone: true } } } } },
   });
   if (!rem) return;
   await prisma.appointmentReminder.update({ where: { id: rem.id }, data: { whatsapp: status === "failed" ? "failed: undelivered" : status } });
   if (status !== "failed" || !rem.smsFallback || rem.sms === "sent" || !LIVE.includes(rem.appointment.status)) return;
   const vars = await appointmentVariables(rem.appointment.id);
   if (!vars) return;
+  const blocked = await messageBlockFor(rem.appointment.leadId, { clinical: true });
+  if (blocked) {
+    await prisma.appointmentReminder.update({ where: { id: rem.id }, data: { sms: `skipped: ${blocked}` } });
+    return;
+  }
   const r = await sendSms(rem.appointment.lead.phone, fillTemplate(rem.template.body, vars), rem.template.smsDltTemplateId);
   await prisma.appointmentReminder.update({
     where: { id: rem.id },

@@ -616,6 +616,25 @@ export async function changeAppointmentStatus(
   }
 }
 
+/// Cancel a lead's upcoming appointments when the lead goes to the trash. A trashed lead is
+/// out of every list and every message, but its bookings used to stay live: holding rooms
+/// and the OT team, and still due their reminders. Each cancel is an ordinary audited status
+/// change ("cancelled by the clinic"); restoring the lead does NOT rebook them.
+/// Returns how many were cancelled.
+export async function cancelUpcomingForLead(leadId: string, reason: string, actor: Actor): Promise<number> {
+  const upcoming = await prisma.appointment.findMany({
+    where: { leadId, status: { in: [...RESCHEDULABLE] }, startAt: { gte: new Date() } },
+    select: { id: true },
+  });
+  let n = 0;
+  for (const a of upcoming) {
+    const r = await changeAppointmentStatus(a.id, "cancelled", { reason, cancelledBy: "clinic" }, actor);
+    if (r.ok) n++;
+    else logger.warn(`Could not cancel appointment ${a.id} for trashed lead ${leadId}: ${r.error}`);
+  }
+  return n;
+}
+
 /// Lapse tentative holds whose time is up (§3.2 1.5 "expires in ~5–10 min"), freeing
 /// their resources. Called by the worker; safe to run any time.
 export async function expireHolds(now = new Date()): Promise<number> {

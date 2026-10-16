@@ -291,10 +291,24 @@ export async function completeBooking(input: CompleteInput): Promise<CompleteRes
     await prisma.lead.update({
       where: { id: lead.id },
       data: {
-        ...(next ? { stage: next, stageChangedAt: new Date() } : {}),
+        // stageStuckNotifiedAt reset with the move, like every other stage change, so the
+        // stuck-stage alert measures time in the NEW stage.
+        ...(next ? { stage: next, stageChangedAt: new Date(), stageStuckNotifiedAt: null } : {}),
         ...(!lead.email && input.email?.trim() ? { email: input.email.trim() } : {}),
       },
     });
+    if (next) {
+      await writeAudit({
+        action: "lead.stage.move",
+        entityType: "lead",
+        entityId: lead.id,
+        field: "stage",
+        oldValue: lead.stage,
+        newValue: next,
+        reason: "Booked online",
+        meta: { system: true, appointmentId: id },
+      });
+    }
   }
 
   // Consents — one row per purpose, with the exact wording (DPDP).
@@ -311,8 +325,26 @@ export async function completeBooking(input: CompleteInput): Promise<CompleteRes
     })),
   });
 
+  // The marketing answer is also the lead's marketing consent — campaigns and win-back read
+  // the Lead columns, not the consent log, so without this an online "yes" (or "no") never
+  // reached them.
+  await prisma.lead.update({
+    where: { id: lead.id },
+    data: { consentMarketing: input.consentMarketing, consentUpdatedAt: new Date() },
+  });
+
   // Move the held slot onto the patient.
+  const heldBy = appt.leadId;
   await prisma.appointment.update({ where: { id }, data: { leadId: lead.id, notes: "Booked online" } });
+  await writeAudit({
+    action: "appointment.claim",
+    entityType: "appointment",
+    entityId: id,
+    oldValue: heldBy,
+    newValue: lead.id,
+    reason: "Online hold confirmed by the patient (OTP)",
+    meta: { system: true },
+  });
 
   // Pay online (consultations, at a discount)?
   const cat = await onlineCatalog();

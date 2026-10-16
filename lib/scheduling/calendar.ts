@@ -13,7 +13,7 @@
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
 import { branchIdForUser } from "@/lib/branches";
-import type { SessionUser } from "@/lib/authz";
+import { userCanAccessLead, type SessionUser } from "@/lib/authz";
 import { dateColumn, istInstant, istMinutes, weekdayOfKey } from "@/lib/scheduling/time";
 import { branchDay } from "@/lib/scheduling/hours";
 import { isResourceKind, type ResourceKind } from "@/lib/scheduling/status";
@@ -48,6 +48,29 @@ export async function viewerFor(user: SessionUser): Promise<Viewer> {
     canCheckin: can(user.role, "appointments.checkin"),
     canOverride: can(user.role, "appointments.override"),
   };
+}
+
+/// May this viewer see a patient's details on this appointment? The calendar's privacy rule
+/// (2.2.b) for one appointment: every branch with `viewAllBranches`, their home branch, or an
+/// appointment they are themselves booked on. Intake answers and photos use it too — they
+/// are the most sensitive thing on the appointment, and used to check only the role.
+export async function viewerSeesAppointment(v: Viewer, appointmentId: string): Promise<boolean> {
+  const a = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    select: { branchId: true, resources: { select: { resourceId: true } } },
+  });
+  if (!a) return false;
+  if (v.seesAllBranches || (v.homeBranchId !== null && v.homeBranchId === a.branchId)) return true;
+  return v.resourceId !== null && a.resources.some((r) => r.resourceId === v.resourceId);
+}
+
+/// May this user see one intake response (answers + photos)? By its appointment's branch
+/// (above); a form not tied to an appointment follows lead access instead.
+export async function userSeesIntake(user: SessionUser, responseId: string): Promise<boolean> {
+  const r = await prisma.intakeResponse.findUnique({ where: { id: responseId }, select: { leadId: true, appointmentId: true } });
+  if (!r) return false;
+  if (r.appointmentId) return viewerSeesAppointment(await viewerFor(user), r.appointmentId);
+  return userCanAccessLead(user, r.leadId);
 }
 
 /// May this viewer book / move / cancel at this branch? (2.2.c)

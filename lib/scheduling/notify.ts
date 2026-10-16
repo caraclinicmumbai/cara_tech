@@ -16,7 +16,9 @@ export async function messagePatient(appointmentId: string, text: string, sentBy
   const appt = await prisma.appointment.findUnique({ where: { id: appointmentId }, select: { leadId: true } });
   if (!appt) return { sent: false, channel: null, reason: "Appointment not found" };
   try {
-    const r = await sendLeadText(appt.leadId, text, { automated: !sentBy, sentBy: sentBy ?? undefined });
+    // A rebooking notice is about the patient's own appointment — a care message, so a
+    // marketing opt-out must not stop it (it used to).
+    const r = await sendLeadText(appt.leadId, text, { automated: !sentBy, sentBy: sentBy ?? undefined, clinical: true });
     if (r.ok) return { sent: true, channel: "whatsapp" };
     return { sent: false, channel: null, reason: `${r.error} — please call the patient` };
   } catch (err) {

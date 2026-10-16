@@ -1182,6 +1182,81 @@ async function dbChecks() {
   }
 }
 
+// ── §3 integrations: how appointments meet the rest of the CRM ──────────────────
+// Own fixtures, deleted after. Grows with each §3 piece.
+async function section3Checks() {
+  console.log("§3 integrations");
+  const { prisma } = await import("../lib/prisma");
+  const { bookAppointment, cancelUpcomingForLead } = await import("../lib/scheduling/booking");
+  const { messageBlockFor } = await import("../lib/messages");
+  const { userSeesIntake } = await import("../lib/scheduling/calendar");
+  const tag = `s3-${Date.now()}`;
+  const actor = { id: null, email: "check@section3" };
+
+  const branch = await prisma.branch.create({ data: { code: `S${String(Date.now()).slice(-6)}`, name: `${tag} branch` } });
+  const other = await prisma.branch.create({ data: { code: `O${String(Date.now()).slice(-6)}`, name: `${tag} other` } });
+  const lead = await prisma.lead.create({ data: { name: `${tag} patient`, phone: "+910000000301", source: "manual" } });
+  const room = await prisma.resource.create({ data: { kind: "room", subtype: "consultation", name: `${tag} room`, branchId: branch.id } });
+  const doctor = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} doctor` } });
+  const type = await prisma.appointmentType.create({
+    data: {
+      name: `${tag} consult`,
+      durationMin: 30,
+      requirements: { create: [{ kind: "room", subtype: "consultation", resourceId: room.id }, { kind: "doctor", resourceId: doctor.id }] },
+    },
+  });
+  const outsider = await prisma.user.create({ data: { email: `${tag}@x.test`, role: "doctor", branchId: other.id } });
+  const d = new Date(Date.now() + 3 * 86_400_000);
+  const dateKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d);
+  const at = (min: number) => istInstant(dateKey, min);
+  const base = { leadId: lead.id, branchId: branch.id, typeId: type.id, acknowledgeWarnings: true };
+
+  try {
+    await check("care messages: marketing opt-out doesn't stop them; clinical 'no' and an appointment-messages 'no' do", async () => {
+      await prisma.lead.update({ where: { id: lead.id }, data: { optedOut: true } });
+      assert.equal(await messageBlockFor(lead.id, { clinical: true }), null);
+      assert.ok(await messageBlockFor(lead.id), "marketing is blocked by the opt-out");
+      await prisma.lead.update({ where: { id: lead.id }, data: { optedOut: false, consentClinical: false } });
+      assert.ok(await messageBlockFor(lead.id, { clinical: true }));
+      await prisma.lead.update({ where: { id: lead.id }, data: { consentClinical: null } });
+      await prisma.consentRecord.create({ data: { leadId: lead.id, purpose: "appointment_messages", granted: false, text: "t", version: "1", source: "front_desk" } });
+      assert.ok(await messageBlockFor(lead.id, { clinical: true }), "latest appointment-messages 'no' blocks");
+      await new Promise((r) => setTimeout(r, 5));
+      await prisma.consentRecord.create({ data: { leadId: lead.id, purpose: "appointment_messages", granted: true, text: "t", version: "2", source: "front_desk" } });
+      assert.equal(await messageBlockFor(lead.id, { clinical: true }), null, "a later 'yes' wins");
+    });
+
+    await check("intake is visible only where the appointment is: an outside-branch doctor gets nothing", async () => {
+      const b = await bookAppointment({ ...base, startAt: at(10 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const form = await prisma.intakeForm.create({ data: { key: `${tag}-f`, name: "f" } });
+      const ver = await prisma.intakeFormVersion.create({ data: { formId: form.id, version: 1, schema: { sections: [] } } });
+      const r = await prisma.intakeResponse.create({
+        data: { leadId: lead.id, appointmentId: b.ok ? b.appointmentId : null, formId: form.id, versionId: ver.id, answers: {} },
+      });
+      assert.equal(await userSeesIntake({ id: outsider.id, role: "doctor" }, r.id), false);
+      assert.equal(await userSeesIntake({ id: outsider.id, role: "crm_admin" }, r.id), true, "all-branch viewers see it");
+      await prisma.intakeForm.delete({ where: { id: form.id } });
+    });
+
+    await check("trashing a lead cancels its upcoming appointments and frees their rooms", async () => {
+      const b = await bookAppointment({ ...base, startAt: at(12 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const n = await cancelUpcomingForLead(lead.id, "trashed", actor);
+      assert.ok(n >= 2, `expected ≥2 cancelled, got ${n}`);
+      const live = await prisma.appointmentResource.count({ where: { resourceId: room.id, blocking: true } });
+      assert.equal(live, 0);
+    });
+  } finally {
+    await prisma.appointment.deleteMany({ where: { typeId: type.id } });
+    await prisma.appointmentType.delete({ where: { id: type.id } });
+    await prisma.resource.deleteMany({ where: { id: { in: [room.id, doctor.id] } } });
+    await prisma.user.delete({ where: { id: outsider.id } });
+    await prisma.lead.delete({ where: { id: lead.id } });
+    await prisma.branch.deleteMany({ where: { id: { in: [branch.id, other.id] } } });
+  }
+}
+
 (async () => {
   await engineChecks();
   await spec21Checks();
@@ -1190,7 +1265,10 @@ async function dbChecks() {
   await spec24Checks();
   await spec27Checks();
   await spec28Checks();
-  if (process.env.CHECK_DB !== "0") await dbChecks();
+  if (process.env.CHECK_DB !== "0") {
+    await section3Checks();
+    await dbChecks();
+  }
   console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);
   // The messaging modules (WhatsApp/Redis) keep sockets open; exit explicitly so the
   // check finishes in CI and in a terminal alike.
