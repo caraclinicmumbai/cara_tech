@@ -170,7 +170,7 @@ export async function AttributionSection({
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Tile label="Leads" value={r.totals.leads.toLocaleString("en-IN")} />
-        <Tile label="Consultations" value={r.totals.consultations} />
+        <Tile label="Consultations" value={r.totals.consultations} hint={`${r.totals.attended} came to an appointment`} />
         <Tile label="Surgeries" value={r.totals.surgeries} tone="good" />
         {showMoney ? (
           <Tile
@@ -190,6 +190,7 @@ export async function AttributionSection({
           { label: "Leads", align: "right" },
           { label: "Consultations", align: "right" },
           { label: "Lead → consult", align: "right" },
+          { label: "Came", align: "right" },
           { label: "Surgeries", align: "right" },
           { label: "Consult → surgery", align: "right" },
           ...(showMoney
@@ -197,6 +198,7 @@ export async function AttributionSection({
                 { label: "Spend", align: "right" },
                 { label: "Per lead", align: "right" },
                 { label: "Per consult", align: "right" },
+                { label: "Per patient who came", align: "right" },
                 { label: "Per surgery", align: "right" },
                 { label: "ROAS", align: "right" },
               ] as const)
@@ -221,6 +223,7 @@ export async function AttributionSection({
               <Num>{row.leads}</Num>
               <Num>{row.consultations}</Num>
               <Num>{pct(row.leadToConsultPct)}</Num>
+              <Num>{row.attended}</Num>
               <Num strong>{row.surgeries}</Num>
               <Num>{pct(row.consultToSurgeryPct)}</Num>
               {showMoney && (
@@ -244,6 +247,13 @@ export async function AttributionSection({
                       }
                     >
                       {inr(row.costPerConsultation)}
+                    </Num>
+                  ) : (
+                    <Num>—</Num>
+                  )}
+                  {row.paid ? (
+                    <Num unavailable={row.costPerAttended == null ? (why ?? "nobody has come in yet") : undefined}>
+                      {inr(row.costPerAttended)}
                     </Num>
                   ) : (
                     <Num>—</Num>

@@ -176,6 +176,18 @@ How appointments meet the rest of the CRM (spec §3). Decisions 3.a–3.d above.
   was picked from the catalogue and not typed over). Booking ↔ quote matching and the
   package → series auto-start use it as well as the name.
 
+### 3.10 / 3.11 Marketing and reporting
+
+- **Report 11, Appointments** ([lib/reports/appointments.ts](../../lib/reports/appointments.ts),
+  `/reports?r=appointments`): no-show rate (against patients who came) by branch and type,
+  late cancellations, wait from check-in to start (median, p90), room utilisation (booked ÷
+  open hours, holidays out), doctor hours and visits, recall compliance (plan sessions done
+  inside their window ÷ due), booking lead time by channel, and **source / campaign →
+  booked → came**.
+- **Campaign ROI uses attendance.** Source Attribution (report 5) gains **Came** and
+  **Per patient who came** — counted from appointments, not inferred from stage.
+- Consent for appointment messages is covered under "Consent, privacy and the trash" above.
+
 ### Hand-offs to modules not built yet (3.3, 3.5, 3.8, 3.9, 3.12 — decision 3.a)
 
 Our side only ([lib/scheduling/handoffs.ts](../../lib/scheduling/handoffs.ts)), so each

@@ -7,10 +7,11 @@ import { InflowSection, AiContactSection, HandoffSection } from "./sections/funn
 import { CounsellorSection, AttributionSection } from "./sections/people";
 import { LostLeadSection, LostQuoteSection } from "./sections/lost";
 import { TreatmentMixSection, MultiQuoteSection, RepeatSection } from "./sections/money";
+import { AppointmentsSection } from "./sections/appointments";
 
 export const dynamic = "force-dynamic";
 
-// The report set (§reports). Ten read-outs over one shared date range, each on its own
+// The report set (§reports). Eleven read-outs over one shared date range, each on its own
 // tab so a page load computes one report rather than ten.
 //
 // Two capabilities gate this. `reports.view` decides who reaches the page at all (the
@@ -29,7 +30,8 @@ type ReportKey =
   | "treatment-mix"
   | "lost-quotes"
   | "multi-quote"
-  | "repeat";
+  | "repeat"
+  | "appointments";
 
 const TABS: { key: ReportKey; label: string; blurb: string; money: boolean }[] = [
   { key: "inflow", label: "Lead Inflow", blurb: "How many leads arrived, and from where.", money: false },
@@ -37,6 +39,7 @@ const TABS: { key: ReportKey; label: string; blurb: string; money: boolean }[] =
   { key: "handoff", label: "Handoff Speed", blurb: "How fast a counsellor picked up what the AI handed over.", money: false },
   { key: "counsellors", label: "Counsellor Performance", blurb: "Leads handled, consultations booked, what converted.", money: false },
   { key: "attribution", label: "Source Attribution", blurb: "Cost per lead, per consultation, per surgery.", money: false },
+  { key: "appointments", label: "Appointments", blurb: "No-shows, waits, room and doctor use, recall, and which sources actually turn up.", money: false },
   { key: "lost-leads", label: "Lost Leads", blurb: "Why we lose people before they're ever quoted.", money: false },
   { key: "treatment-mix", label: "Treatment Mix", blurb: "What we quote, what converts, at what value.", money: true },
   { key: "lost-quotes", label: "Lost Quotes", blurb: "Quotes rejected, withdrawn or lapsed — and the pricing signal in them.", money: true },
@@ -109,6 +112,7 @@ export default async function ReportsPage({
       {tab.key === "lost-quotes" && <LostQuoteSection range={range} />}
       {tab.key === "multi-quote" && <MultiQuoteSection range={range} />}
       {tab.key === "repeat" && <RepeatSection range={range} />}
+      {tab.key === "appointments" && <AppointmentsSection range={range} />}
 
       <footer className="cara-note border-t-[0.5px] border-cara-rule pt-4 text-[11px] text-cara-faint">
         All dates are IST calendar days. Ranges are inclusive of both ends

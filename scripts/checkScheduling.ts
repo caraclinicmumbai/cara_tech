@@ -1196,6 +1196,8 @@ async function section3Checks() {
   const { verifyRazorpayWebhook } = await import("../lib/providers/razorpay");
   const { createHmac } = await import("node:crypto");
   const handoffs = await import("../lib/scheduling/handoffs");
+  const { appointmentsReport } = await import("../lib/reports/appointments");
+  const { resolveRange } = await import("../lib/reports/range");
   const { messageBlockFor } = await import("../lib/messages");
   const { userSeesIntake } = await import("../lib/scheduling/calendar");
   const tag = `s3-${Date.now()}`;
@@ -1396,6 +1398,15 @@ async function section3Checks() {
       assert.ok(mine!.completed >= 3 && mine!.noShows >= 2, JSON.stringify(mine));
       assert.equal(mine!.byType[type.name], mine!.completed);
       assert.equal(mine!.externalRef, `${tag}-EMP7`);
+    });
+
+    await check("the Appointments report reads the calendar: no-shows against those who came, room use, doctors", async () => {
+      const r = await appointmentsReport(resolveRange({ from: dateKey, to: dateKey }));
+      assert.ok(r.totals.attended >= 3 && r.totals.noShows >= 2, JSON.stringify(r.totals));
+      assert.ok(r.totals.noShowPct! > 0 && r.totals.noShowPct! < 100);
+      const myRoom = r.rooms.find((x) => x.id === room.id);
+      assert.ok(myRoom && myRoom.openHours === 11 && myRoom.bookedHours > 0, JSON.stringify(myRoom));
+      assert.ok(r.doctors.some((x) => x.id === doctor.id && x.completed >= 3));
     });
 
     await check("trashing a lead cancels its upcoming appointments and frees their rooms", async () => {
