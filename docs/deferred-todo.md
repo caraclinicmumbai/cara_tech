@@ -399,6 +399,23 @@ _Added 2026-08-18._
 
 _Added 2026-10-12._
 
+## From Appointments §3 (integrations), 2026-10-17
+
+- **DPDP data-subject requests (M).** Only erasure exists (permanent lead delete). No
+  export / access / correction workflow. Also decide whether erasure should KEEP consent
+  proof and payment records (today they cascade away with the lead).
+- **Retention for intake answers, consents and appointments (S, decision).** Kept
+  indefinitely as the clinical record until 3.12 / EMR sets a policy. Intake photos have
+  their own window (`INTAKE_PHOTO_RETENTION_MONTHS`, off).
+- **Point the consumers at the §3 hand-offs (ops).** Razorpay dashboard webhook
+  (`RAZORPAY_WEBHOOK_SECRET`); Billing → `/api/billing/revenue-events`; Inventory →
+  `/api/integrations/consumables`; HR / Assets → `/api/webhooks/resource-time-off` and
+  `/api/integrations/utilisation`. Set `externalRef` on doctors and machines, and
+  consumables on surgery types.
+- **Quiet hours moved (heads-up).** Reminders now follow each branch's window (default
+  20:00–09:00) instead of the old global 21:00–08:00. Set each branch's hours on the
+  Branches page if the clinic wants 21–08 back.
+
 ---
 
 ## Done

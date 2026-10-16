@@ -9,7 +9,6 @@ import {
   applyReminderPreset,
   saveMessageTemplate,
   saveReminderSettings,
-  setSchedulingNumber,
   type MessageTemplateInput,
   type ReminderRuleInput,
 } from "@/app/(dashboard)/appointments/setup/actions";
@@ -186,16 +185,12 @@ export function MessagesSetup({
   templates,
   types,
   providers,
-  quiet,
 }: {
   templates: TemplateView[];
   types: TypeReminders[];
   providers: { whatsapp: boolean; sms: boolean; email: boolean };
-  quiet: { start: number; end: number };
 }) {
   const [adding, setAdding] = useState(false);
-  const [qs, setQs] = useState({ start: String(quiet.start), end: String(quiet.end) });
-  const { run, pending, msg } = useRun();
   return (
     <div className="space-y-6">
       <section className="cara-card space-y-2 p-5">
@@ -203,27 +198,11 @@ export function MessagesSetup({
         <Status ok={providers.whatsapp} label="WhatsApp" hint="first choice; outside the 24 h window only approved templates are delivered" />
         <Status ok={providers.sms} label="SMS (Plivo + DLT)" hint="fallback; needs PLIVO_SMS_SENDER + PLIVO_DLT_ENTITY_ID and a DLT id per message" />
         <Status ok={providers.email} label="Email (AWS SES)" hint="surgery instructions; needs SES_REGION + SES_FROM_EMAIL" />
-        <div className="flex flex-wrap items-center gap-2 pt-2 text-[12.5px] text-cara-muted">
-          Quiet hours: no reminders from
-          <input type="number" min={0} max={23} className="cara-input w-16!" value={qs.start} onChange={(e) => setQs({ ...qs, start: e.target.value })} aria-label="Quiet from" />
-          :00 to
-          <input type="number" min={0} max={23} className="cara-input w-16!" value={qs.end} onChange={(e) => setQs({ ...qs, end: e.target.value })} aria-label="Quiet to" />
-          :00 IST
-          <button
-            className="cara-btn"
-            disabled={pending}
-            onClick={() =>
-              run(async () => {
-                const a = await setSchedulingNumber("scheduling.quietStartHour", Number(qs.start));
-                if (!a.ok) return a;
-                return setSchedulingNumber("scheduling.quietEndHour", Number(qs.end));
-              })
-            }
-          >
-            Save
-          </button>
-          <Msg msg={msg} />
-        </div>
+        <p className="pt-2 text-[12.5px] text-cara-muted">
+          Quiet hours are set per branch on the{" "}
+          <a href="/branches" className="tone-link">Branches page</a> — the same window campaigns use. Reminders
+          marked quiet-hours exempt (like the morning-of-surgery one) still go.
+        </p>
         <p className="cara-note text-[12px]">Sending itself is switched on and off under Switches → &ldquo;Send appointment reminders&rdquo;.</p>
       </section>
 

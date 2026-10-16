@@ -1198,6 +1198,8 @@ async function section3Checks() {
   const handoffs = await import("../lib/scheduling/handoffs");
   const { appointmentsReport } = await import("../lib/reports/appointments");
   const { resolveRange } = await import("../lib/reports/range");
+  const { quietWindow } = await import("../lib/scheduling/reminders");
+  const { runSchedulingRetention } = await import("../lib/dataRetention");
   const { messageBlockFor } = await import("../lib/messages");
   const { userSeesIntake } = await import("../lib/scheduling/calendar");
   const tag = `s3-${Date.now()}`;
@@ -1407,6 +1409,33 @@ async function section3Checks() {
       const myRoom = r.rooms.find((x) => x.id === room.id);
       assert.ok(myRoom && myRoom.openHours === 11 && myRoom.bookedHours > 0, JSON.stringify(myRoom));
       assert.ok(r.doctors.some((x) => x.id === doctor.id && x.completed >= 3));
+    });
+
+    await check("appointment messages follow the BRANCH's quiet hours (one window with campaigns)", async () => {
+      assert.deepEqual(await quietWindow(branch.id), { start: 20 * 60, end: 9 * 60 }, "branch default 20–09");
+      await prisma.branch.update({ where: { id: branch.id }, data: { quietStartHour: 22, quietEndHour: 7 } });
+      assert.deepEqual(await quietWindow(branch.id), { start: 22 * 60, end: 7 * 60 });
+    });
+
+    await check("retention: expired OTP codes go after 7 days; intake photos only past their window", async () => {
+      const old = await prisma.otpChallenge.create({ data: { phone: "+910000000399", purpose: "intake_form", codeHash: "x", expiresAt: new Date(Date.now() - 10 * 86_400_000) } });
+      const fresh = await prisma.otpChallenge.create({ data: { phone: "+910000000399", purpose: "intake_form", codeHash: "x", expiresAt: new Date(Date.now() - 86_400_000) } });
+      const form = await prisma.intakeForm.create({ data: { key: `${tag}-rf`, name: "rf" } });
+      const ver = await prisma.intakeFormVersion.create({ data: { formId: form.id, version: 1, schema: { sections: [] } } });
+      const resp = await prisma.intakeResponse.create({ data: { leadId: lead.id, formId: form.id, versionId: ver.id, answers: {}, submittedAt: new Date(Date.now() - 400 * 86_400_000) } });
+      await prisma.intakePhoto.create({ data: { responseId: resp.id, slot: "front", mime: "image/jpeg", size: 1, bytes: new Uint8Array([1]) } });
+      delete process.env.INTAKE_PHOTO_RETENTION_MONTHS;
+      await runSchedulingRetention();
+      assert.equal(await prisma.otpChallenge.count({ where: { id: old.id } }), 0);
+      assert.equal(await prisma.otpChallenge.count({ where: { id: fresh.id } }), 1);
+      assert.equal(await prisma.intakePhoto.count({ where: { responseId: resp.id } }), 1, "no window set → photos kept");
+      process.env.INTAKE_PHOTO_RETENTION_MONTHS = "12";
+      await runSchedulingRetention();
+      delete process.env.INTAKE_PHOTO_RETENTION_MONTHS;
+      assert.equal(await prisma.intakePhoto.count({ where: { responseId: resp.id } }), 0);
+      assert.equal(await prisma.intakeResponse.count({ where: { id: resp.id } }), 1, "the answers stay");
+      await prisma.otpChallenge.delete({ where: { id: fresh.id } });
+      await prisma.intakeForm.delete({ where: { id: form.id } });
     });
 
     await check("trashing a lead cancels its upcoming appointments and frees their rooms", async () => {

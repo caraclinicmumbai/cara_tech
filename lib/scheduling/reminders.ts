@@ -17,14 +17,15 @@
 // skipped — switching on never sends a backlog.
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { getBoolSetting, getNumberSetting } from "@/lib/settings";
+import { getBoolSetting } from "@/lib/settings";
 import { isServiceWindowOpen, leadIdsSharingPhone, messageBlockFor, sendLeadTemplate, sendLeadText } from "@/lib/messages";
 import { isWhatsAppConfigured } from "@/lib/providers/whatsapp";
 import { sendSms } from "@/lib/providers/sms";
 import { sendEmail } from "@/lib/providers/email";
 import { appointmentLink } from "@/lib/scheduling/links";
 import { istDateKey, istInstant, istMinutes, MINUTE_MS } from "@/lib/scheduling/time";
-import { QUIET_END_HOUR, QUIET_START_HOUR, REMINDERS_ENABLED, SELF_SERVICE_LINKS } from "@/lib/scheduling/toggles";
+import { REMINDERS_ENABLED, SELF_SERVICE_LINKS } from "@/lib/scheduling/toggles";
+import { resolveQuietWindow } from "@/lib/campaigns/quietHours";
 import { fillTemplate } from "@/lib/scheduling/messageText";
 import { intakeLinkFor } from "@/lib/scheduling/intake/service";
 
@@ -71,9 +72,16 @@ export async function appointmentVariables(appointmentId: string): Promise<Recor
 
 // ── Scheduling ───────────────────────────────────────────────────────────────
 
-async function quietWindow(): Promise<{ start: number; end: number }> {
-  const [start, end] = await Promise.all([getNumberSetting(QUIET_START_HOUR), getNumberSetting(QUIET_END_HOUR)]);
-  return { start: start * 60, end: end * 60 };
+/// The branch's quiet hours, in minutes (§3, decision 3.d): ONE per-branch window for
+/// campaigns and appointment messages alike, set on the Branches page. Reminders used to
+/// have their own global window (21–08) while campaigns used the branch's (20–09), so a
+/// patient's "quiet" depended on which part of the CRM was messaging them.
+export async function quietWindow(branchId: string | null): Promise<{ start: number; end: number }> {
+  const b = branchId
+    ? await prisma.branch.findUnique({ where: { id: branchId }, select: { quietStartHour: true, quietEndHour: true } })
+    : null;
+  const w = resolveQuietWindow(b?.quietStartHour, b?.quietEndHour);
+  return { start: w.start * 60, end: w.end * 60 };
 }
 
 function inQuiet(at: Date, q: { start: number; end: number }): boolean {
@@ -114,13 +122,13 @@ export function dueTime(
 export async function scheduleReminders(appointmentId: string, opts: { skipOnBooking?: boolean } = {}): Promise<number> {
   const a = await prisma.appointment.findUnique({
     where: { id: appointmentId },
-    select: { status: true, startAt: true, type: { select: { reminderRules: { orderBy: { sortOrder: "asc" } } } } },
+    select: { status: true, startAt: true, branchId: true, type: { select: { reminderRules: { orderBy: { sortOrder: "asc" } } } } },
   });
   if (!a || !LIVE.includes(a.status)) return 0;
   const existing = await prisma.appointmentReminder.count({ where: { appointmentId, status: { not: "cancelled" } } });
   if (existing) return 0; // idempotent
   const now = new Date();
-  const quiet = await quietWindow();
+  const quiet = await quietWindow(a.branchId);
   const rows = [];
   for (const r of a.type.reminderRules) {
     if (opts.skipOnBooking && r.kind === "on_booking") continue;
@@ -238,12 +246,16 @@ export async function processDueReminders(now = new Date()): Promise<{ sent: num
     where: { status: "pending", dueAt: { lte: now } },
     orderBy: { dueAt: "asc" },
     take: 50,
-    include: { appointment: { select: { status: true, startAt: true } } },
+    include: { appointment: { select: { status: true, startAt: true, branchId: true } } },
   });
   const tally = { sent: 0, skipped: 0, failed: 0 };
   if (!due.length) return tally;
   const enabled = await getBoolSetting(REMINDERS_ENABLED);
-  const quiet = await quietWindow();
+  const windows = new Map<string, { start: number; end: number }>();
+  const quietFor = async (branchId: string) => {
+    if (!windows.has(branchId)) windows.set(branchId, await quietWindow(branchId));
+    return windows.get(branchId)!;
+  };
 
   for (const rem of due) {
     // Claim it, so two worker ticks can't both send it.
@@ -266,6 +278,7 @@ export async function processDueReminders(now = new Date()): Promise<{ sent: num
       tally.skipped++;
       continue;
     }
+    const quiet = await quietFor(rem.appointment.branchId);
     if (!rem.quietExempt && inQuiet(now, quiet)) {
       // Held by quiet hours (e.g. created before the hours were changed).
       const next = afterQuiet(now, quiet);

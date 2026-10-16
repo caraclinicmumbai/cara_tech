@@ -14,14 +14,15 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { writeAudit } from "@/lib/audit";
 import { notifyUser } from "@/lib/notifications";
-import { getBoolSetting, getNumberSetting } from "@/lib/settings";
+import { getBoolSetting } from "@/lib/settings";
 import { isServiceWindowOpen, messageBlockFor, sendLeadTemplate, sendLeadText } from "@/lib/messages";
 import { isWhatsAppConfigured } from "@/lib/providers/whatsapp";
 import { sendSms } from "@/lib/providers/sms";
 import { bookAppointment, findSlots, rescheduleAppointment, type Actor } from "@/lib/scheduling/booking";
 import { fillTemplate } from "@/lib/scheduling/messageText";
 import { appBaseUrl } from "@/lib/scheduling/links";
-import { QUIET_END_HOUR, QUIET_START_HOUR, RECALL_ENABLED } from "@/lib/scheduling/toggles";
+import { RECALL_ENABLED } from "@/lib/scheduling/toggles";
+import { isWithinQuietHours, resolveQuietWindow } from "@/lib/campaigns/quietHours";
 import { istDateKey, istInstant, istMinutes, MINUTE_MS } from "@/lib/scheduling/time";
 
 const DAY = 86_400_000;
@@ -399,9 +400,15 @@ async function sendRecall(stepId: string, withSms: boolean): Promise<string> {
 export async function processRecalls(now = new Date()): Promise<{ sent: number; callTasks: number }> {
   const tally = { sent: 0, callTasks: 0 };
   if (!(await getBoolSetting(RECALL_ENABLED))) return tally;
-  const [qs, qe] = await Promise.all([getNumberSetting(QUIET_START_HOUR), getNumberSetting(QUIET_END_HOUR)]);
-  const m = istMinutes(now);
-  const quiet = qs > qe ? m >= qs * 60 || m < qe * 60 : m >= qs * 60 && m < qe * 60;
+  // The plan's branch quiet hours (decision 3.d) — the same window campaigns use.
+  const quietByBranch = new Map<string, boolean>();
+  const isQuiet = async (branchId: string) => {
+    if (!quietByBranch.has(branchId)) {
+      const b = await prisma.branch.findUnique({ where: { id: branchId }, select: { quietStartHour: true, quietEndHour: true } });
+      quietByBranch.set(branchId, isWithinQuietHours(resolveQuietWindow(b?.quietStartHour, b?.quietEndHour), now));
+    }
+    return quietByBranch.get(branchId)!;
+  };
   const due = await prisma.plannedStep.findMany({
     where: { status: "planned", dueFrom: { lte: now }, recallStage: { lt: 3 }, plan: { status: "active" } },
     include: { plan: { select: { id: true, branchId: true, lead: { select: { name: true } } } } },
@@ -410,6 +417,7 @@ export async function processRecalls(now = new Date()): Promise<{ sent: number; 
   for (const s of due) {
     const age = (now.getTime() - s.dueFrom.getTime()) / DAY;
     try {
+      const quiet = await isQuiet(s.plan.branchId);
       if (s.recallStage === 0 && !quiet) {
         const res = await sendRecall(s.id, false);
         await prisma.plannedStep.update({ where: { id: s.id }, data: { recallStage: 1, lastRecallAt: now, note: `Recall: ${res}` } });

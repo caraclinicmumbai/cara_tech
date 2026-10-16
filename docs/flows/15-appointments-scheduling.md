@@ -65,7 +65,7 @@ recorded.
 | 2.4.c | WhatsApp provider | No BSP: our own Meta Cloud API account (already in use) |
 | 2.4.d | SMS / DLT | Plivo SMS (decided 2026-10-08); DLT registration by Jatin (initiated). SMS stays off until sender + entity id are set |
 | 2.4.e | Languages | English |
-| 2.4.f | Quiet hours | 21:00–08:00 IST (editable); the morning-of-surgery reminder is exempt |
+| 2.4.f | Quiet hours | ~~21:00–08:00 IST, global~~ → **the branch's quiet hours** since decision 3.d (default 20:00–09:00, edited on the Branches page); the morning-of-surgery reminder is exempt |
 | — | Email provider | AWS SES (decided 2026-10-08), off until configured |
 | 2.3.a | What's bookable online | Types marked online-bookable. Audience: **anyone** (first consultations) or **existing patients** (follow-ups, PRP). Surgery never; the widget says "Surgery is planned after a consultation" |
 | 2.3.b | Online payment | **Razorpay** (decided 2026-10-08), consultations only (types open to new patients, with a fee), optional per type, with a prepay discount %. Off until keys are set |
@@ -187,6 +187,32 @@ How appointments meet the rest of the CRM (spec §3). Decisions 3.a–3.d above.
 - **Campaign ROI uses attendance.** Source Attribution (report 5) gains **Came** and
   **Per patient who came** — counted from appointments, not inferred from stage.
 - Consent for appointment messages is covered under "Consent, privacy and the trash" above.
+
+### 3.13 Multi-branch master data
+
+- **Quiet hours: one window per branch** (decision 3.d). Reminders and recall now read
+  `Branch.quietStartHour / quietEndHour` — the window campaigns already used — instead of
+  their own global setting (`scheduling.quietStartHour/EndHour`, removed). Edited on the
+  Branches page; blank = 20:00–09:00. **AI calls keep their separate 22:00–10:00 window**
+  (`lib/callWindow.ts`, TRAI rules for calls). Quiet-exempt reminders still go.
+- **The Branches page shows each branch's calendar master data** — hours (or "default —
+  not set yet"), rooms, next closures — with links to edit them in setup. One editor, two
+  places to read it.
+- Service catalogue: appointment types link a `CatalogItem` (setup), and quotes now carry
+  `catalogItemId` too (3.4 above).
+
+### §4 Compliance: retention and the audit trail
+
+- **Booking edits are audited** end to end (1.E), now including the claim of an online hold
+  and the online stage move; the lead page's change history shows them.
+- **Retention** ([lib/dataRetention.ts](../../lib/dataRetention.ts) `runSchedulingRetention`,
+  daily in the worker): expired **OTP codes** are deleted 7 days after expiry, always.
+  **Intake photos** are deleted `INTAKE_PHOTO_RETENTION_MONTHS` after submission (off by
+  default). **Intake answers, consents, appointments and payments are kept** — they're the
+  clinical, consent and financial record, and their retention is a 3.12 / EMR policy.
+- **Erasure** (permanent lead delete) cascades to appointments, intake answers and photos,
+  consents, plans, reminders, payments and credit. `RevenueEvent` rows carry ids only and
+  stay as anonymous accounting facts.
 
 ### Hand-offs to modules not built yet (3.3, 3.5, 3.8, 3.9, 3.12 — decision 3.a)
 

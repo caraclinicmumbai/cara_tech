@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/authz";
 import { getBoolSetting, getNumberSetting } from "@/lib/settings";
-import { SCHEDULING_TOGGLES, DEFAULT_TRAVEL_MINUTES, QUIET_END_HOUR, QUIET_START_HOUR } from "@/lib/scheduling/toggles";
+import { SCHEDULING_TOGGLES, DEFAULT_TRAVEL_MINUTES } from "@/lib/scheduling/toggles";
 import { branchWeek } from "@/lib/scheduling/hours";
 import { keyOfDateColumn, minutesToHhmm } from "@/lib/scheduling/time";
 import { istDateTimeLocal } from "@/lib/datetime";
@@ -303,20 +303,17 @@ async function FlagsTab() {
 }
 
 async function MessagesTab() {
-  const [templates, types, qStart, qEnd] = await Promise.all([
+  const [templates, types] = await Promise.all([
     prisma.appointmentMessageTemplate.findMany({ where: { active: true }, orderBy: { createdAt: "asc" } }),
     prisma.appointmentType.findMany({
       where: { active: true },
       orderBy: [{ category: "asc" }, { name: "asc" }],
       select: { id: true, name: true, selfServiceCutoffHours: true, reminderRules: { orderBy: { sortOrder: "asc" } } },
     }),
-    getNumberSetting(QUIET_START_HOUR),
-    getNumberSetting(QUIET_END_HOUR),
   ]);
   return (
     <MessagesSetup
       providers={{ whatsapp: isWhatsAppConfigured(), sms: isSmsConfigured(), email: isEmailConfigured() }}
-      quiet={{ start: qStart, end: qEnd }}
       templates={templates.map((t) => ({
         id: t.id,
         key: t.key,

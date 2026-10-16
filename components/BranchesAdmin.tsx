@@ -108,16 +108,16 @@ function BranchFields({
         </select>
       </div>
       <div>
-        <div className={groupTitle}>Follow-up quiet hours (IST)</div>
+        <div className={groupTitle}>Quiet hours (IST)</div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-black/55 dark:text-white/55">No campaign messages between</span>
+          <span className="text-black/55 dark:text-white/55">No campaign or appointment messages between</span>
           <input type="number" min={0} max={23} className={`${inputCls} w-20`} placeholder="20"
             value={data.quietStartHour ?? ""} onChange={(e) => set({ quietStartHour: e.target.value })} />
           <span className="text-black/55 dark:text-white/55">:00 and</span>
           <input type="number" min={0} max={23} className={`${inputCls} w-20`} placeholder="9"
             value={data.quietEndHour ?? ""} onChange={(e) => set({ quietEndHour: e.target.value })} />
           <span className="text-black/55 dark:text-white/55">:00</span>
-          <span className="text-xs text-black/40 dark:text-white/40">(blank = default 20:00–09:00)</span>
+          <span className="text-xs text-black/40 dark:text-white/40">(blank = default 20:00–09:00; quiet-exempt reminders such as the morning-of-surgery one still go; AI calls keep their own 22:00–10:00 window)</span>
         </div>
       </div>
     </div>

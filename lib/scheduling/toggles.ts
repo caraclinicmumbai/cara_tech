@@ -125,8 +125,6 @@ export type SchedulingNumber = {
 };
 
 export const DEFAULT_TRAVEL_MINUTES = "scheduling.defaultTravelMinutes";
-export const QUIET_START_HOUR = "scheduling.quietStartHour";
-export const QUIET_END_HOUR = "scheduling.quietEndHour";
 export const ONLINE_MIN_NOTICE_HOURS = "scheduling.onlineMinNoticeHours";
 export const ONLINE_MAX_DAYS = "scheduling.onlineMaxDays";
 export const ONLINE_HOLD_MINUTES = "scheduling.onlineHoldMinutes";
@@ -141,24 +139,6 @@ export const SCHEDULING_NUMBERS: SchedulingNumber[] = [
     default: 90,
     min: 0,
     max: 600,
-  },
-  {
-    key: QUIET_START_HOUR,
-    label: "Reminder quiet hours start",
-    description: "No reminders from this hour (IST, 24h clock) — except those marked quiet-exempt, like the morning-of-surgery reminder (§2.4.f).",
-    unit: "h",
-    default: 21,
-    min: 0,
-    max: 23,
-  },
-  {
-    key: QUIET_END_HOUR,
-    label: "Reminder quiet hours end",
-    description: "Reminders held overnight go out from this hour (IST).",
-    unit: "h",
-    default: 8,
-    min: 0,
-    max: 23,
   },
   {
     key: ONLINE_MIN_NOTICE_HOURS,

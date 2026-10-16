@@ -28,7 +28,7 @@ import { sweepIdle, IDLE_MINUTES } from "@/lib/presence";
 import { runFollowUpReminders } from "@/lib/followUpReminders";
 import { runCampaignTick } from "@/lib/campaigns/engine";
 import { runWinBackSweep } from "@/lib/campaigns/winback";
-import { runRetentionPurge, retentionMonths } from "@/lib/dataRetention";
+import { runRetentionPurge, retentionMonths, runSchedulingRetention, intakePhotoRetentionMonths } from "@/lib/dataRetention";
 import { runCheckInTick, checkInsEnabled } from "@/lib/postSales/checkins";
 import { runPostSalesSlaScan, reconcileMissingJourneys } from "@/lib/postSales/sla";
 import { campaignsEnabled } from "@/lib/campaigns/types";
@@ -225,12 +225,18 @@ logger.info(`Post-sales SLA scan active (every ${POSTSALES_SLA_MS / 3_600_000} h
 // on calls older than DATA_RETENTION_MONTHS. OFF unless that env is set (runRetentionPurge
 // no-ops when unset), so nothing is destroyed until the clinic chooses a window.
 const RETENTION_SCAN_MS = Number(process.env.RETENTION_SCAN_HOURS ?? 24) * 60 * 60_000;
-const runRetention = () =>
+const runRetention = () => {
   runRetentionPurge().catch((err) => logger.error(`Retention purge error: ${String(err)}`));
+  // §3/§4: expired OTP codes always; intake photos only past INTAKE_PHOTO_RETENTION_MONTHS.
+  runSchedulingRetention().catch((err) => logger.error(`Scheduling retention error: ${String(err)}`));
+};
 runRetention();
 setInterval(runRetention, RETENTION_SCAN_MS);
 logger.info(
   `Data-retention purge ${retentionMonths() ? `active (>${retentionMonths()}mo, scan every ${RETENTION_SCAN_MS / 3_600_000}h)` : "idle (DATA_RETENTION_MONTHS unset)"}`,
+);
+logger.info(
+  `Intake photo retention ${intakePhotoRetentionMonths() ? `active (>${intakePhotoRetentionMonths()}mo)` : "idle (INTAKE_PHOTO_RETENTION_MONTHS unset)"}; expired OTP codes purged after 7 days`,
 );
 
 // Appointment holds (§3.2) — a tentative slot (online booking in progress) lapses
