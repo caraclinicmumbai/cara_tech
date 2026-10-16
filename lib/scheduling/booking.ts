@@ -43,6 +43,7 @@ import { dateColumn, istDateKey, istInstant, weekdayOfKey, MINUTE_MS } from "@/l
 import type { SlotResult } from "@/lib/scheduling/engine";
 import { crmAfterStatus, matchingQuoteId } from "@/lib/scheduling/crm";
 import { billingAfterStatus } from "@/lib/scheduling/billing";
+import { handoffsAfterMove, handoffsAfterStatus } from "@/lib/scheduling/handoffs";
 import {
   canTransition,
   isAppointmentStatus,
@@ -545,6 +546,7 @@ export async function rescheduleAppointment(id: string, input: RescheduleInput, 
     });
     await remindersAfter("moved", outcome.id, id);
     await seriesAfter({ kind: "moved", oldId: id, newId: outcome.id }, actor);
+    await handoffsAfterMove(id);
     return { ok: true, appointmentId: outcome.id, warnings: outcome.result.issues };
   } catch (err) {
     logger.error(`rescheduleAppointment failed: ${String(err)}`);
@@ -618,6 +620,8 @@ export async function changeAppointmentStatus(
     await crmAfterStatus({ appointmentId: id, from: appt.status, to, cancelledBy: opts.cancelledBy, actor });
     // §3 (3.4/3.c): a missed visit's deposit becomes credit; a completed one is a session for Billing.
     await billingAfterStatus({ appointmentId: id, to, cancelledBy: opts.cancelledBy, actor });
+    // §3 (3.a): encounter for the EMR, consumable reservations for Inventory.
+    await handoffsAfterStatus({ appointmentId: id, from: appt.status, to });
     return { ok: true };
   } catch (err) {
     logger.error(`changeAppointmentStatus failed: ${String(err)}`);

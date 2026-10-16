@@ -224,6 +224,7 @@ async function ResourcesTab({ branches }: { branches: BranchOpt[] }) {
         })),
         availableFrom: r.availableFrom ? keyOfDateColumn(r.availableFrom) : "",
         availableUntil: r.availableUntil ? keyOfDateColumn(r.availableUntil) : "",
+        externalRef: r.externalRef ?? "",
       }))}
     />
   );
@@ -234,7 +235,7 @@ async function TypesTab({ branches }: { branches: BranchOpt[] }) {
   const [types, resources, catalog] = await Promise.all([
     prisma.appointmentType.findMany({
       orderBy: [{ active: "desc" }, { category: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
-      include: { requirements: true, catalogItem: { select: { name: true } } },
+      include: { requirements: true, consumables: true, catalogItem: { select: { name: true } } },
     }),
     prisma.resource.findMany({ where: { active: true }, select: { id: true, name: true, kind: true }, orderBy: { name: "asc" } }),
     prisma.catalogItem.findMany({ where: { active: true }, select: { id: true, name: true, category: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
@@ -267,6 +268,7 @@ async function TypesTab({ branches }: { branches: BranchOpt[] }) {
         onlinePrepay: t.onlinePrepay,
         prepayDiscountPct: t.prepayDiscountPct,
         prepInstructions: t.prepInstructions,
+        consumables: t.consumables.map((c) => `${c.sku} | ${c.name} | ${c.quantity}`).join("\n"),
         color: t.color,
         active: t.active,
         requirements: t.requirements.map((r) => ({

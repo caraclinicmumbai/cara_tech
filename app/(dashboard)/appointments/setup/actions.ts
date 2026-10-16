@@ -276,6 +276,9 @@ export type ResourceInput = {
   /// Visiting doctors (§2.9.e): contract dates, "YYYY-MM-DD" or blank.
   availableFrom?: string | null;
   availableUntil?: string | null;
+  /// §3 — the id this person / machine has in HR (employee code) or the asset register
+  /// (asset tag), so their leave and downtime feeds can name it.
+  externalRef?: string | null;
 };
 
 function normaliseResource(
@@ -319,6 +322,7 @@ function normaliseResource(
       branchId,
       userId: input.kind === "doctor" || input.kind === "staff" ? clean(input.userId) : null,
       notes: clean(input.notes),
+      externalRef: clean(input.externalRef)?.slice(0, 100) ?? null,
     },
   };
 }
@@ -333,6 +337,7 @@ export async function createResource(input: ResourceInput): Promise<Result> {
     revalidatePath(PATH);
     return { ok: true, id: row.id };
   } catch (err) {
+    if (String(err).includes("externalRef")) return { ok: false, error: "Another resource already has that external reference" };
     if (String(err).includes("Unique constraint")) return { ok: false, error: "That staff login is already linked to another resource" };
     return fail("createResource", err, "Could not add the resource");
   }
@@ -350,6 +355,7 @@ export async function updateResource(id: string, input: ResourceInput): Promise<
     revalidatePath(PATH);
     return { ok: true, info: d.opened ? `Saved. ${d.opened} appointment(s) need rebooking.` : "Saved" };
   } catch (err) {
+    if (String(err).includes("externalRef")) return { ok: false, error: "Another resource already has that external reference" };
     if (String(err).includes("Unique constraint")) return { ok: false, error: "That staff login is already linked to another resource" };
     return fail("updateResource", err, "Could not save the resource");
   }
@@ -567,7 +573,24 @@ export type AppointmentTypeInput = {
   prepayDiscountPct?: number | string | null;
   /// §2.7 — the intake form sent with this type's bookings.
   intakeFormId?: string | null;
+  /// §3 (3.5) — what one appointment uses up, one per line: "code | name | quantity".
+  consumables?: string | null;
 };
+
+/// "GK-01 | Graft kit | 1" per line → rows. Quantity defaults to 1; a repeated code keeps
+/// the last line.
+function parseConsumables(text: string | null | undefined): { ok: true; rows: { sku: string; name: string; quantity: number }[] } | { ok: false; error: string } {
+  const rows = new Map<string, { sku: string; name: string; quantity: number }>();
+  for (const line of (text ?? "").split("\n")) {
+    if (!line.trim()) continue;
+    const [sku, name, qty] = line.split("|").map((x) => x.trim());
+    if (!sku) return { ok: false, error: `Consumables: "${line.trim()}" needs a code first` };
+    const quantity = qty ? Math.round(Number(qty)) : 1;
+    if (!Number.isFinite(quantity) || quantity < 1 || quantity > 1000) return { ok: false, error: `Consumables: quantity for ${sku} must be 1–1000` };
+    rows.set(sku.slice(0, 64), { sku: sku.slice(0, 64), name: (name || sku).slice(0, 120), quantity });
+  }
+  return { ok: true, rows: [...rows.values()] };
+}
 
 function normaliseType(input: AppointmentTypeInput) {
   const name = clean(input.name);
@@ -593,6 +616,8 @@ function normaliseType(input: AppointmentTypeInput) {
   if (fee !== null && (!Number.isFinite(fee) || fee < 0 || fee > 1_000_000)) return { ok: false as const, error: "Fee must be a rupee amount" };
   const disc = input.prepayDiscountPct === null || input.prepayDiscountPct === undefined || String(input.prepayDiscountPct).trim() === "" ? null : Math.round(Number(input.prepayDiscountPct));
   if (disc !== null && (!Number.isFinite(disc) || disc < 0 || disc > 90)) return { ok: false as const, error: "Discount must be 0–90%" };
+  const consumables = parseConsumables(input.consumables);
+  if (!consumables.ok) return { ok: false as const, error: consumables.error };
   const audience = input.onlineAudience === "existing" ? "existing" : "anyone";
   // §2.3.b: online prepayment is for consultations only — new-patient types, with a fee.
   if (input.onlinePrepay && (audience !== "anyone" || !fee)) {
@@ -617,6 +642,7 @@ function normaliseType(input: AppointmentTypeInput) {
       color: clean(input.color),
     },
     requirements,
+    consumables: consumables.rows,
   };
 }
 
@@ -626,7 +652,7 @@ export async function createAppointmentType(input: AppointmentTypeInput): Promis
   if (!n.ok) return n;
   try {
     const row = await prisma.appointmentType.create({
-      data: { ...n.data, requirements: { create: n.requirements } },
+      data: { ...n.data, requirements: { create: n.requirements }, consumables: { create: n.consumables } },
       select: { id: true },
     });
     await audit(actor, "scheduling.type.create", row.id, n.data.name, { meta: { ...n.data, requirements: n.requirements } });
@@ -650,6 +676,8 @@ export async function updateAppointmentType(id: string, input: AppointmentTypeIn
       prisma.appointmentType.update({ where: { id }, data: n.data }),
       prisma.appointmentTypeRequirement.deleteMany({ where: { typeId: id } }),
       prisma.appointmentTypeRequirement.createMany({ data: n.requirements.map((r) => ({ ...r, typeId: id })) }),
+      prisma.appointmentTypeConsumable.deleteMany({ where: { typeId: id } }),
+      prisma.appointmentTypeConsumable.createMany({ data: n.consumables.map((c) => ({ ...c, typeId: id })) }),
     ]);
     await audit(actor, "scheduling.type.update", id, n.data.name, { meta: { ...n.data, requirements: n.requirements } });
     revalidatePath(PATH);

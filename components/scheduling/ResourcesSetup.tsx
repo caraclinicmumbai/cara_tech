@@ -36,6 +36,7 @@ type ResourceView = {
   allowOverride: boolean;
   availableFrom: string;
   availableUntil: string;
+  externalRef: string;
   roster: RosterRowInput[];
   exceptions: { id: string; date: string; branchId: string; start: string; end: string; note: string | null }[];
   timeOff: { id: string; start: string; end: string; reason: string | null; source: string }[];
@@ -95,6 +96,16 @@ function ResourceFields({
           –
           <input type="date" className="cara-input w-auto!" value={data.availableUntil ?? ""} onChange={(e) => set({ availableUntil: e.target.value })} aria-label="Contract until" />
         </span>
+      )}
+      {data.kind !== "room" && (
+        <input
+          className="cara-input w-40!"
+          placeholder={isPerson(data.kind) ? "HR employee code" : "Asset tag"}
+          title="The id this has in HR / the asset register, so their leave or downtime feed can name it (§3)"
+          value={data.externalRef ?? ""}
+          onChange={(e) => set({ externalRef: e.target.value })}
+          aria-label="External reference"
+        />
       )}
       {isPerson(data.kind) && (
         <select className="cara-select w-auto!" value={data.userId ?? ""} onChange={(e) => set({ userId: e.target.value })}>
@@ -171,6 +182,7 @@ function ResourceCard({ r, branches, users }: { r: ResourceView; branches: Opt[]
     allowOverride: r.allowOverride,
     availableFrom: r.availableFrom,
     availableUntil: r.availableUntil,
+    externalRef: r.externalRef,
   });
   const { run, pending, msg } = useRun();
   const branchName = branches.find((b) => b.id === r.branchId)?.name;

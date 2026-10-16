@@ -1368,6 +1368,9 @@ model Resource {
   /// inclusive. Null = no limit on that side.
   availableFrom  DateTime? @db.Date
   availableUntil DateTime? @db.Date
+  /// The id this person or machine has in ANOTHER system — the HR employee code (3.8) or
+  /// the asset tag (3.9) — so their feeds can name a resource without knowing our ids.
+  externalRef    String?   @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1413,7 +1416,11 @@ model ResourceTimeOff {
   startAt    DateTime
   endAt      DateTime
   reason     String?
+  /// manual | hr (3.8 leave feed) | assets (3.9 maintenance / calibration feed)
   source     String   @default("manual")
+  /// The feeding system's own id for this absence — makes its retries and updates land
+  /// on the same row.
+  externalId String?  @unique
 
   /// §2.9 leave workflow. requested = tentative (warns, doesn't block) → approved
   /// (blocks every branch at once) | rejected | cancelled. Rows from before the
@@ -1516,6 +1523,7 @@ model AppointmentType {
   requirements  AppointmentTypeRequirement[]
   appointments  Appointment[]
   reminderRules ReminderRule[]
+  consumables   AppointmentTypeConsumable[]
 
   @@index([active])
 }
@@ -1606,6 +1614,8 @@ model Appointment {
   payments        BookingPayment[]
   intakeResponses IntakeResponse[]
   plannedStep     PlannedStep?
+  encounter       Encounter?
+  consumables     ConsumableReservation[]
   anchoredPlans   TreatmentPlan[]       @relation("PlanAnchor")
 
   @@index([branchId, startAt])
@@ -2107,4 +2117,60 @@ model PlannedStep {
 
   @@index([planId])
   @@index([status, dueFrom])
+}
+
+// ── §3 hand-offs to modules not built yet (decision 3.a) ─────────────────────────
+// Our side of each integration, so the module plugs in rather than rewires.
+
+/// An encounter (3.3 EMR): opened when the patient is CHECKED IN, closed when the visit is
+/// completed. The EMR will hang its clinical notes off this row; today it is the record
+/// that the patient was physically seen, by whom and when. One per appointment.
+model Encounter {
+  id               String      @id @default(cuid())
+  appointmentId    String      @unique
+  appointment      Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  leadId           String
+  branchId         String
+  doctorId         String? // Resource id of the appointment's doctor
+  /// The intake form filled in for this visit — the "patient-reported" section.
+  intakeResponseId String?
+  /// open (checked in) | closed (completed) | cancelled (left before being seen)
+  status           String      @default("open")
+  openedAt         DateTime    @default(now())
+  closedAt         DateTime?
+
+  @@index([leadId, openedAt])
+}
+
+/// What an appointment type uses up (3.5 Inventory): "1 graft kit", "2 PRP kits". `sku` is
+/// the inventory system's code; until 3.5 exists it is whatever the clinic calls the item.
+model AppointmentTypeConsumable {
+  id       String          @id @default(cuid())
+  typeId   String
+  type     AppointmentType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  sku      String
+  name     String
+  quantity Int             @default(1)
+
+  @@unique([typeId, sku])
+}
+
+/// A request to set consumables aside for one appointment (3.5). Raised when the
+/// appointment is CONFIRMED; released if it is cancelled, missed or moved; consumed when it
+/// is completed. Inventory reads `requested` rows and answers with stock — no stock is
+/// counted here.
+model ConsumableReservation {
+  id            String      @id @default(cuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  sku           String
+  name          String
+  quantity      Int
+  /// requested | released | consumed
+  status        String      @default("requested")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([appointmentId, sku])
+  @@index([status, createdAt])
 }

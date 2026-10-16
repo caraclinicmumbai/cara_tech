@@ -1195,6 +1195,7 @@ async function section3Checks() {
   const { onRazorpayPaid } = await import("../lib/scheduling/online");
   const { verifyRazorpayWebhook } = await import("../lib/providers/razorpay");
   const { createHmac } = await import("node:crypto");
+  const handoffs = await import("../lib/scheduling/handoffs");
   const { messageBlockFor } = await import("../lib/messages");
   const { userSeesIntake } = await import("../lib/scheduling/calendar");
   const tag = `s3-${Date.now()}`;
@@ -1343,6 +1344,58 @@ async function section3Checks() {
       assert.equal(ev.sessionNo, 1);
       assert.equal(ev.sessions, 3);
       assert.equal(ev.amount, 1050);
+    });
+
+    await check("check-in opens an encounter for the EMR; completing the visit closes it", async () => {
+      const b = await bookAppointment({ ...base, startAt: at(9 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const id = b.ok ? b.appointmentId : "";
+      assert.ok((await changeAppointmentStatus(id, "checked_in", {}, actor)).ok);
+      const open = await prisma.encounter.findUniqueOrThrow({ where: { appointmentId: id } });
+      assert.equal(open.status, "open");
+      assert.equal(open.doctorId, doctor.id);
+      assert.ok((await changeAppointmentStatus(id, "completed", {}, actor)).ok);
+      assert.equal((await prisma.encounter.findUniqueOrThrow({ where: { appointmentId: id } })).status, "closed");
+    });
+
+    await check("confirming reserves the type's consumables; cancelling releases them", async () => {
+      await prisma.appointmentTypeConsumable.create({ data: { typeId: type.id, sku: "GK-01", name: "Graft kit", quantity: 2 } });
+      const b = await bookAppointment({ ...base, startAt: at(13 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const id = b.ok ? b.appointmentId : "";
+      assert.equal(await prisma.consumableReservation.count({ where: { appointmentId: id } }), 0, "nothing until confirmed");
+      assert.ok((await changeAppointmentStatus(id, "confirmed", {}, actor)).ok);
+      const r = await prisma.consumableReservation.findFirstOrThrow({ where: { appointmentId: id } });
+      assert.equal(r.status, "requested");
+      assert.equal(r.quantity, 2);
+      assert.ok((await changeAppointmentStatus(id, "cancelled", { reason: "x", cancelledBy: "clinic" }, actor)).ok);
+      assert.equal((await prisma.consumableReservation.findFirstOrThrow({ where: { appointmentId: id } })).status, "released");
+    });
+
+    await check("an HR leave feed blocks the doctor, opens rebooking cases, and is idempotent; withdrawing it works", async () => {
+      await prisma.resource.update({ where: { id: doctor.id }, data: { externalRef: `${tag}-EMP7` } });
+      const b = await bookAppointment({ ...base, startAt: at(19 * 60 + 30) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const feed = { source: "hr" as const, externalId: `${tag}-L1`, resource: `${tag}-EMP7`, startAt: at(19 * 60 + 15), endAt: at(21 * 60), status: "approved" as const };
+      const first = await handoffs.upsertExternalTimeOff(feed);
+      assert.ok(first.ok && first.state === "created" && first.affected >= 1, JSON.stringify(first));
+      const again = await handoffs.upsertExternalTimeOff(feed);
+      assert.ok(again.ok && again.state === "unchanged");
+      const off = await prisma.resourceTimeOff.findUniqueOrThrow({ where: { externalId: `${tag}-L1` } });
+      assert.equal(off.source, "hr");
+      assert.equal(off.status, "approved");
+      const gone = await handoffs.upsertExternalTimeOff({ ...feed, status: "cancelled" });
+      assert.ok(gone.ok && gone.state === "cancelled");
+      assert.equal((await handoffs.upsertExternalTimeOff({ ...feed, resource: "nobody" })).ok, false);
+    });
+
+    await check("utilisation counts each doctor's completed visits, no-shows and hours, by type", async () => {
+      const rows = await handoffs.utilisation({ from: at(0), to: at(24 * 60), kind: "doctor" });
+      const mine = rows.find((r) => r.resourceId === doctor.id);
+      assert.ok(mine, "the doctor is in the report");
+      assert.ok(mine!.completed >= 3 && mine!.noShows >= 2, JSON.stringify(mine));
+      assert.equal(mine!.byType[type.name], mine!.completed);
+      assert.equal(mine!.externalRef, `${tag}-EMP7`);
     });
 
     await check("trashing a lead cancels its upcoming appointments and frees their rooms", async () => {

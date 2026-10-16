@@ -164,6 +164,19 @@ function TypeForm({
         value={data.prepInstructions ?? ""}
         onChange={(e) => set({ prepInstructions: e.target.value })}
       />
+      <label className="block space-y-1 text-[12.5px] text-cara-muted">
+        <span>
+          Consumables set aside when an appointment is confirmed (for Inventory) — one per line:{" "}
+          <code>code | name | quantity</code>
+        </span>
+        <textarea
+          className="cara-textarea w-full!"
+          rows={2}
+          placeholder={"GK-01 | Graft kit | 1\nPRP-K | PRP kit | 2"}
+          value={data.consumables ?? ""}
+          onChange={(e) => set({ consumables: e.target.value })}
+        />
+      </label>
     </div>
   );
 }
@@ -240,6 +253,7 @@ function TypeCard({
     catalogItemId: t.catalogItemId ?? "",
     intakeFormId: t.intakeFormId ?? "",
     prepInstructions: t.prepInstructions ?? "",
+    consumables: t.consumables ?? "",
     requirements: t.requirements.map((r) => ({ ...r, subtype: r.subtype ?? "", resourceId: r.resourceId ?? "" })),
   });
   const { run, pending, msg } = useRun();

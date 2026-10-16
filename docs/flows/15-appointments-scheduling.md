@@ -176,6 +176,22 @@ How appointments meet the rest of the CRM (spec §3). Decisions 3.a–3.d above.
   was picked from the catalogue and not typed over). Booking ↔ quote matching and the
   package → series auto-start use it as well as the name.
 
+### Hand-offs to modules not built yet (3.3, 3.5, 3.8, 3.9, 3.12 — decision 3.a)
+
+Our side only ([lib/scheduling/handoffs.ts](../../lib/scheduling/handoffs.ts)), so each
+module plugs in rather than rewiring the calendar. Machine routes use `x-webhook-secret`.
+
+| Module | In | Out |
+|---|---|---|
+| **3.3 EMR** | Intake answers (patient-reported, field-verified) and photos, already stored per visit | **`Encounter`** opened at **check-in** (lead, branch, doctor, the visit's intake form), closed at completion, cancelled if the patient leaves before being seen. The EMR hangs notes off it |
+| **3.5 Inventory** | — | Each appointment type lists its **consumables** (setup → Appointment types: `code \| name \| quantity` per line). **Confirming** an appointment raises a `ConsumableReservation` per item (`requested`); cancel / no-show / move → `released`; completed → `consumed`. Inventory pulls `GET /api/integrations/consumables?status=requested` (no patient details). No stock is counted here |
+| **3.8 HR** | **`POST /api/webhooks/resource-time-off`** `{source:"hr", externalId, resource, startAt, endAt, kind, status}` — approved leave becomes blocking time off (`source: "hr"`) exactly like leave entered by hand, and opens rebooking cases (2.9.b: nothing moved automatically). Re-posting with the same `externalId` moves it; `status:"cancelled"` withdraws it | **`GET /api/integrations/utilisation?kind=doctor`** — per doctor: booked, completed, no-shows, hours, completed visits **by type** (procedures per doctor, for commission) |
+| **3.9 Assets** | The same route with `source:"assets"`, `kind:"maintenance"\|"calibration"` → machine downtime (`source: "assets"`) | `?kind=equipment` — uses and hours in the window plus **lifetime uses**, for service intervals |
+| **3.12 Documents** | — | Signed intake forms (`IntakeResponse`, OTP acceptance), consents (`ConsentRecord`, wording + version) and photos are stored under the patient and listed on the lead page. Moving them to a document store is 3.12's job |
+
+`resource` in the feed is our id or the resource's **external reference**
+(`Resource.externalRef`: the HR employee code or the asset tag, set in setup → Resources).
+
 ## Trigger
 
 Any booking, reschedule or status change, from any screen (front desk, call centre, the
@@ -721,8 +737,9 @@ Environment for 2.4 (all optional; each channel stays off without its own):
   patient who closes the page halfway starts again; there's no autosave.
 - **No paper-scan upload** for a patient who filled in a paper form. The tablet route
   works; a scan goes to 3.12.
-- **No EMR mapping yet.** Each question carries an `emr` hint (allergies / medications /
-  conditions) for 3.3, but nothing is written into an EMR.
+- **No EMR yet (3.3).** Check-in opens an `Encounter` linked to the visit's intake form,
+  and each question carries an `emr` hint (allergies / medications / conditions), but no
+  clinical notes are written — that is the EMR's job.
 - **Photos are stored in the database** (≤8 × 2.5 MB per form) until 3.12's document
   store exists.
 - **No PDF attachment.** The 7-day surgery email carries the checklist as text (the
@@ -734,7 +751,8 @@ Environment for 2.4 (all optional; each channel stays off without its own):
   their reminders.
 - **Branches without a manager** have unassigned cases. They still escalate to admins
   and the Sales Head.
-- **No HR integration** (3.8 isn't built): leave is requested here, not in HR.
+- **HR (3.8) can feed leave in, but doesn't exist yet.** Until it does, leave is requested
+  here; leave notice rules (2.9.f) wait for it.
 - **Equipment can't move between branches** (2.2.d); changing a machine's branch is an
   audited edit.
 - **Chain search is a straightforward loop** (branches × days). Fine at today's
@@ -748,8 +766,8 @@ Environment for 2.4 (all optional; each channel stays off without its own):
   screen stays reachable so it can be switched back on.
 - **A doctor's "home branch" isn't enforced without a roster.** A doctor with no roster is
   bookable at any branch while it's open. Give them a roster to pin them down.
-- **Leave from HR (3.8) and machine downtime from Assets (3.9) aren't connected.**
-  `ResourceTimeOff.source` is ready for them; today it is entered by hand.
+- **The leave / downtime feed and the exports have no consumer yet** — HR, Assets and
+  Inventory aren't built. Each needs `WEBHOOK_SECRET` and resources' external references set.
 - **Adding leave doesn't move existing bookings.** It reports the count; a person
   rebooks them.
 - **One appointment = one IST day.** Multi-day work is a treatment series (Phase D).
