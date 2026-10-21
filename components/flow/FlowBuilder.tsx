@@ -4,7 +4,7 @@
 // trigger start node, draggable/connectable nodes from a grouped palette, a per-node
 // config panel, and Save. The graph persists to ChatbotFlow.graph; the runtime
 // (Phase 3) walks it. Node specs (fields, outputs, summaries) live in nodeConfig.ts.
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   ReactFlow,
@@ -13,6 +13,7 @@ import {
   Handle,
   Position,
   MarkerType,
+  useUpdateNodeInternals,
   addEdge,
   applyNodeChanges,
   applyEdgeChanges,
@@ -50,11 +51,17 @@ function groupOf(type: string): string {
 }
 
 // ── Custom node (one component for every type; reads its spec) ──
-function FlowNodeView({ type, data, selected }: NodeProps) {
+function FlowNodeView({ id, type, data, selected }: NodeProps) {
   const t = type ?? "send_text";
   const spec = specFor(t);
   const outs = spec.outputs((data as Record<string, unknown>) ?? {});
   const color = GROUP_COLOR[groupOf(t)];
+  // Branch handles come and go as buttons / list items are edited; React Flow only
+  // registers handles it has measured, so re-measure whenever the set changes —
+  // otherwise a new button's dot can't be connected.
+  const updateNodeInternals = useUpdateNodeInternals();
+  const handleKey = outs.map((o) => o.id).join("|");
+  useEffect(() => updateNodeInternals(id), [id, handleKey, updateNodeInternals]);
   return (
     <div
       className="rounded-md border bg-white text-black shadow-sm dark:bg-neutral-900 dark:text-white"
@@ -79,8 +86,9 @@ function FlowNodeView({ type, data, selected }: NodeProps) {
           />
           {outs.length > 1 && o.label && (
             <span
-              className="absolute translate-x-[-50%] text-[9px] text-black/50 dark:text-white/50"
-              style={{ left: `${((i + 1) / (outs.length + 1)) * 100}%`, bottom: -14 }}
+              title={o.label}
+              className="absolute translate-x-[-50%] truncate text-center text-[9px] text-black/50 dark:text-white/50"
+              style={{ left: `${((i + 1) / (outs.length + 1)) * 100}%`, bottom: -14, maxWidth: 200 / (outs.length + 1) }}
             >
               {o.label}
             </span>
@@ -288,15 +296,7 @@ function ConfigPanel({
           );
         }
         if (f.kind === "list") {
-          const text = Array.isArray(val) ? val.join("\n") : "";
-          return (
-            <label key={f.key} className="block space-y-1">
-              <span className="text-xs text-black/60 dark:text-white/60">{f.label}</span>
-              <textarea className={`${inputCls} min-h-20`} placeholder={f.placeholder}
-                value={text}
-                onChange={(e) => onChange(f.key, e.target.value.split("\n").map((x) => x.trim()).filter(Boolean))} />
-            </label>
-          );
+          return <ListField key={f.key} field={f} value={val} className={`${inputCls} min-h-20`} onChange={onChange} />;
         }
         return (
           <label key={f.key} className="block space-y-1">
@@ -312,5 +312,35 @@ function ConfigPanel({
         <p className="text-xs text-black/40 dark:text-white/40">No settings for this block.</p>
       )}
     </div>
+  );
+}
+
+// One option per line. The raw text is kept locally so Enter and spaces work while
+// typing; the node stores the cleaned array (trimmed, blanks dropped).
+function ListField({
+  field,
+  value,
+  className,
+  onChange,
+}: {
+  field: FieldDef;
+  value: unknown;
+  className: string;
+  onChange: (key: string, value: unknown) => void;
+}) {
+  const [text, setText] = useState(() => (Array.isArray(value) ? value.join("\n") : ""));
+  const items = text.split("\n").map((x) => x.trim()).filter(Boolean);
+  const dupes = items.some((x, i) => items.findIndex((y) => y.toLowerCase() === x.toLowerCase()) !== i);
+  return (
+    <label className="block space-y-1">
+      <span className="text-xs text-black/60 dark:text-white/60">{field.label}</span>
+      <textarea className={className} placeholder={field.placeholder}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          onChange(field.key, e.target.value.split("\n").map((x) => x.trim()).filter(Boolean));
+        }} />
+      {dupes && <span className="txt-warn block text-xs">Each option must be different — WhatsApp rejects duplicates.</span>}
+    </label>
   );
 }

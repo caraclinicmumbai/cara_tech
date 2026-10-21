@@ -60,7 +60,7 @@ export const NODE_SPECS: Record<string, NodeSpec> = {
     label: "Send Buttons", group: "send",
     fields: [
       { key: "text", label: "Message", kind: "textarea" },
-      { key: "buttons", label: "Buttons (one per line, max 3)", kind: "list" },
+      { key: "buttons", label: "Buttons (one per line, max 3, ≤20 chars each)", kind: "list" },
     ],
     outputs: (d) => {
       const b = arr(d.buttons).slice(0, 3);
@@ -72,9 +72,13 @@ export const NODE_SPECS: Record<string, NodeSpec> = {
     label: "Send List", group: "send",
     fields: [
       { key: "text", label: "Message", kind: "textarea" },
-      { key: "items", label: "List items (one per line)", kind: "list" },
+      { key: "items", label: "List items (one per line, max 10, ≤24 chars each)", kind: "list" },
+      { key: "variable", label: "Save choice as", kind: "text", placeholder: "e.g. treatment" },
     ],
-    outputs: () => SINGLE,
+    outputs: (d) => {
+      const r = arr(d.items).slice(0, 10);
+      return r.length ? r.map((label, i) => ({ id: `row-${i}`, label })) : SINGLE;
+    },
     summary: (d) => s(d.text) || `${arr(d.items).length} item(s)`,
   },
   send_template: {
