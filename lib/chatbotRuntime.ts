@@ -184,20 +184,30 @@ async function resume(
     return;
   }
 
-  let handle = "out";
-  if (session.waitKind === "ask") {
-    const varName = str(node.data.variable) || node.id;
-    vars[varName] = input.text;
-  } else if (session.waitKind === "buttons") {
-    // The tapped button id (btn-i) picks the branch; fall back to title match.
-    handle = input.interactiveId || matchButtonHandle(node, input.interactiveTitle || input.text) || "out";
-  } else if (session.waitKind === "list") {
-    const varName = str(node.data.variable) || node.id;
-    vars[varName] = input.interactiveTitle || input.text;
+  const ctx: Ctx = { leadId: lead.id, leadName: lead.name, leadPhone: lead.phone, vars };
+  let nextId: string | null;
+  if (session.waitKind === "buttons" || session.waitKind === "list") {
+    // A tap carries the option id (btn-i / row-i); a typed reply or a template
+    // quick-reply payload is matched on the option title instead.
+    const key = session.waitKind === "buttons" ? "buttons" : "items";
+    const prefix = session.waitKind === "buttons" ? "btn" : "row";
+    const options = list((node.data ?? {})[key]);
+    const byId = input.interactiveId && /^(btn|row)-\d+$/.test(input.interactiveId) ? input.interactiveId : null;
+    const handle = byId ?? matchOptionHandle(options, prefix, input.interactiveTitle || input.text);
+    if (!handle) {
+      // Not one of the options — show them again rather than silently ending.
+      await walk(sessionId, graph, node.id, ctx);
+      return;
+    }
+    const chosen = options[Number(handle.split("-")[1])] ?? input.interactiveTitle ?? input.text;
+    vars[str(node.data.variable) || node.id] = chosen;
+    // Each option has its own branch; a single "out" edge (older lists) catches all.
+    nextId = nextTarget(graph, node.id, handle) ?? nextTarget(graph, node.id, "out");
+  } else {
+    if (session.waitKind === "ask") vars[str(node.data.variable) || node.id] = input.text;
+    nextId = nextTarget(graph, node.id, "out");
   }
 
-  const nextId = nextTarget(graph, node.id, handle);
-  const ctx: Ctx = { leadId: lead.id, leadName: lead.name, leadPhone: lead.phone, vars };
   if (!nextId) {
     await endSession(sessionId, vars);
     return;
@@ -339,10 +349,17 @@ function nextTarget(graph: FlowGraph, nodeId: string, handle: string): string | 
   return e?.target ?? null;
 }
 
-function matchButtonHandle(node: FlowNode, title: string): string | null {
-  const buttons = list((node.data ?? {}).buttons);
-  const i = buttons.findIndex((b) => b.toLowerCase() === title.trim().toLowerCase());
-  return i >= 0 ? `btn-${i}` : null;
+/// Match a typed reply to a button / list option by title, ignoring case. Titles
+/// are cut to WhatsApp's limit when sent, so the cut form matches too; a bare
+/// number ("2") picks that option.
+function matchOptionHandle(options: string[], prefix: "btn" | "row", reply: string): string | null {
+  const r = reply.trim().toLowerCase();
+  if (!r) return null;
+  const max = prefix === "btn" ? 20 : 24;
+  options = options.slice(0, prefix === "btn" ? 3 : 10);
+  let i = options.findIndex((o) => o.toLowerCase() === r || o.slice(0, max).toLowerCase() === r);
+  if (i < 0 && /^\d+$/.test(r)) i = Number(r) - 1;
+  return i >= 0 && i < options.length ? `${prefix}-${i}` : null;
 }
 
 /// {{key}} → session var, else lead name/phone, else "".
