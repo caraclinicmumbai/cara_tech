@@ -122,6 +122,23 @@ The chat updates itself — an agent never reloads to see a reply.
 A patient's reply also **re-opens the composer live** — the client derives the 24h window
 from the thread rather than the page's render-time snapshot.
 
+## Chatbot flows (`lib/chatbotRuntime.ts`)
+
+Flows are built on `/chatbot` (`components/flow/FlowBuilder.tsx`, block settings in
+`components/flow/nodeConfig.ts`) and run on inbound WhatsApp messages, or on a stage change.
+
+1. An inbound text, button tap or list pick (never media or voice notes) resumes the lead's
+   active session, or starts the highest-priority flow whose trigger matches.
+2. The runtime walks the graph, sending as it goes, and pauses at an **Ask**, **Buttons**
+   or **List** block until the next reply.
+3. **Buttons** (max 3, ≤20 chars) and **List** items (max 10, ≤24 chars) each have their
+   own branch (`btn-i` / `row-i`). A list wired with one exit still sends every choice
+   through it. The choice is saved to the block's "Save choice as" variable.
+4. A reply is matched by the tapped option id. Failing that, it is matched by typed title
+   (case-insensitive, the cut-down title counts) or by number ("2"). A template quick-reply
+   payload falls back to its title. A reply that matches no option re-sends the
+   buttons / list; the conversation never ends silently.
+
 ## Automated outreach triggers (`lib/outreach.ts`)
 
 Fired from `recordCall` (flow 3), each off unless its template env is set:
@@ -177,5 +194,7 @@ Fired from `recordCall` (flow 3), each off unless its template env is set:
   `scripts/backfillTemplateBodies.ts` rewrites them with the approved body, but their
   parameter values were never recorded, so those bubbles still show `{{1}}`. A row whose
   template is no longer approved reads "Template message — text not recorded".
+- **Chatbot gaps:** Delay blocks don't wait, Jump To ends the flow, Assign Label does
+  nothing. Duplicate button / list titles are rejected by WhatsApp (the builder warns).
 - **One number = one WABA.** This number is independent of any numbers on other BSPs
   (e.g. Zenoti/11za); they don't share threads.
