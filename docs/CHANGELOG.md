@@ -7,6 +7,23 @@ Format: newest first.
 
 ---
 
+## 2026-10-22 — Chatbot buttons and lists work
+
+Commit `5b45b98`, cherry-picked from `dev` without the Appointments module, which stays on
+`dev`. No migration. Flow doc updated: **[06-whatsapp-messaging.md](flows/06-whatsapp-messaging.md)**
+(new Chatbot flows section, limitations).
+
+**Builder.** The Buttons / List items box re-cleaned its text on every keystroke, so Enter
+and spaces were swallowed and only one option could be typed. It now keeps the raw text,
+warns on duplicate options, and re-registers branch dots when options change.
+
+**Runtime.** Each list item now has its own branch, and lists wired with one exit keep
+working. A typed reply matching an option title or number picks that branch. Anything else
+re-sends the buttons / list instead of ending the conversation. **Existing list flows need
+their items wired to branches in the builder.**
+
+---
+
 ## 2026-10-14 — Fixes from the October field test: calls, lead ownership, quotes
 
 Commits `012cea3`, `adcd565`, `fa68861`, `40bc6d3`, cherry-picked from `dev` without the
