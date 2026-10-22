@@ -18,6 +18,7 @@
     "db:seed": "dotenv -e .env.local -- tsx prisma/seed.ts",
     "seed": "tsx prisma/seed.ts",
     "import:catalog": "dotenv -e .env.local -- tsx scripts/importCatalog.ts",
+    "import:leads": "dotenv -e .env.local -- tsx scripts/importLegacyLeads.ts",
     "seed:branch": "dotenv -e .env.local -- tsx scripts/seedDefaultBranch.ts",
     "protect:audit": "dotenv -e .env.local -- tsx scripts/protectAuditLog.ts",
     "backfill:journeys": "dotenv -e .env.local -- tsx scripts/backfillPostSalesJourneys.ts",
