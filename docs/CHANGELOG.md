@@ -7,6 +7,35 @@ Format: newest first.
 
 ---
 
+## 2026-10-26 — Appointments go live on main, and the clinic line answers on Plivo
+
+Merge `8b7e926` (dev → main, everything on `dev`). **13 additive migrations**
+(`20261008052416_scheduling_foundation` … `20261017090000_module_handoffs`, plus main's
+earlier `rep_soft_delete` and `quote_quantity` if production hasn't applied them yet) —
+new tables, and new columns that are nullable or defaulted. Railway applies them with
+`prisma migrate deploy` before the new code starts.
+
+**Appointments (Module 3.2)** — the whole module that had been held on `dev`: rooms and
+staff calendar, cross-branch booking, leave, reminders, online booking, intake forms,
+treatment plans, deposits and Razorpay, and hand-offs to Billing, EMR, Inventory, HR and
+Assets. See **[15-appointments-scheduling.md](flows/15-appointments-scheduling.md)**. The
+new settings (`APP_BASE_URL`, `SES_*`, `RAZORPAY_*`, `PLIVO_SMS_SENDER`, `PLIVO_DLT_*`,
+`WHATSAPP_OTP_*`, `BOOKING_EMBED_ORIGINS`, `INTAKE_PHOTO_RETENTION_MONTHS`) are optional;
+email, SMS, payments and OTP stay off until they are set.
+
+**Inbound calls on Plivo** (`c5ea83a`). A patient calling the 022 number rings the
+counsellor who owns their lead first, then cover. Every inbound call is one call-log row,
+**IVR Incoming** (answered) or **IVR Missed** (nobody picked up, or voicemail). A missed
+call puts "Return missed call" on the owner's roadmap, rings their bell and posts to Slack.
+Needs a Plivo Application on the number (Answer URL `/api/plivo/inbound`, Hangup URL
+`/api/plivo/inbound/hangup`). Flow doc updated:
+**[11-inbound-call-routing.md](flows/11-inbound-call-routing.md)**.
+
+**Legacy lead importer** (`bcbfb45`) — `npm run import:leads`, for previous-CRM CSV
+exports. A script, not a runtime change.
+
+---
+
 ## 2026-10-22 — Chatbot buttons and lists work
 
 Commit `5b45b98`, cherry-picked from `dev` without the Appointments module, which stays on
