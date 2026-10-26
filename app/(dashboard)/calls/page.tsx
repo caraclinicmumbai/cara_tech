@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { formatIst } from "@/lib/datetime";
 import { currentUser, leadWhereForUser } from "@/lib/authz";
 import { callOutcomeLabel } from "@/lib/clickToCallLog";
+import { callTypeLabel, isInboundCallType } from "@/lib/inboundCallLog";
 
 export const dynamic = "force-dynamic";
 
@@ -43,9 +44,19 @@ export default async function CallsPage() {
                     {call.lead.name}
                   </Link>
                 </td>
-                <td>{call.callType}</td>
                 <td>
-                  {call.callType === "human_handover"
+                  {isInboundCallType(call.callType) ? (
+                    <span
+                      className={`tag ${callTypeLabel(call.callType, call.outcome) === "IVR Missed" ? "tag-tangerine" : "tag-aqua"}`}
+                    >
+                      {callTypeLabel(call.callType, call.outcome)}
+                    </span>
+                  ) : (
+                    call.callType
+                  )}
+                </td>
+                <td>
+                  {call.callType === "human_handover" || isInboundCallType(call.callType)
                     ? (call.handledBy?.name ?? "—")
                     : "AI"}
                 </td>

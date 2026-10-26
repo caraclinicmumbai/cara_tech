@@ -4,7 +4,8 @@
 //   1. stores the recording as an inbound Call on the lead (transcribed + scored like
 //      any other call, so the counsellor can read it rather than listen);
 //   2. puts a "Return missed call" step at the top of the owner's roadmap, due now;
-//   3. pings the counsellor channel on Slack.
+//   3. rings the owner's bell and pings the counsellor channel on Slack.
+// It shows in the call log as "IVR Missed".
 //
 // Twilio hits this URL twice for one message — once as the <Record> `action` and once
 // as the `recordingStatusCallback` — so it is idempotent on CallSid.
@@ -12,7 +13,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyTwilioSignature, publicBase } from "@/lib/providers/twilio";
 import { transcribeAndScoreCall } from "@/lib/callTranscription";
-import { notifyCounsellor } from "@/lib/counsellor";
+import { raiseMissedCallFollowUp } from "@/lib/inboundCallLog";
 import { logger } from "@/lib/logger";
 
 const xml = (body: string) =>
@@ -66,38 +67,13 @@ export async function POST(req: Request) {
     },
   });
 
-  // The owner's roadmap gets the callback, at the top and due now. If the lead has no
-  // owner the step still exists (unowned), so it shows on the lead either way.
-  const max = await prisma.leadFollowUpStep.aggregate({
-    where: { leadId },
-    _max: { order: true },
-  });
-  await prisma.leadFollowUpStep.create({
-    data: {
-      leadId,
-      order: (max._max.order ?? -1) + 1,
-      title: "Return missed call",
-      channel: "call",
-      status: "pending",
-      dueAt: new Date(),
-      ownerKind: "rep",
-      ownerRepId: lead.assignedRepId,
-      source: "auto",
-      note: "Patient called the clinic line; nobody was free and they left a voicemail.",
-    },
-  });
-
+  // The owner's roadmap gets the callback, plus a bell and the counsellor channel.
   logger.info(`Inbound voicemail from ${lead.phone} stored on lead ${leadId} (call ${call.id})`);
-
-  void notifyCounsellor({
-    kind: "missed_inbound",
-    lead: { id: lead.id, name: lead.name, phone: lead.phone },
-    reason: "Called the clinic line - nobody was available, voicemail left",
-    extra: [
-      lead.assignedRep?.name ? `Owner: ${lead.assignedRep.name}` : "No owner assigned",
-      duration ? `Message length: ${duration}s` : "",
-    ].filter(Boolean),
-  });
+  await raiseMissedCallFollowUp(
+    lead,
+    `Nobody was free — they left a voicemail${duration ? ` (${duration}s)` : ""}.`,
+    true,
+  );
 
   // Read the message back as text so nobody has to listen to it first.
   if (recordingUrl) void transcribeAndScoreCall(call.id, recordingUrl);

@@ -36,6 +36,7 @@ import { LeadCampaignCard } from "@/components/LeadCampaignCard";
 import { LeadComments } from "@/components/LeadComments";
 import { listFollowUpSteps, followUpQueue } from "@/lib/followups";
 import { callOutcomeLabel } from "@/lib/clickToCallLog";
+import { callTypeLabel, isInboundCallType } from "@/lib/inboundCallLog";
 import { ASSIGNABLE_REP } from "@/lib/salesReps";
 
 export const dynamic = "force-dynamic";
@@ -699,8 +700,9 @@ export default async function LeadDetailPage({
                 className="rounded border border-black/10 p-4 dark:border-white/15"
               >
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                  <span className="font-medium">{call.callType}</span>
-                  {call.callType === "human_handover" && (
+                  <span className="font-medium">{callTypeLabel(call.callType, call.outcome)}</span>
+                  {(call.callType === "human_handover" ||
+                    (isInboundCallType(call.callType) && call.handledBy)) && (
                     <span className="tag tag-blue">
                       Handled by {call.handledBy?.name ?? "—"}
                     </span>

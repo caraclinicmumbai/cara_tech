@@ -28,8 +28,28 @@ who simply doesn't pick up is carried in `tried` and not rung again on that call
 
 ## Trigger
 
-Twilio's Voice webhook on the clinic number. In the Twilio console, set that number's
-**"A CALL COMES IN"** to `POST <TWILIO_PUBLIC_BASE>/api/twilio/inbound`.
+The clinic number's voice webhook. Two carriers run the same ladder:
+
+- **Plivo** (the Indian 022 landline): create a Plivo **Application** with
+  Answer URL `POST <TWILIO_PUBLIC_BASE>/api/plivo/inbound` and
+  Hangup URL `POST <TWILIO_PUBLIC_BASE>/api/plivo/inbound/hangup`, and attach the number to it.
+- **Twilio**: set the number's **"A CALL COMES IN"** to `POST <TWILIO_PUBLIC_BASE>/api/twilio/inbound`.
+
+## In the call log: IVR Incoming / IVR Missed
+
+Every inbound call is one `Call` row of type `inbound`, shown with its own label
+(`callTypeLabel()` in `lib/inboundCallLog.ts`):
+
+| Label | When |
+|---|---|
+| **IVR Incoming** | A counsellor picked up (outcome `connected`), or the call is still ringing through the ladder (`ringing`). *Handled by* names the counsellor who answered |
+| **IVR Missed** | Nobody picked up — the caller hung up while it rang (`missed`), or left a message (`voicemail`). Twilio's older `inbound_voicemail` rows show as IVR Missed too |
+
+On Plivo the row is created on the **first** webhook, before anyone's phone rings, keyed on
+the `CallUUID`, and every later callback updates it — so an unanswered call is in the log
+even when no voicemail was left. A missed call also puts a **"Return missed call"** step
+(due now) on the owner's roadmap, rings the owner's bell (`missed_call`), and posts
+`missed_inbound` to the counsellor channel — once per call, however many callbacks arrive.
 
 ## Step by step
 
@@ -68,7 +88,15 @@ sticky. An unknown caller is assigned once, by intake, and not reassigned.
 
 ### 3. Connect
 
-The TwiML greets the caller (including the recording disclosure, §compliance C1) and
+**Plivo** does the same thing in Plivo XML: `confirmSound` on the `<Dial>` is the
+counsellor-only whisper (`/api/plivo/inbound/whisper`, which also marks the row connected
+and handled by them), a `<Record recordSession>` before the `<Dial>` records the
+conversation onto the same row (`/api/webhooks/plivo/recording?…&inbound=1`), and the
+`<Dial action>` drives the ladder. The counsellor's handset shows the clinic's Plivo number
+(Indian routes require a rented caller ID), which is why the whisper names the caller.
+The Plivo **hang-up** callback settles any row still ringing as IVR Missed.
+
+**Twilio:** the TwiML greets the caller (including the recording disclosure, §compliance C1) and
 `<Dial>`s the chosen counsellor. Two callbacks hang off it:
 
 - **`<Number url=…>` → `/api/twilio/inbound/whisper`** — fetched only when the rep
@@ -92,7 +120,12 @@ everyone happened to be busy.
 
 ### 5. Voicemail
 
-`/api/twilio/inbound/voicemail` stores the message as a `Call` of type
+On Plivo, `/api/plivo/inbound/voicemail` attaches the message to the call's row
+(IVR Missed, outcome `voicemail`) and transcribes it once Plivo says the audio is ready
+(`ready=1`). If the caller hangs up mid-message, the hang-up marks the call missed first and
+the recording upgrades it to voicemail without a second alert.
+
+On Twilio, `/api/twilio/inbound/voicemail` stores the message as a `Call` of type
 **`inbound_voicemail`**, adds a **"Return missed call"** step to the owner's roadmap
 (due immediately), and posts a `missed_inbound` alert to the counsellor channel. The
 recording is transcribed, so nobody has to listen to it to triage it.
@@ -117,6 +150,11 @@ path could make the clinic dial arbitrary numbers.
 | File | Role |
 |------|------|
 | [lib/inboundRouting.ts](../../lib/inboundRouting.ts) | The policy: who takes this call. Provider-agnostic — no TwiML, no webhooks |
+| [lib/inboundCallLog.ts](../../lib/inboundCallLog.ts) | The call-log row (IVR Incoming / IVR Missed) and the missed-call follow-up |
+| [app/api/plivo/inbound/route.ts](<../../app/api/plivo/inbound/route.ts>) | Plivo adapter: answer URL + the fall-through ladder |
+| [app/api/plivo/inbound/whisper/route.ts](<../../app/api/plivo/inbound/whisper/route.ts>) | Plivo counsellor whisper; marks the call connected |
+| [app/api/plivo/inbound/hangup/route.ts](<../../app/api/plivo/inbound/hangup/route.ts>) | Plivo hang-up: an unanswered call becomes IVR Missed |
+| [app/api/plivo/inbound/voicemail/route.ts](<../../app/api/plivo/inbound/voicemail/route.ts>) | Plivo voicemail → the call's row + transcription |
 | [app/api/twilio/inbound/route.ts](<../../app/api/twilio/inbound/route.ts>) | Twilio adapter: entry point + the fall-through ladder |
 | [app/api/twilio/inbound/whisper/route.ts](<../../app/api/twilio/inbound/whisper/route.ts>) | Counsellor whisper + the In-Consultation flip |
 | [app/api/twilio/inbound/voicemail/route.ts](<../../app/api/twilio/inbound/voicemail/route.ts>) | Message → Call + roadmap step + Slack |
@@ -139,9 +177,14 @@ does not move.
 
 ## Limitations
 
-- **Not wired to a live number yet.** Production carries no Twilio configuration at
-  all, and the number on the website is not yet pointed at this webhook. Everything
-  here is verified against signed simulated Twilio requests, not a real call.
+- **Not wired to a live number yet.** The Plivo number needs an Application pointing at
+  the two URLs above. Everything here is verified against signed simulated Plivo and Twilio
+  requests, not a real call.
+- **The owner is rung only while their status is Available.** A counsellor marked
+  offline / on break / in consultation is skipped and the call goes to cover — keep
+  presence up to date, or patients will reach someone else.
+- **On Twilio, a caller who hangs up without leaving a voicemail leaves no row.** Only the
+  Plivo adapter logs the call from its first ring.
 - **A Twilio +91 number needs India regulatory approval** (KYC bundle, address proof)
   before it can receive calls, and Indian carriers restrict what caller ID may be
   presented. If the console rejects the caller ID, the rep's leg will need to show a

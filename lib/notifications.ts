@@ -17,6 +17,7 @@ import { logger } from "@/lib/logger";
 ///   handover_cover — someone else's lead needs covering while its owner is away
 ///   access_grant   — you were given temporary access to a lead you don't own
 ///   call_failed    — a click-to-call you started never reached the patient
+///   missed_call    — your patient rang the clinic line and nobody picked up
 ///   followup_due   — a follow-up you own has come due (§follow-up reminders)
 ///   appointment_rebooking — appointments need rebooking (§3.2 2.9: leave, roster change)
 ///   leave_request  — a doctor's leave is waiting for your approval (§3.2 2.9)
@@ -26,6 +27,7 @@ export type NotificationKind =
   | "handover_cover"
   | "access_grant"
   | "call_failed"
+  | "missed_call"
   | "followup_due"
   | "appointment_rebooking"
   | "leave_request"

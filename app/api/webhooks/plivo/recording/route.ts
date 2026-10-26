@@ -7,15 +7,16 @@
 //   • the row is stamped `provider: "plivo"`, which is what lets the audio be fetched or
 //     ERASED later. Without it a DPDP erasure would be dispatched at Twilio and fail quietly.
 //
-// A click-to-call already has its row (created at the click, id on this url as `callId`), so
-// the recording is attached to it rather than filed as a second call.
+// A click-to-call already has its row (created at the click, id on this url as `callId`), and
+// so does an inbound call (created at its first ring, `inbound=1`) — the recording is attached
+// to it rather than filed as a second call.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyPlivoSignature, publicBase } from "@/lib/providers/plivo";
 import { transcribeAndScoreCall } from "@/lib/callTranscription";
 import { endConsultation } from "@/lib/presence";
 import { logger } from "@/lib/logger";
-import { findClickToCall } from "@/lib/clickToCallLog";
+import { findClickToCall, findLoggedCall } from "@/lib/clickToCallLog";
 
 export async function POST(req: Request) {
   const url = new URL(req.url);
@@ -53,7 +54,11 @@ export async function POST(req: Request) {
   void rawDuration;
 
   const sid = params.CallUUID;
-  const existingRow = await findClickToCall(url.searchParams.get("callId"), leadId);
+  const isInbound = url.searchParams.get("inbound") === "1";
+  // An inbound call was logged at its first ring (lib/inboundCallLog.ts) — same treatment.
+  const existingRow = isInbound
+    ? await findLoggedCall(url.searchParams.get("callId"), leadId, "inbound")
+    : await findClickToCall(url.searchParams.get("callId"), leadId);
 
   let call: { id: string };
   if (existingRow) {
@@ -67,6 +72,8 @@ export async function POST(req: Request) {
         recordingUrl,
         ...(Number.isFinite(duration) ? { duration } : {}),
         ...(sid && !existingRow.providerSid ? { providerSid: sid } : {}),
+        // The counsellor who took the inbound call (the one on this url's leg).
+        ...(isInbound && repId && !existingRow.handledById ? { handledById: repId } : {}),
         // The patient heard the disclosure via `confirmSound` before the legs bridged (§C1).
         recordingConsent: true,
       },
@@ -86,8 +93,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, duplicate: true }, { status: 200 });
       }
     }
-
-    const isInbound = url.searchParams.get("inbound") === "1";
 
     call = await prisma.call.create({
       data: {

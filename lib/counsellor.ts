@@ -27,7 +27,7 @@ const HEADERS: Record<CounsellorAlertKind, string> = {
   threat: "🚨 Threat / abusive lead flagged",
   premature_lost: "⚠️ Premature lost — review",
   stage_sla: "⏰ Lead stuck in stage",
-  missed_inbound: "📞 Missed inbound call — voicemail left",
+  missed_inbound: "📞 Missed inbound call",
 };
 
 /// Where counsellor notifications go — a counsellor/supervisor channel or Slack
