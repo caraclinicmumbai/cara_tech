@@ -14,6 +14,7 @@
 // conversion (§multi-quote): a patient who converts two treatments gets two records,
 // each with its own quotation, sharing the person-level history.
 import { prisma } from "@/lib/prisma";
+import { callTypeLabel, isInboundCallType } from "@/lib/inboundCallLog";
 import { computeQuoteTotals, QUOTE_STATUS_LABELS, QUOTE_SOURCE_LABELS, type QuoteStatus, type QuoteSource } from "@/lib/quoteStages";
 import { stageLabel } from "@/lib/leadStages";
 
@@ -212,7 +213,11 @@ export async function getPatientHistory(quoteId: string): Promise<PatientHistory
     timeline.push({
       at: c.at,
       kind: "call",
-      channel: c.type === "human_handover" ? "Human call" : "AI call",
+      channel: isInboundCallType(c.type)
+        ? callTypeLabel(c.type, c.outcome)
+        : c.type === "human_handover"
+          ? "Human call"
+          : "AI call",
       summary: c.cqsSummary ?? `${c.type.replace(/_/g, " ")} call`,
       actor: c.handledBy,
       detail: [

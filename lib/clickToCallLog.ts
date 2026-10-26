@@ -53,9 +53,19 @@ export function callOutcomeLabel(outcome: string | null | undefined, createdAt?:
 /// callId arrives in a URL; the signature check proves the provider sent it, and this
 /// proves it points where the leadId beside it says.
 export async function findClickToCall(callId: string | null, leadId: string): Promise<Call | null> {
+  return findLoggedCall(callId, leadId, "human_handover");
+}
+
+/// Same check for any call type — the inbound ladder (lib/inboundCallLog.ts) threads its row
+/// id through the recording callback the same way.
+export async function findLoggedCall(
+  callId: string | null,
+  leadId: string,
+  callType: string,
+): Promise<Call | null> {
   if (!callId) return null;
   const call = await prisma.call.findUnique({ where: { id: callId } });
-  if (!call || call.leadId !== leadId || call.callType !== "human_handover") return null;
+  if (!call || call.leadId !== leadId || call.callType !== callType) return null;
   return call;
 }
 

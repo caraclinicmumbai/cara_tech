@@ -705,6 +705,7 @@ export function QuotesPanel({
                         createLeadQuote({
                           leadId,
                           treatment: nq.treatment,
+                          catalogItemId: nq.catalogItemId || null,
                           price: nq.price || null,
                           quantity: nq.quantity || null,
                           discountType: nq.discountValue ? nq.discountUnit : null,

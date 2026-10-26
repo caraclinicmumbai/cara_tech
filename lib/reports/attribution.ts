@@ -30,6 +30,9 @@ export type AttributionRow = {
   paid: boolean;
   leads: number;
   consultations: number;
+  /// Patients who actually CAME to an appointment (checked in or later) — read from the
+  /// calendar (§3, 3.10), not inferred from stage. What campaign ROI should divide by.
+  attended: number;
   /// Converted quotes belonging to those leads — "surgeries" in the clinic's words.
   /// A patient who converts two treatments is two surgeries, which is what cost-per-
   /// surgery should divide by: the clinic performs (and is paid for) each one.
@@ -50,6 +53,7 @@ export type AttributionRow = {
   /// incomplete range. The page renders these as "unavailable", never as ₹0.
   costPerLead: number | null;
   costPerConsultation: number | null;
+  costPerAttended: number | null;
   costPerSurgery: number | null;
   /// Return on ad spend, revenue ÷ spend. Same withholding rules.
   roas: number | null;
@@ -60,6 +64,7 @@ export type AttributionReport = {
   totals: {
     leads: number;
     consultations: number;
+    attended: number;
     surgeries: number;
     revenue: number;
     spend: number | null;
@@ -80,6 +85,7 @@ export async function sourceAttribution(range: DateRange): Promise<AttributionRe
         id: true,
         source: true,
         stage: true,
+        _count: { select: { appointments: { where: { status: { in: ["checked_in", "in_progress", "completed"] } } } } },
         quotes: {
           select: {
             status: true,
@@ -100,6 +106,7 @@ export async function sourceAttribution(range: DateRange): Promise<AttributionRe
   type Group = {
     leads: number;
     consultations: number;
+    attended: number;
     surgeries: number;
     patientsWithSurgery: number;
     revenue: number;
@@ -107,6 +114,7 @@ export async function sourceAttribution(range: DateRange): Promise<AttributionRe
   const blank = (): Group => ({
     leads: 0,
     consultations: 0,
+    attended: 0,
     surgeries: 0,
     patientsWithSurgery: 0,
     revenue: 0,
@@ -126,6 +134,7 @@ export async function sourceAttribution(range: DateRange): Promise<AttributionRe
     }
     if (hadSurgery) g.patientsWithSurgery += 1;
     if (bookedConsultation(l.stage, hadSurgery)) g.consultations += 1;
+    if (l._count.appointments > 0) g.attended += 1;
     groups.set(key, g);
   }
 
@@ -149,6 +158,7 @@ export async function sourceAttribution(range: DateRange): Promise<AttributionRe
       paid,
       leads: g.leads,
       consultations: g.consultations,
+      attended: g.attended,
       surgeries: g.surgeries,
       patientsWithSurgery: g.patientsWithSurgery,
       revenue: g.revenue,
@@ -159,6 +169,7 @@ export async function sourceAttribution(range: DateRange): Promise<AttributionRe
       daysMissing: cov?.daysMissing.length ?? 0,
       costPerLead: per(g.leads),
       costPerConsultation: per(g.consultations),
+      costPerAttended: per(g.attended),
       costPerSurgery: per(g.surgeries),
       roas: usable && cov!.amount > 0 ? g.revenue / cov!.amount : null,
     };
@@ -173,6 +184,7 @@ export async function sourceAttribution(range: DateRange): Promise<AttributionRe
     totals: {
       leads: sum((r) => r.leads),
       consultations: sum((r) => r.consultations),
+      attended: sum((r) => r.attended),
       surgeries: sum((r) => r.surgeries),
       revenue: sum((r) => r.revenue),
       // A total spend is only stated when every paid source is fully covered; a partial

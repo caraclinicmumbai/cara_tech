@@ -28,10 +28,14 @@ import { sweepIdle, IDLE_MINUTES } from "@/lib/presence";
 import { runFollowUpReminders } from "@/lib/followUpReminders";
 import { runCampaignTick } from "@/lib/campaigns/engine";
 import { runWinBackSweep } from "@/lib/campaigns/winback";
-import { runRetentionPurge, retentionMonths } from "@/lib/dataRetention";
+import { runRetentionPurge, retentionMonths, runSchedulingRetention, intakePhotoRetentionMonths } from "@/lib/dataRetention";
 import { runCheckInTick, checkInsEnabled } from "@/lib/postSales/checkins";
 import { runPostSalesSlaScan, reconcileMissingJourneys } from "@/lib/postSales/sla";
 import { campaignsEnabled } from "@/lib/campaigns/types";
+import { expireHolds } from "@/lib/scheduling/booking";
+import { escalateOverdueCases } from "@/lib/scheduling/conflicts";
+import { processDueReminders } from "@/lib/scheduling/reminders";
+import { processRecalls } from "@/lib/scheduling/series";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -221,13 +225,61 @@ logger.info(`Post-sales SLA scan active (every ${POSTSALES_SLA_MS / 3_600_000} h
 // on calls older than DATA_RETENTION_MONTHS. OFF unless that env is set (runRetentionPurge
 // no-ops when unset), so nothing is destroyed until the clinic chooses a window.
 const RETENTION_SCAN_MS = Number(process.env.RETENTION_SCAN_HOURS ?? 24) * 60 * 60_000;
-const runRetention = () =>
+const runRetention = () => {
   runRetentionPurge().catch((err) => logger.error(`Retention purge error: ${String(err)}`));
+  // §3/§4: expired OTP codes always; intake photos only past INTAKE_PHOTO_RETENTION_MONTHS.
+  runSchedulingRetention().catch((err) => logger.error(`Scheduling retention error: ${String(err)}`));
+};
 runRetention();
 setInterval(runRetention, RETENTION_SCAN_MS);
 logger.info(
   `Data-retention purge ${retentionMonths() ? `active (>${retentionMonths()}mo, scan every ${RETENTION_SCAN_MS / 3_600_000}h)` : "idle (DATA_RETENTION_MONTHS unset)"}`,
 );
+logger.info(
+  `Intake photo retention ${intakePhotoRetentionMonths() ? `active (>${intakePhotoRetentionMonths()}mo)` : "idle (INTAKE_PHOTO_RETENTION_MONTHS unset)"}; expired OTP codes purged after 7 days`,
+);
+
+// Appointment holds (§3.2) — a tentative slot (online booking in progress) lapses
+// after its hold window and frees the room/doctor. Polled every minute; holds are
+// minutes long, so a coarser tick would keep a slot locked noticeably past expiry.
+const HOLD_SWEEP_MS = 60_000;
+const runHoldSweep = () =>
+  expireHolds()
+    .then((n) => n && logger.info(`Expired ${n} appointment hold(s)`))
+    .catch((err) => logger.error(`Appointment hold sweep error: ${String(err)}`));
+setInterval(runHoldSweep, HOLD_SWEEP_MS);
+logger.info("Appointment hold sweep active (every 1 min)");
+
+// Appointment reminders (§3.2 2.4) — every minute, send what has come due. While the
+// module's reminders switch is off the tick marks due ones skipped instead, so turning
+// it on never sends a backlog.
+const runReminders = () =>
+  processDueReminders()
+    .then((t) => (t.sent || t.failed) && logger.info(`Reminders: ${t.sent} sent, ${t.failed} failed, ${t.skipped} skipped`))
+    .catch((err) => logger.error(`Reminder tick error: ${String(err)}`));
+setInterval(runReminders, 60_000);
+logger.info("Appointment reminder tick active (every 1 min)");
+
+// Treatment-plan recall (§3.2 2.8.d) — hourly: WhatsApp when a planned session's
+// window opens, WhatsApp + SMS at day 3, a call task at day 7. A no-op while the
+// clinic's recall switch is off.
+const runRecalls = () =>
+  processRecalls()
+    .then((t) => (t.sent || t.callTasks) && logger.info(`Recall: ${t.sent} message(s), ${t.callTasks} call task(s)`))
+    .catch((err) => logger.error(`Recall tick error: ${String(err)}`));
+setInterval(runRecalls, 60 * 60_000);
+logger.info("Treatment-plan recall active (hourly)");
+
+// Rebooking escalation (§3.2 2.9) — an appointment stranded by leave or a roster change
+// that nobody has rebooked by its due time escalates once to the owner, admins and the
+// sales head. Half-hourly is plenty: due times are hours-to-days ahead.
+const REBOOKING_ESCALATION_MS = 30 * 60_000;
+const runRebookingEscalation = () =>
+  escalateOverdueCases()
+    .then((n) => n && logger.info(`Escalated ${n} overdue rebooking case(s)`))
+    .catch((err) => logger.error(`Rebooking escalation error: ${String(err)}`));
+setInterval(runRebookingEscalation, REBOOKING_ESCALATION_MS);
+logger.info("Rebooking escalation active (every 30 min)");
 
 // Branch Manager daily digest — a repeatable (cron) job fires once a day at
 // DIGEST_HOUR_IST; this worker registers it and processes it (§3.1).

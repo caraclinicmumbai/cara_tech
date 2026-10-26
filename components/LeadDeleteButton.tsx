@@ -14,7 +14,7 @@ export function LeadDeleteButton({ leadId, name }: { leadId: string; name: strin
       title="Move to Deleted"
       disabled={pending}
       onClick={() => {
-        if (!window.confirm(`Move "${name}" to the Deleted section? You can restore it later.`)) return;
+        if (!window.confirm(`Move "${name}" to the Deleted section? You can restore it later, but any upcoming appointments are cancelled now and won't come back.`)) return;
         startTransition(async () => {
           const res = await softDeleteLead(leadId);
           if (res.ok) router.refresh();

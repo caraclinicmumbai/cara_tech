@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { callTypeLabel } from "@/lib/inboundCallLog";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -180,7 +181,7 @@ export default async function CqsPage() {
                       </Link>
                     </td>
                     <td className={`px-4 py-2 whitespace-nowrap font-medium ${tone(c.cqs as number)}`}>{c.cqs}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">{c.callType}</td>
+                    <td className="px-4 py-2 whitespace-nowrap">{callTypeLabel(c.callType)}</td>
                     <td className="max-w-md px-4 py-2 text-black/70 dark:text-white/70">
                       {(c.cqsBreakdown as Record<string, unknown> | null)?.summary as string | undefined}
                     </td>

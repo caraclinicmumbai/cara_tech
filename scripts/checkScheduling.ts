@@ -1,0 +1,1480 @@
+// Self-check for the scheduling engine (§3.2). Two parts:
+//
+//   1. ENGINE — the pure rules, no database: rooms never double, doctors double only
+//      with an acknowledged warning (and only when allowed), branch hours / closures,
+//      rosters, leave, support-staff requirements, auto-fill, slot finding — and the
+//      spec §2.1 rules: equipment warns, consultation rooms are overridable, OT never,
+//      the doctor is always named, and the Rohan Mehta worked example.
+//   2. DATABASE — the guarantee under concurrency: fire many simultaneous bookings at
+//      one room and confirm exactly one wins; reschedule frees the old slot; status
+//      changes release resources. Creates its own fixtures and deletes them after.
+//
+// Usage: npm run check:scheduling            (both parts)
+//        CHECK_DB=0 npm run check:scheduling (engine only)
+import assert from "node:assert/strict";
+import {
+  evaluateSlot,
+  explainDay,
+  findSlots,
+  type DayContext,
+  type EngineResource,
+  type EngineToggles,
+  type Requirement,
+} from "../lib/scheduling/engine";
+import { istDateKey, istInstant, MINUTE_MS } from "../lib/scheduling/time";
+
+let passed = 0;
+function check(name: string, fn: () => void | Promise<void>) {
+  return Promise.resolve()
+    .then(fn)
+    .then(
+    () => {
+      passed++;
+      console.log(`  ok   ${name}`);
+    },
+    (err) => {
+      console.error(`  FAIL ${name}\n       ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    },
+  );
+}
+
+// ── Part 1: engine ───────────────────────────────────────────────────────────
+
+const DAY = "2030-01-15"; // a Tuesday, safely in the future
+const NOW = istInstant("2030-01-01", 0);
+const TOGGLES: EngineToggles = {
+  allowDoctorDoubleBooking: true,
+  enforceBranchHours: true,
+  enforceStaffRosters: true,
+  requireSupportStaff: true,
+  blockEquipment: false,
+};
+
+function res(p: Partial<EngineResource> & Pick<EngineResource, "id" | "kind">): EngineResource {
+  return {
+    subtype: null,
+    name: p.id,
+    branchId: "B1",
+    active: true,
+    sortOrder: 0,
+    allowOverride: false,
+    rosterHere: [],
+    hasRoster: false,
+    timeOff: [],
+    ...p,
+  };
+}
+
+function ctx(over: Partial<DayContext> = {}, resources: EngineResource[] = BASE): DayContext {
+  return {
+    branchId: "B1",
+    dateKey: DAY,
+    open: [{ startMin: 10 * 60, endMin: 20 * 60 }],
+    closures: [],
+    resources: new Map(resources.map((r) => [r.id, r])),
+    busy: [],
+    toggles: TOGGLES,
+    travelMinutes: (a: string, b: string) => (a === b ? 0 : 120),
+    branchNames: new Map([["B1", "Andheri"], ["B2", "Powai"]]),
+    ...over,
+  };
+}
+
+const BASE: EngineResource[] = [
+  res({ id: "drA", kind: "doctor", branchId: null }),
+  res({ id: "drB", kind: "doctor", branchId: null, sortOrder: 1 }),
+  res({ id: "room1", kind: "room", subtype: "consultation", allowOverride: true }),
+  res({ id: "ot1", kind: "room", subtype: "ot" }),
+  res({ id: "tech1", kind: "staff", subtype: "technician", branchId: null }),
+  res({ id: "tech2", kind: "staff", subtype: "technician", branchId: null }),
+  res({ id: "otherRoom", kind: "room", subtype: "consultation", branchId: "B2" }),
+  res({ id: "laser1", kind: "equipment", subtype: "laser" }),
+];
+
+const CONSULT: Requirement[] = [
+  { kind: "doctor", subtype: null, resourceId: null, quantity: 1 },
+  { kind: "room", subtype: "consultation", resourceId: null, quantity: 1 },
+];
+const FUE: Requirement[] = [
+  { kind: "doctor", subtype: null, resourceId: null, quantity: 1 },
+  { kind: "room", subtype: "ot", resourceId: null, quantity: 1 },
+  { kind: "staff", subtype: "technician", resourceId: null, quantity: 2 },
+];
+
+function slot(startMin: number, durationMin: number, extra: Partial<Parameters<typeof evaluateSlot>[1]> = {}) {
+  const startAt = istInstant(DAY, startMin);
+  const endAt = new Date(startAt.getTime() + durationMin * MINUTE_MS);
+  return { startAt, endAt, holdUntil: endAt, requirements: CONSULT, chosenIds: [], now: NOW, ...extra };
+}
+
+function busy(resourceId: string, startMin: number, endMin: number, appointmentId = "existing", branchId = "B1") {
+  return { resourceId, appointmentId, branchId, startAt: istInstant(DAY, startMin), endAt: istInstant(DAY, endMin) };
+}
+
+async function engineChecks() {
+  console.log("Engine");
+
+  await check("free slot books with the chosen doctor + an auto-filled room", () => {
+    const r = evaluateSlot(ctx(), slot(11 * 60, 30, { chosenIds: ["drA"] }));
+    assert.equal(r.ok, true);
+    assert.equal(r.needsAck, false);
+    assert.deepEqual(r.resourceIds.sort(), ["drA", "room1"]);
+  });
+
+  await check("room is NEVER double-booked", () => {
+    const r = evaluateSlot(ctx({ busy: [busy("room1", 11 * 60, 12 * 60)] }), slot(11 * 60 + 30, 30, { chosenIds: ["room1"] }));
+    assert.equal(r.ok, false);
+    assert.ok(r.issues.some((i) => i.code === "double_booked" && i.resourceId === "room1"));
+  });
+
+  await check("room clash with no room chosen → requirement unfilled", () => {
+    const r = evaluateSlot(ctx({ busy: [busy("room1", 11 * 60, 12 * 60)] }), slot(11 * 60, 30, { chosenIds: ["drA"] }));
+    assert.equal(r.ok, false);
+    assert.ok(r.issues.some((i) => i.code === "requirement_unfilled"));
+  });
+
+  await check("back-to-back is not a clash (half-open intervals)", () => {
+    const r = evaluateSlot(ctx({ busy: [busy("room1", 11 * 60, 12 * 60)] }), slot(12 * 60, 30, { chosenIds: ["drA", "room1"] }));
+    assert.equal(r.ok, true);
+  });
+
+  await check("chosen doctor already booked → warning needing acknowledgement", () => {
+    const r = evaluateSlot(ctx({ busy: [busy("drA", 11 * 60, 12 * 60)] }), slot(11 * 60, 30, { chosenIds: ["drA"] }));
+    assert.equal(r.ok, true);
+    assert.equal(r.needsAck, true);
+    assert.ok(r.issues.some((i) => i.code === "doctor_overbooked"));
+  });
+
+  await check("doctor double-booking OFF → doctor blocks like a room", () => {
+    const r = evaluateSlot(
+      ctx({ busy: [busy("drA", 11 * 60, 12 * 60)], toggles: { ...TOGGLES, allowDoctorDoubleBooking: false } }),
+      slot(11 * 60, 30, { chosenIds: ["drA"] }),
+    );
+    assert.equal(r.ok, false);
+    assert.ok(r.issues.some((i) => i.code === "double_booked" && i.resourceId === "drA"));
+  });
+
+  await check("the doctor is never auto-picked (patients book a named surgeon)", () => {
+    const r = evaluateSlot(ctx(), slot(11 * 60, 30));
+    assert.equal(r.ok, false);
+    assert.ok(r.issues.some((i) => i.code === "doctor_not_chosen"));
+  });
+
+  await check("rescheduling ignores the appointment's own current slot", () => {
+    const r = evaluateSlot(
+      ctx({ busy: [busy("room1", 11 * 60, 12 * 60, "me")] }),
+      slot(11 * 60 + 15, 30, { chosenIds: ["drA", "room1"], ignoreAppointmentIds: ["me"] }),
+    );
+    assert.equal(r.ok, true);
+  });
+
+  await check("turnover buffer keeps the room blocked after the patient leaves", () => {
+    const c = ctx({ busy: [busy("ot1", 11 * 60, 12 * 60 + 30)] }); // 60 min + 30 buffer
+    const r = evaluateSlot(c, slot(12 * 60 + 15, 30, { requirements: FUE, chosenIds: ["drA", "ot1"] }));
+    assert.equal(r.ok, false);
+  });
+
+  await check("outside branch hours is blocked", () => {
+    const r = evaluateSlot(ctx(), slot(19 * 60 + 45, 30, { chosenIds: ["drA"] }));
+    assert.ok(r.issues.some((i) => i.code === "outside_hours" && i.severity === "block"));
+  });
+
+  await check("branch hours not enforced → only a warning", () => {
+    const r = evaluateSlot(ctx({ toggles: { ...TOGGLES, enforceBranchHours: false } }), slot(19 * 60 + 45, 30, { chosenIds: ["drA"] }));
+    assert.equal(r.ok, true);
+    assert.ok(r.issues.some((i) => i.code === "outside_hours" && i.severity === "warn"));
+  });
+
+  await check("closed day (holiday) is blocked", () => {
+    const r = evaluateSlot(ctx({ open: [], closures: [{ startMin: 0, endMin: 1440, reason: "Diwali" }] }), slot(11 * 60, 30));
+    assert.equal(r.ok, false);
+    assert.ok(r.issues.some((i) => i.code === "branch_closed"));
+  });
+
+  await check("partial closure blocks only its hours", () => {
+    const c = ctx({ closures: [{ startMin: 14 * 60, endMin: 16 * 60, reason: "Maintenance" }] });
+    assert.equal(evaluateSlot(c, slot(14 * 60 + 30, 30, { chosenIds: ["drA"] })).ok, false);
+    assert.equal(evaluateSlot(c, slot(11 * 60, 30, { chosenIds: ["drA"] })).ok, true);
+  });
+
+  await check("rostered doctor is only bookable inside the roster", () => {
+    const rostered = BASE.map((r) =>
+      r.id === "drA" ? { ...r, hasRoster: true, rosterHere: [{ startMin: 10 * 60, endMin: 14 * 60 }] } : r,
+    );
+    const inside = evaluateSlot(ctx({}, rostered), slot(11 * 60, 30, { chosenIds: ["drA"] }));
+    const outside = evaluateSlot(ctx({}, rostered), slot(15 * 60, 30, { chosenIds: ["drA"] }));
+    assert.equal(inside.ok, true);
+    assert.equal(outside.ok, false);
+    assert.ok(outside.issues.some((i) => i.code === "off_roster"));
+  });
+
+  await check("doctor on leave is blocked", () => {
+    const onLeave = BASE.map((r) =>
+      r.id === "drA" ? { ...r, timeOff: [{ startAt: istInstant(DAY, 0), endAt: istInstant(DAY, 1440), reason: "Leave" }] } : r,
+    );
+    const r = evaluateSlot(ctx({}, onLeave), slot(11 * 60, 30, { chosenIds: ["drA"] }));
+    assert.equal(r.ok, false);
+    assert.ok(r.issues.some((i) => i.code === "time_off"));
+  });
+
+  await check("FUE reserves doctor + OT + two technicians", () => {
+    const r = evaluateSlot(ctx(), slot(10 * 60, 8 * 60, { requirements: FUE, chosenIds: ["drA"] }));
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.resourceIds.sort(), ["drA", "ot1", "tech1", "tech2"]);
+  });
+
+  await check("FUE refused when the technician team isn't free", () => {
+    const r = evaluateSlot(ctx({ busy: [busy("tech2", 12 * 60, 13 * 60)] }), slot(10 * 60, 8 * 60, { requirements: FUE, chosenIds: ["drA"] }));
+    assert.equal(r.ok, false);
+    assert.ok(r.issues.some((i) => i.code === "requirement_unfilled" && i.message.includes("technician")));
+  });
+
+  await check("support-staff scheduling OFF → staff requirement ignored", () => {
+    const r = evaluateSlot(
+      ctx({ busy: [busy("tech2", 12 * 60, 13 * 60)], toggles: { ...TOGGLES, requireSupportStaff: false } }),
+      slot(10 * 60, 8 * 60, { requirements: FUE, chosenIds: ["drA"] }),
+    );
+    assert.equal(r.ok, true);
+  });
+
+  await check("a room in another branch can't be used", () => {
+    const r = evaluateSlot(ctx(), slot(11 * 60, 30, { chosenIds: ["otherRoom"] }));
+    assert.ok(r.issues.some((i) => i.code === "wrong_branch"));
+  });
+
+  await check("past start is refused unless back-dating is allowed", () => {
+    const later = istInstant(DAY, 12 * 60);
+    assert.equal(evaluateSlot(ctx(), slot(11 * 60, 30, { now: later, chosenIds: ["drA"] })).ok, false);
+    assert.equal(evaluateSlot(ctx(), slot(11 * 60, 30, { now: later, allowPast: true, chosenIds: ["drA"] })).ok, true);
+  });
+
+  await check("findSlots skips taken times and respects hours", () => {
+    const c = ctx({ busy: [busy("room1", 10 * 60, 19 * 60)] });
+    const slots = findSlots(c, { durationMin: 30, bufferAfterMin: 0, requirements: CONSULT, chosenIds: ["drA"], stepMin: 30, now: NOW, istInstant });
+    // room1 is the only consultation room in B1; free 19:00–20:00 → 19:00 and 19:30.
+    assert.deepEqual(slots.map((s) => s.startAt.getTime()), [istInstant(DAY, 19 * 60).getTime(), istInstant(DAY, 19 * 60 + 30).getTime()]);
+  });
+}
+
+async function spec21Checks() {
+  console.log("Spec 2.1 — rooms & OT team block; doctors & equipment warn");
+
+  const LASER: Requirement[] = [
+    { kind: "doctor", subtype: null, resourceId: null, quantity: 1 },
+    { kind: "room", subtype: "consultation", resourceId: null, quantity: 1 },
+    { kind: "equipment", subtype: "laser", resourceId: null, quantity: 1 },
+  ];
+
+  await check("equipment in use → warning to acknowledge, not a block", () => {
+    const r = evaluateSlot(ctx({ busy: [busy("laser1", 11 * 60, 12 * 60)] }), slot(11 * 60, 30, { requirements: LASER, chosenIds: ["drA", "laser1"] }));
+    assert.equal(r.ok, true);
+    assert.equal(r.needsAck, true);
+    assert.ok(r.issues.some((i) => i.code === "equipment_overbooked"));
+  });
+
+  await check("a NAMED machine in use (type requirement, not chosen) still only warns", () => {
+    const named: Requirement[] = [
+      { kind: "doctor", subtype: null, resourceId: null, quantity: 1 },
+      { kind: "equipment", subtype: null, resourceId: "laser1", quantity: 1 },
+    ];
+    const r = evaluateSlot(ctx({ busy: [busy("laser1", 11 * 60, 12 * 60)] }), slot(11 * 60, 30, { requirements: named, chosenIds: ["drA"] }));
+    assert.equal(r.ok, true);
+    assert.equal(r.needsAck, true);
+    assert.ok(r.resourceIds.includes("laser1"));
+  });
+
+  await check("'Block equipment' switch ON → equipment blocks like a room", () => {
+    const r = evaluateSlot(
+      ctx({ busy: [busy("laser1", 11 * 60, 12 * 60)], toggles: { ...TOGGLES, blockEquipment: true } }),
+      slot(11 * 60, 30, { requirements: LASER, chosenIds: ["drA", "laser1"] }),
+    );
+    assert.equal(r.ok, false);
+  });
+
+  await check("equipment under maintenance → warning when equipment isn't blocked", () => {
+    const down = BASE.map((x) => (x.id === "laser1" ? { ...x, timeOff: [{ startAt: istInstant(DAY, 0), endAt: istInstant(DAY, 1440), reason: "Calibration" }] } : x));
+    const r = evaluateSlot(ctx({}, down), slot(11 * 60, 30, { requirements: LASER, chosenIds: ["drA", "laser1"] }));
+    assert.equal(r.ok, true);
+    assert.equal(r.needsAck, true);
+  });
+
+  await check("consultation-room clash is blocked but overridable…", () => {
+    const r = evaluateSlot(ctx({ busy: [busy("room1", 11 * 60, 12 * 60)] }), slot(11 * 60, 30, { chosenIds: ["drA", "room1"] }));
+    assert.equal(r.ok, false);
+    assert.equal(r.overridable, true);
+  });
+
+  await check("…and a branch-manager override lets it through, marked", () => {
+    const r = evaluateSlot(ctx({ busy: [busy("room1", 11 * 60, 12 * 60)] }), slot(11 * 60, 30, { chosenIds: ["drA", "room1"], override: true }));
+    assert.equal(r.ok, true);
+    assert.ok(r.issues.some((i) => i.code === "room_overridden"));
+  });
+
+  await check("an OT clash can NEVER be overridden", () => {
+    const r = evaluateSlot(
+      ctx({ busy: [busy("ot1", 10 * 60, 12 * 60)] }),
+      slot(10 * 60, 8 * 60, { requirements: FUE, chosenIds: ["drA", "ot1"], override: true }),
+    );
+    assert.equal(r.ok, false);
+    assert.equal(r.overridable, false);
+  });
+
+  await check("an OT-team clash can NEVER be overridden", () => {
+    const r = evaluateSlot(
+      ctx({ busy: [busy("tech1", 10 * 60, 12 * 60)] }),
+      slot(10 * 60, 8 * 60, { requirements: FUE, chosenIds: ["drA", "tech1"], override: true }),
+    );
+    assert.equal(r.ok, false);
+  });
+
+  // The spec's worked example, under the clinic's decisions: Rohan Mehta, FUE, 8h +
+  // 45 min OT turnover, Dr Asif, OT-1, device set A, 3 technicians. Saturday: the
+  // device is busy 08:00–12:00 (now only a warning) and only 2 of 3 technicians are
+  // free after 13:00 (still a block). Sunday: all free.
+  const SAT = "2030-01-19";
+  const SUN = "2030-01-20";
+  const rohanRes: EngineResource[] = [
+    res({ id: "drAsif", name: "Dr Asif", kind: "doctor", branchId: null }),
+    res({ id: "ot1", name: "OT-1", kind: "room", subtype: "ot" }),
+    res({ id: "ot2", name: "OT-2", kind: "room", subtype: "ot" }),
+    res({ id: "devA", name: "Extraction device set A", kind: "equipment", subtype: "extraction" }),
+    res({ id: "t1", name: "Tech 1", kind: "staff", subtype: "technician", branchId: null }),
+    res({ id: "t2", name: "Tech 2", kind: "staff", subtype: "technician", branchId: null }),
+    res({ id: "t3", name: "Tech 3", kind: "staff", subtype: "technician", branchId: null }),
+  ];
+  const FUE3: Requirement[] = [
+    { kind: "doctor", subtype: null, resourceId: null, quantity: 1 },
+    { kind: "room", subtype: null, resourceId: "ot1", quantity: 1 },
+    { kind: "equipment", subtype: null, resourceId: "devA", quantity: 1 },
+    { kind: "staff", subtype: "technician", resourceId: null, quantity: 3 },
+  ];
+  const satBusy = [
+    { resourceId: "devA", appointmentId: "other", branchId: "B1", startAt: istInstant(SAT, 8 * 60), endAt: istInstant(SAT, 12 * 60) },
+    { resourceId: "t3", appointmentId: "other2", branchId: "B1", startAt: istInstant(SAT, 13 * 60), endAt: istInstant(SAT, 18 * 60) },
+  ];
+  const day = (dateKey: string, busyRows: typeof satBusy) =>
+    ctx({ dateKey, open: [{ startMin: 8 * 60, endMin: 20 * 60 }], busy: busyRows }, rohanRes);
+  const fueOpts = { durationMin: 8 * 60, bufferAfterMin: 45, requirements: FUE3, chosenIds: ["drAsif"], stepMin: 60, now: NOW, istInstant };
+
+  await check("worked example: Saturday offers no slot, and says why", () => {
+    const c = day(SAT, satBusy);
+    assert.equal(findSlots(c, fueOpts).length, 0);
+    const why = explainDay(c, fueOpts);
+    assert.ok(why.some((m) => m.includes("technician") && m.includes("only 2 free")), why.join(" | "));
+  });
+
+  await check("worked example: Sunday 08:00 works, holding everyone to 16:45", () => {
+    const slots = findSlots(day(SUN, []), fueOpts);
+    assert.ok(slots.length > 0);
+    assert.equal(slots[0].startAt.getTime(), istInstant(SUN, 8 * 60).getTime());
+    assert.deepEqual([...slots[0].resourceIds].sort(), ["devA", "drAsif", "ot1", "t1", "t2", "t3"]);
+  });
+
+  await check("explainDay on a holiday says only that", () => {
+    const why = explainDay(ctx({ open: [], closures: [{ startMin: 0, endMin: 1440, reason: "Diwali" }] }), fueOpts);
+    assert.deepEqual(why, ["Branch closed: Diwali"]);
+  });
+}
+
+async function spec22Checks() {
+  console.log("Spec 2.2 — one person, one calendar, across branches");
+  // ctx() is branch B1 = Andheri; B2 = Powai; travel between them = 120 min.
+
+  await check("doctor booked at Powai can't be at Andheri at the same time (even with double-booking allowed)", () => {
+    const r = evaluateSlot(ctx({ busy: [busy("drA", 10 * 60, 11 * 60, "p", "B2")] }), slot(10 * 60 + 30, 30, { chosenIds: ["drA"] }));
+    assert.equal(r.ok, false);
+    assert.ok(r.issues.some((i) => i.code === "elsewhere" && i.message.includes("Powai")));
+  });
+
+  await check("…and not within the travel time either side", () => {
+    const c = ctx({ busy: [busy("drA", 10 * 60, 12 * 60, "p", "B2")] });
+    const tooSoon = evaluateSlot(c, slot(13 * 60, 30, { chosenIds: ["drA"] })); // 60 min after
+    const fine = evaluateSlot(c, slot(14 * 60, 30, { chosenIds: ["drA"] })); // 120 min after
+    const beforeTooLate = evaluateSlot(c, slot(8 * 60 + 30, 30, { chosenIds: ["drA"], allowPast: true, now: NOW })); // ends 9:00, Powai at 10
+    assert.equal(tooSoon.ok, false);
+    assert.ok(tooSoon.issues.some((i) => i.code === "travel_time"));
+    assert.equal(fine.ok, true);
+    assert.ok(beforeTooLate.issues.some((i) => i.code === "travel_time"));
+  });
+
+  await check("same-branch doctor overlap is still only a warning", () => {
+    const r = evaluateSlot(ctx({ busy: [busy("drA", 10 * 60, 11 * 60, "p", "B1")] }), slot(10 * 60 + 30, 30, { chosenIds: ["drA"] }));
+    assert.equal(r.ok, true);
+    assert.equal(r.needsAck, true);
+  });
+
+  await check("OT-team member at another branch is blocked too", () => {
+    const r = evaluateSlot(
+      ctx({ busy: [busy("tech1", 10 * 60, 12 * 60, "p", "B2")] }),
+      slot(10 * 60, 8 * 60, { requirements: FUE, chosenIds: ["drA", "tech1"] }),
+    );
+    assert.ok(r.issues.some((i) => i.code === "elsewhere" && i.resourceId === "tech1"));
+  });
+
+  // Worked example: Dr Asif Sat — Andheri 09:00–13:00, Powai 15:00–18:00.
+  const satAtPowai = (busyRows: ReturnType<typeof busy>[]) =>
+    ctx(
+      { branchId: "B2", open: [{ startMin: 9 * 60, endMin: 20 * 60 }], busy: busyRows },
+      BASE.map((x) => (x.id === "drA" ? { ...x, hasRoster: true, rosterHere: [{ startMin: 15 * 60, endMin: 18 * 60 }] } : x)).concat([
+        res({ id: "powaiRoom", kind: "room", subtype: "consultation", branchId: "B2" }),
+      ]),
+    );
+
+  await check("worked example: 13:30 at Powai is not offered (he's travelling)", () => {
+    const r = evaluateSlot(satAtPowai([]), slot(13 * 60 + 30, 15, { chosenIds: ["drA"] }));
+    assert.equal(r.ok, false);
+  });
+
+  await check("worked example: 15:00 at Powai works after an Andheri patient until 13:00", () => {
+    const r = evaluateSlot(satAtPowai([busy("drA", 12 * 60 + 30, 13 * 60, "a", "B1")]), slot(15 * 60, 15, { chosenIds: ["drA"] }));
+    assert.equal(r.ok, true, r.issues.map((i) => i.message).join(" | "));
+  });
+
+  await check("worked example: an Andheri patient running to 14:00 pushes Powai's first slot to 16:00", () => {
+    const c = satAtPowai([busy("drA", 13 * 60 + 30, 14 * 60, "a", "B1")]);
+    const slots = findSlots(c, { durationMin: 15, bufferAfterMin: 0, requirements: CONSULT, chosenIds: ["drA"], stepMin: 30, now: NOW, istInstant });
+    assert.equal(slots[0].startAt.getTime(), istInstant(DAY, 16 * 60).getTime());
+  });
+}
+
+async function spec29Checks() {
+  console.log("Spec 2.9 — leave and visiting doctors (engine)");
+  await check("requested (unapproved) leave warns and needs acknowledgement, doesn't block", () => {
+    const r = BASE.map((x) =>
+      x.id === "drA" ? { ...x, timeOff: [{ startAt: istInstant(DAY, 0), endAt: istInstant(DAY, 1440), reason: "Conference", tentative: true }] } : x,
+    );
+    const out = evaluateSlot(ctx({}, r), slot(11 * 60, 30, { chosenIds: ["drA"] }));
+    assert.equal(out.ok, true);
+    assert.equal(out.needsAck, true);
+    assert.ok(out.issues.some((i) => i.code === "leave_requested"));
+  });
+  await check("visiting doctor can't be booked outside their contract dates", () => {
+    const r = BASE.map((x) => (x.id === "drA" ? { ...x, contractFrom: "2030-02-01", contractUntil: "2030-03-31" } : x));
+    const out = evaluateSlot(ctx({}, r), slot(11 * 60, 30, { chosenIds: ["drA"] }));
+    assert.equal(out.ok, false);
+    assert.ok(out.issues.some((i) => i.code === "contract"));
+  });
+}
+
+async function spec24Checks() {
+  console.log("Spec 2.4 — reminders (pure)");
+  const { dueTime } = await import("../lib/scheduling/reminders");
+  const { fillTemplate } = await import("../lib/scheduling/messageText");
+  const { appointmentToken, verifyAppointmentToken } = await import("../lib/scheduling/links");
+  const q = { start: 21 * 60, end: 8 * 60 };
+  const now = istInstant("2030-01-10", 10 * 60);
+  const start = istInstant(DAY, 9 * 60); // 15 Jan 09:00
+
+  await check("24 h-before reminder landing at 09:00 goes at 09:00", () => {
+    const d = dueTime({ kind: "before", minutesBefore: 24 * 60, atMin: null, quietExempt: false }, start, now, q);
+    assert.equal(d?.getTime(), istInstant("2030-01-14", 9 * 60).getTime());
+  });
+  await check("a reminder falling in quiet hours waits until 08:00", () => {
+    const d = dueTime({ kind: "before", minutesBefore: 12 * 60, atMin: null, quietExempt: false }, start, now, q); // 21:00 the night before
+    assert.equal(d?.getTime(), istInstant(DAY, 8 * 60).getTime());
+  });
+  await check("the quiet-exempt morning-of reminder goes at 06:30", () => {
+    const d = dueTime({ kind: "morning_of", minutesBefore: null, atMin: 6 * 60 + 30, quietExempt: true }, start, now, q);
+    assert.equal(d?.getTime(), istInstant(DAY, 6 * 60 + 30).getTime());
+  });
+  await check("a reminder whose moment already passed (booked late) is not created", () => {
+    const lateNow = istInstant(DAY, 8 * 60);
+    assert.equal(dueTime({ kind: "before", minutesBefore: 24 * 60, atMin: null, quietExempt: false }, start, lateNow, q), null);
+  });
+  await check("held by quiet hours past the appointment → not sent", () => {
+    const early = istInstant(DAY, 7 * 60 + 30);
+    const d = dueTime({ kind: "before", minutesBefore: 60, atMin: null, quietExempt: false }, early, now, q); // 06:30 → held to 08:00, after start
+    assert.equal(d, null);
+  });
+  await check("templates fill placeholders and drop lines left empty", () => {
+    const out = fillTemplate("Hi {patient_name},\n{prep}\nSee you {time}. {unknown}", { patient_name: "Priya", prep: "", time: "4 PM" });
+    assert.equal(out, "Hi Priya,\nSee you 4 PM. {unknown}");
+  });
+  await check("patient links verify, and refuse tampering and expiry", () => {
+    const t = appointmentToken("appt123", new Date(Date.now() + 3600_000));
+    assert.equal(verifyAppointmentToken(t)?.appointmentId, "appt123");
+    assert.equal(verifyAppointmentToken(t.replace("appt123", "appt124")), null);
+    const old = appointmentToken("appt123", new Date(Date.now() - 1000));
+    assert.equal(verifyAppointmentToken(old), null);
+  });
+}
+
+async function spec27Checks() {
+  console.log("Spec 2.7 — intake forms (pure)");
+  const { isVisible, redFlagsOf, validateAnswers, checkSchema, STARTER_HAIR_LOSS } = await import("../lib/scheduling/intake/schema");
+  const all = STARTER_HAIR_LOSS.sections.flatMap((x) => x.fields);
+  const field = (k: string) => all.find((f) => f.key === k)!;
+
+  await check("the starter hair-loss form is a valid schema", () => {
+    assert.deepEqual(checkSchema(STARTER_HAIR_LOSS), []);
+  });
+  await check("conditional question: medication shown only when thyroid = yes", () => {
+    assert.equal(isVisible(field("thyroid_medication"), { thyroid: "no" }), false);
+    assert.equal(isVisible(field("thyroid_medication"), { thyroid: "yes" }), true);
+  });
+  await check("guardian section only for under-18s", () => {
+    const adult = new Date().getFullYear() - 30;
+    const minor = new Date().getFullYear() - 15;
+    assert.equal(isVisible(field("guardian_name"), { dob: `${adult}-01-01` }), false);
+    assert.equal(isVisible(field("guardian_name"), { dob: `${minor}-01-01` }), true);
+  });
+  await check("a 'yes' to blood thinners is a red flag; hidden questions never are", () => {
+    assert.deepEqual(redFlagsOf(STARTER_HAIR_LOSS, { blood_thinners: "yes", bleeding_disorder: "no" }), ["blood_thinners"]);
+  });
+  await check("required visible questions must be answered; hidden ones needn't", () => {
+    const base = { dob: "1990-01-01", thyroid: "yes", diabetes: "no", blood_thinners: "no", bleeding_disorder: "no", keloid: "no", allergies: "None", concern: "Thinning", consent_data: true };
+    assert.ok(validateAnswers(STARTER_HAIR_LOSS, base).some((e) => e.includes("Medication")));
+    assert.deepEqual(validateAnswers(STARTER_HAIR_LOSS, { ...base, thyroid_medication: "Thyronorm 50 mcg" }), []);
+  });
+}
+
+async function spec28Checks() {
+  console.log("Spec 2.8 — treatment series (pure)");
+  const { addOffset, stepWindow } = await import("../lib/scheduling/series");
+  await check("Month 1 after 12 Oct is 12 Nov (calendar months, IST)", () => {
+    const a = istInstant("2026-10-12", 8 * 60);
+    assert.equal(addOffset(a, 1, "months").getTime(), istInstant("2026-11-12", 8 * 60).getTime());
+    assert.equal(addOffset(a, 3, "months").getTime(), istInstant("2027-01-12", 8 * 60).getTime());
+  });
+  await check("31 Jan + 1 month lands on the last day of February", () => {
+    assert.equal(addOffset(istInstant("2027-01-31", 9 * 60), 1, "months").getTime(), istInstant("2027-02-28", 9 * 60).getTime());
+  });
+  await check("Day 10 ±2 → due window 20–24 Oct, whole days", () => {
+    const w = stepWindow(istInstant("2026-10-12", 8 * 60), { offsetValue: 10, offsetUnit: "days", toleranceDays: 2 });
+    assert.equal(w.dueFrom.getTime(), istInstant("2026-10-20", 0).getTime());
+    assert.equal(w.dueTo.getTime(), istInstant("2026-10-25", 0).getTime());
+  });
+}
+
+// ── Part 2: database ─────────────────────────────────────────────────────────
+
+async function dbChecks() {
+  console.log("Database");
+  const { prisma } = await import("../lib/prisma");
+  const { bookAppointment, rescheduleAppointment, changeAppointmentStatus } = await import("../lib/scheduling/booking");
+  const tag = `chk-${Date.now()}`;
+  const actor = { id: null, email: "check@scheduling" };
+
+  const branch = await prisma.branch.create({ data: { code: `T${String(Date.now()).slice(-6)}`, name: `${tag} branch` } });
+  const lead = await prisma.lead.create({ data: { name: `${tag} patient`, phone: "+910000000000", source: "manual" } });
+  const room = await prisma.resource.create({ data: { kind: "room", subtype: "consultation", name: `${tag} room`, branchId: branch.id } });
+  const doctor = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} doctor` } });
+  const type = await prisma.appointmentType.create({
+    data: {
+      name: `${tag} consult`,
+      durationMin: 30,
+      requirements: {
+        create: [
+          { kind: "room", subtype: "consultation", resourceId: room.id },
+          { kind: "doctor", resourceId: doctor.id },
+        ],
+      },
+    },
+  });
+
+  // The day after tomorrow at 11:00 IST — inside default hours, never in the past.
+  const d = new Date(Date.now() + 2 * 86_400_000);
+  const dateKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d);
+  const at = (min: number) => istInstant(dateKey, min);
+  const base = { leadId: lead.id, branchId: branch.id, typeId: type.id };
+
+  const extraTypes: string[] = [];
+  const extraResources: string[] = [];
+  const extraBranches: string[] = [];
+  const extraLeads: string[] = [];
+
+  try {
+    await check("12 simultaneous bookings of one room → exactly one wins", async () => {
+      const results = await Promise.all(
+        Array.from({ length: 12 }, () => bookAppointment({ ...base, startAt: at(11 * 60), acknowledgeWarnings: true }, actor)),
+      );
+      const wins = results.filter((r) => r.ok);
+      assert.equal(wins.length, 1, `expected 1 winner, got ${wins.length}`);
+      // §2.1: "the other is told the slot was just taken".
+      const told = results.filter((r) => !r.ok && r.justTaken);
+      assert.ok(told.length >= 1, "at least one loser should be told the slot was just taken");
+      const rows = await prisma.appointmentResource.count({ where: { resourceId: room.id, blocking: true } });
+      assert.equal(rows, 1);
+    });
+
+    let movedId = "";
+    await check("reschedule keeps the old row, links the new, frees the old slot", async () => {
+      const first = await prisma.appointment.findFirstOrThrow({ where: { typeId: type.id, status: "booked" } });
+      const r = await rescheduleAppointment(first.id, { startAt: at(13 * 60), reason: "patient asked" }, actor);
+      assert.ok(r.ok, !r.ok ? r.error : "");
+      movedId = r.ok ? r.appointmentId : "";
+      const old = await prisma.appointment.findUniqueOrThrow({ where: { id: first.id } });
+      const next = await prisma.appointment.findUniqueOrThrow({ where: { id: movedId } });
+      assert.equal(old.status, "rescheduled");
+      assert.equal(next.rescheduledFromId, first.id);
+      const again = await bookAppointment({ ...base, startAt: at(11 * 60) }, actor);
+      assert.ok(again.ok, "the freed 11:00 slot should be bookable again");
+    });
+
+    await check("illegal transition refused; check-in → complete allowed", async () => {
+      const bad = await changeAppointmentStatus(movedId, "completed", {}, actor);
+      assert.equal(bad.ok, false);
+      assert.ok((await changeAppointmentStatus(movedId, "checked_in", {}, actor)).ok);
+      assert.ok((await changeAppointmentStatus(movedId, "completed", {}, actor)).ok);
+    });
+
+    await check("cancel needs a reason, then frees the room", async () => {
+      const a = await prisma.appointment.findFirstOrThrow({ where: { typeId: type.id, status: "booked" } });
+      assert.equal((await changeAppointmentStatus(a.id, "cancelled", {}, actor)).ok, false);
+      assert.ok((await changeAppointmentStatus(a.id, "cancelled", { reason: "unwell", cancelledBy: "patient" }, actor)).ok);
+      const blocking = await prisma.appointmentResource.count({ where: { appointmentId: a.id, blocking: true } });
+      assert.equal(blocking, 0);
+    });
+
+    // Fixtures for the §2.1 checks: two consultation rooms (B overridable), and a type
+    // that takes ANY consultation room with a named doctor.
+    const roomA = await prisma.resource.create({ data: { kind: "room", subtype: "consult2", name: `${tag} room A`, branchId: branch.id, sortOrder: 0 } });
+    const roomB = await prisma.resource.create({ data: { kind: "room", subtype: "consult2", name: `${tag} room B`, branchId: branch.id, sortOrder: 1, allowOverride: true } });
+    const anyRoom = await prisma.appointmentType.create({
+      data: {
+        name: `${tag} any-room consult`,
+        durationMin: 30,
+        requirements: { create: [{ kind: "doctor" }, { kind: "room", subtype: "consult2" }] },
+      },
+    });
+    extraTypes.push(anyRoom.id);
+    extraResources.push(roomA.id, roomB.id);
+    const b2 = { leadId: lead.id, branchId: branch.id, typeId: anyRoom.id, resourceIds: [doctor.id], acknowledgeWarnings: true };
+
+    await check("reschedule re-allocates the room instead of assuming the old one", async () => {
+      const first = await bookAppointment({ ...b2, startAt: at(15 * 60) }, actor);
+      assert.ok(first.ok);
+      const firstRoom = await prisma.appointmentResource.findFirstOrThrow({
+        where: { appointmentId: first.ok ? first.appointmentId : "", resource: { kind: "room" } },
+      });
+      assert.equal(firstRoom.resourceId, roomA.id);
+      // Someone else takes room A at 16:00.
+      const blocker = await bookAppointment({ ...b2, startAt: at(16 * 60), resourceIds: [doctor.id, roomA.id] }, actor);
+      assert.ok(blocker.ok, !blocker.ok ? blocker.error : "");
+      const moved = await rescheduleAppointment(first.ok ? first.appointmentId : "", { startAt: at(16 * 60), acknowledgeWarnings: true }, actor);
+      assert.ok(moved.ok, !moved.ok ? moved.error : "");
+      const newRoom = await prisma.appointmentResource.findFirstOrThrow({
+        where: { appointmentId: moved.ok ? moved.appointmentId : "", resource: { kind: "room" } },
+      });
+      assert.equal(newRoom.resourceId, roomB.id);
+    });
+
+    await check("consultation-room clash: refused as overridable, then booked with a logged override", async () => {
+      // Room B is now taken 16:00–16:30 by the rescheduled appointment.
+      const refused = await bookAppointment({ ...b2, startAt: at(16 * 60), resourceIds: [doctor.id, roomB.id] }, actor);
+      assert.equal(refused.ok, false);
+      assert.equal(!refused.ok && refused.overridable, true);
+      const noReason = await bookAppointment({ ...b2, startAt: at(16 * 60), resourceIds: [doctor.id, roomB.id], override: { reason: " " } }, actor);
+      assert.equal(noReason.ok, false);
+      const forced = await bookAppointment(
+        { ...b2, startAt: at(16 * 60), resourceIds: [doctor.id, roomB.id], override: { reason: "VIP follow-up, 5 min" } },
+        actor,
+      );
+      assert.ok(forced.ok, !forced.ok ? forced.error : "");
+      const row = await prisma.appointment.findUniqueOrThrow({ where: { id: forced.ok ? forced.appointmentId : "" } });
+      assert.equal(row.overrideReason, "VIP follow-up, 5 min");
+      const audit = await prisma.auditLog.count({ where: { entityId: row.id, action: "appointment.book.override" } });
+      assert.equal(audit, 1);
+    });
+
+    // §2.2 — one-off roster changes and privacy, against the real loaders.
+    const branch2 = await prisma.branch.create({ data: { code: `U${String(Date.now()).slice(-6)}`, name: `${tag} branch 2` } });
+    extraBranches.push(branch2.id);
+    const roomB2 = await prisma.resource.create({ data: { kind: "room", subtype: "consult2", name: `${tag} room B2`, branchId: branch2.id } });
+    extraResources.push(roomB2.id);
+    const rotating = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} rotating doctor` } });
+    extraResources.push(rotating.id);
+    const { weekdayOfKey, dateColumn } = await import("../lib/scheduling/time");
+    // Weekly: this weekday at branch 1 only.
+    await prisma.resourceSchedule.create({ data: { resourceId: rotating.id, branchId: branch.id, weekday: weekdayOfKey(dateKey), startMin: 10 * 60, endMin: 17 * 60 } });
+    const b3 = { leadId: lead.id, branchId: branch2.id, typeId: anyRoom.id, resourceIds: [rotating.id] };
+
+    await check("doctor rostered at branch 1 can't be booked at branch 2 that day", async () => {
+      const r = await bookAppointment({ ...b3, startAt: at(11 * 60) }, actor);
+      assert.equal(r.ok, false);
+    });
+
+    await check("a one-off change moves them to branch 2 for that date (replacing the weekly roster)", async () => {
+      await prisma.resourceScheduleException.create({
+        data: { resourceId: rotating.id, date: dateColumn(dateKey), branchId: branch2.id, startMin: 10 * 60, endMin: 17 * 60 },
+      });
+      const atB2 = await bookAppointment({ ...b3, startAt: at(11 * 60) }, actor);
+      assert.ok(atB2.ok, !atB2.ok ? atB2.error : "");
+      const atB1 = await bookAppointment({ ...b2, resourceIds: [rotating.id], startAt: at(14 * 60) }, actor);
+      assert.equal(atB1.ok, false, "branch 1 is no longer on their roster that day");
+    });
+
+    await check("other branch's appointments are masked for a viewer without all-branch access", async () => {
+      const { loadAppointments } = await import("../lib/scheduling/calendar");
+      const from = at(0);
+      const to = at(24 * 60);
+      const base = { id: null, role: "front_desk", resourceId: null, bookAnyBranch: false, canBook: true, canCheckin: true, canOverride: false };
+      const fromB1 = await loadAppointments({ ...base, homeBranchId: branch.id, seesAllBranches: false }, from, to, { branchId: branch2.id });
+      assert.ok(fromB1.length >= 1);
+      assert.ok(fromB1.every((a) => !a.visible && a.patientName === null && a.typeName === null && a.notes === null));
+      const fromB2 = await loadAppointments({ ...base, homeBranchId: branch2.id, seesAllBranches: false }, from, to, { branchId: branch2.id });
+      assert.ok(fromB2.every((a) => a.visible && a.patientName !== null));
+      const asDoctor = await loadAppointments({ ...base, homeBranchId: branch.id, seesAllBranches: false, resourceId: rotating.id }, from, to, { branchId: null });
+      assert.ok(asDoctor.filter((a) => a.resources.some((x) => x.id === rotating.id)).every((a) => a.visible), "a doctor sees their own appointments everywhere");
+    });
+
+    // §2.9 — leave approval, rebooking cases, suggestions, emergency.
+    const leave = await import("../lib/scheduling/leave");
+    const conflicts = await import("../lib/scheduling/conflicts");
+    const drX = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} leave doctor` } });
+    const drY = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} cover doctor` } });
+    extraResources.push(drX.id, drY.id);
+    const b4 = { leadId: lead.id, branchId: branch.id, typeId: anyRoom.id, acknowledgeWarnings: true };
+    const booked = await bookAppointment({ ...b4, resourceIds: [drX.id], startAt: at(17 * 60) }, actor);
+    const bookedId = booked.ok ? booked.appointmentId : "";
+    let leaveId = "";
+
+    await check("a leave REQUEST doesn't open cases; approving it does, and never cancels the appointment", async () => {
+      assert.ok(booked.ok, !booked.ok ? booked.error : "");
+      const req = await leave.requestLeave({ resourceId: drX.id, startAt: at(0), endAt: at(24 * 60), kind: "conference", reason: "Conference" }, actor);
+      assert.ok(req.ok && req.id);
+      leaveId = req.id!;
+      assert.equal(await prisma.rebookingCase.count({ where: { appointmentId: bookedId } }), 0);
+      const dec = await leave.decideLeave(leaveId, true, null, actor);
+      assert.ok(dec.ok);
+      assert.equal(dec.affected, 1);
+      const c = await prisma.rebookingCase.findFirstOrThrow({ where: { appointmentId: bookedId } });
+      assert.equal(c.status, "open");
+      const appt = await prisma.appointment.findUniqueOrThrow({ where: { id: bookedId } });
+      assert.equal(appt.status, "booked", "the system never cancels on its own");
+    });
+
+    await check("approved leave blocks new bookings for that doctor", async () => {
+      const r = await bookAppointment({ ...b4, resourceIds: [drX.id], startAt: at(10 * 60) }, actor);
+      assert.equal(r.ok, false);
+    });
+
+    await check("withdrawing the leave closes the case it opened", async () => {
+      await leave.cancelLeave(leaveId, actor);
+      const c = await prisma.rebookingCase.findFirstOrThrow({ where: { appointmentId: bookedId } });
+      assert.equal(c.status, "dismissed");
+    });
+
+    await check("rebooking helper suggests another doctor at the same time, and applying it moves the appointment", async () => {
+      const again = await leave.requestLeave({ resourceId: drX.id, startAt: at(0), endAt: at(24 * 60), kind: "leave", reason: "Leave", approveNow: true }, actor);
+      assert.ok(again.ok);
+      const c = await prisma.rebookingCase.findFirstOrThrow({ where: { appointmentId: bookedId, status: "open" } });
+      const opts = await conflicts.suggestAlternatives(c.id);
+      const cover = opts.find((o) => o.kind === "other_doctor_same_time" && o.doctorId === drY.id);
+      assert.ok(cover, `expected cover doctor among ${opts.map((o) => o.label).join(", ")}`);
+      const applied = await conflicts.applyAlternative(c.id, { branchId: cover!.branchId, doctorId: cover!.doctorId, startAt: cover!.startAt }, actor);
+      assert.ok(applied.ok, applied.error);
+      await conflicts.recheckOpenCases({}); // the worklist page runs this on every load
+      const after = await prisma.rebookingCase.findUniqueOrThrow({ where: { id: c.id } });
+      assert.equal(after.status, "proposed", "a moved case waits for the patient's confirmation");
+      const moved = await prisma.appointment.findUniqueOrThrow({ where: { id: after.newAppointmentId! }, include: { resources: true } });
+      assert.ok(moved.resources.some((r) => r.resourceId === drY.id));
+    });
+
+    await check("emergency: urgent case, and the doctor is blocked for the rest of the day", async () => {
+      const drZ = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} emergency doctor` } });
+      extraResources.push(drZ.id);
+      const z = await bookAppointment({ ...b4, resourceIds: [drZ.id], startAt: at(18 * 60) }, actor);
+      assert.ok(z.ok);
+      const e = await leave.markEmergency(drZ.id, "Unwell", actor, at(9 * 60));
+      assert.ok(e.ok);
+      const c = await prisma.rebookingCase.findFirstOrThrow({ where: { appointmentId: z.ok ? z.appointmentId : "" } });
+      assert.equal(c.urgent, true);
+      assert.equal(c.cause, "emergency");
+    });
+
+    await check("a holiday added over booked dates puts those appointments on the rebooking list", async () => {
+      const drH = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} holiday doctor` } });
+      extraResources.push(drH.id);
+      const h = await bookAppointment({ ...b4, resourceIds: [drH.id], startAt: at(19 * 60) }, actor);
+      assert.ok(h.ok);
+      const n = await conflicts.detectClosure({ branchId: branch.id, startDateKey: dateKey, endDateKey: dateKey, startMin: null, endMin: null, reason: "Diwali" });
+      assert.ok(n >= 1);
+      const c = await prisma.rebookingCase.findFirstOrThrow({ where: { appointmentId: h.ok ? h.appointmentId : "" } });
+      assert.equal(c.cause, "closure");
+    });
+
+    // §2.4 — reminders against the database. WhatsApp is blanked for this process so
+    // no check can ever message a real number.
+    process.env.WHATSAPP_TOKEN = "";
+    process.env.WHATSAPP_PHONE_NUMBER_ID = "";
+    const reminders = await import("../lib/scheduling/reminders");
+    const { setBoolSetting } = await import("../lib/settings");
+    const tpl = await prisma.appointmentMessageTemplate.findUniqueOrThrow({ where: { key: "reminder_24h" } });
+    const conf = await prisma.appointmentMessageTemplate.findUniqueOrThrow({ where: { key: "confirmation" } });
+    const remType = await prisma.appointmentType.create({
+      data: {
+        name: `${tag} reminded consult`,
+        durationMin: 30,
+        selfServiceCutoffHours: 72,
+        requirements: { create: [{ kind: "doctor" }, { kind: "room", subtype: "consult2" }] },
+        reminderRules: {
+          create: [
+            { kind: "on_booking", templateId: conf.id, channels: ["whatsapp"] },
+            { kind: "before", minutesBefore: 60, templateId: tpl.id, channels: ["whatsapp"] },
+          ],
+        },
+      },
+    });
+    extraTypes.push(remType.id);
+    const drR = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} reminder doctor` } });
+    extraResources.push(drR.id);
+    const rb = { leadId: lead.id, branchId: branch.id, typeId: remType.id, resourceIds: [drR.id], acknowledgeWarnings: true };
+    const first = await bookAppointment({ ...rb, startAt: at(12 * 60) }, actor);
+    const firstId = first.ok ? first.appointmentId : "";
+
+    await check("booking creates the type's reminders (confirmation now, 1 h before)", async () => {
+      assert.ok(first.ok);
+      const rows = await prisma.appointmentReminder.findMany({ where: { appointmentId: firstId }, orderBy: { dueAt: "asc" } });
+      assert.equal(rows.length, 2);
+      assert.equal(rows[1].dueAt.getTime(), at(11 * 60).getTime());
+    });
+
+    let movedRemId = "";
+    await check("rescheduling cancels the old reminders and makes new ones (no second confirmation)", async () => {
+      const r = await rescheduleAppointment(firstId, { startAt: at(13 * 60) }, actor);
+      assert.ok(r.ok, !r.ok ? r.error : "");
+      movedRemId = r.ok ? r.appointmentId : "";
+      const old = await prisma.appointmentReminder.findMany({ where: { appointmentId: firstId } });
+      assert.ok(old.filter((x) => x.status === "pending").length === 0);
+      const fresh = await prisma.appointmentReminder.findMany({ where: { appointmentId: movedRemId } });
+      assert.equal(fresh.length, 1);
+      assert.equal(fresh[0].templateId, tpl.id);
+    });
+
+    await check("while reminders are switched off, due ones are skipped — never saved up", async () => {
+      await setBoolSetting("scheduling.remindersEnabled", false);
+      await prisma.appointmentReminder.updateMany({ where: { appointmentId: movedRemId }, data: { dueAt: new Date(Date.now() - 2 * 86_400_000) } });
+      await reminders.processDueReminders(istInstant(istDateKey(new Date()), 12 * 60));
+      const r = await prisma.appointmentReminder.findFirstOrThrow({ where: { appointmentId: movedRemId } });
+      assert.equal(r.status, "skipped");
+      assert.match(r.lastError ?? "", /switched off/);
+    });
+
+    await check("switched on, an unconfigured channel is skipped and said so (never silent)", async () => {
+      await setBoolSetting("scheduling.remindersEnabled", true);
+      await prisma.appointmentReminder.updateMany({ where: { appointmentId: movedRemId }, data: { status: "pending", dueAt: new Date(Date.now() - 2 * 86_400_000) } });
+      // Run the tick at midday so the result doesn't depend on when the check runs
+      // (at night, quiet hours would rightly hold it).
+      await reminders.processDueReminders(istInstant(istDateKey(new Date()), 12 * 60));
+      const r = await prisma.appointmentReminder.findFirstOrThrow({ where: { appointmentId: movedRemId } });
+      assert.equal(r.status, "skipped");
+      assert.match(r.whatsapp ?? "", /not configured/);
+      await setBoolSetting("scheduling.remindersEnabled", false);
+    });
+
+    await check("a reply of 1 confirms the appointment", async () => {
+      await prisma.appointmentReminder.updateMany({ where: { appointmentId: movedRemId }, data: { status: "sent", sentAt: new Date() } });
+      const handled = await reminders.handleAppointmentReply(lead.id, "1");
+      assert.equal(handled, true);
+      const a = await prisma.appointment.findUniqueOrThrow({ where: { id: movedRemId } });
+      assert.equal(a.status, "confirmed");
+    });
+
+    await check("a reply of 2 inside the 72 h cut-off opens a call-required case", async () => {
+      const handled = await reminders.handleAppointmentReply(lead.id, "2");
+      assert.equal(handled, true);
+      const c = await prisma.rebookingCase.findFirstOrThrow({ where: { appointmentId: movedRemId, cause: "patient_request" } });
+      assert.equal(c.urgent, true);
+    });
+
+    await check("cancelling the appointment cancels its pending reminders", async () => {
+      const x = await bookAppointment({ ...rb, startAt: at(15 * 60) }, actor);
+      assert.ok(x.ok);
+      const id = x.ok ? x.appointmentId : "";
+      await changeAppointmentStatus(id, "cancelled", { reason: "test", cancelledBy: "patient" }, actor);
+      const pending = await prisma.appointmentReminder.count({ where: { appointmentId: id, status: "pending" } });
+      assert.equal(pending, 0);
+    });
+
+    // §2.3 — online booking end to end (dev OTP path; WhatsApp is blanked above).
+    const online = await import("../lib/scheduling/online");
+    const otp = await import("../lib/scheduling/otp");
+    const onType = await prisma.appointmentType.create({
+      data: {
+        name: `${tag} online consult`,
+        durationMin: 30,
+        onlineBookable: true,
+        requirements: { create: [{ kind: "doctor" }, { kind: "room", subtype: "online-room" }] },
+        reminderRules: { create: [{ kind: "on_booking", templateId: conf.id, channels: ["whatsapp"] }] },
+      },
+    });
+    extraTypes.push(onType.id);
+    const onRoom = await prisma.resource.create({ data: { kind: "room", subtype: "online-room", name: `${tag} online room`, branchId: branch.id } });
+    const onDr1 = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} online dr 1` } });
+    const onDr2 = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} online dr 2` } });
+    extraResources.push(onRoom.id, onDr1.id, onDr2.id);
+    const phone = `+91987${String(Date.now()).slice(-7)}`;
+
+    await check("'any doctor' merges slots and each carries its named doctor; overbooking times are never offered", async () => {
+      // Dr 1 busy 11:00 (same branch) — online must not offer Dr 1 at 11:00 (it'd need an ack).
+      await bookAppointment({ leadId: lead.id, branchId: branch.id, typeId: anyRoom.id, resourceIds: [onDr1.id], startAt: at(11 * 60), acknowledgeWarnings: true }, actor);
+      const slots = await online.onlineSlots({ typeId: onType.id, branchId: branch.id, doctorId: "any", dateKey });
+      assert.ok(slots.length > 0);
+      assert.ok(slots.every((x) => x.doctorId));
+      const eleven = slots.find((x) => x.startAt === at(11 * 60).toISOString());
+      assert.ok(!eleven || eleven.doctorId !== onDr1.id, "Dr 1 is busy at 11:00 and must not be offered then");
+      const only1 = await online.onlineSlots({ typeId: onType.id, branchId: branch.id, doctorId: onDr1.id, dateKey });
+      assert.ok(!only1.some((x) => x.startAt === at(11 * 60).toISOString()));
+    });
+
+    let holdTok = "";
+    await check("holding a slot creates a tentative booking on the hidden placeholder, not a patient", async () => {
+      const h = await online.holdSlot({ typeId: onType.id, branchId: branch.id, doctorId: onDr2.id, startAt: at(16 * 60).toISOString() });
+      assert.ok(h.ok, !h.ok ? h.error : "");
+      holdTok = h.ok ? h.holdToken : "";
+      const id = holdTok.split(".")[0];
+      const a = await prisma.appointment.findUniqueOrThrow({ where: { id }, include: { lead: true } });
+      assert.equal(a.status, "tentative");
+      assert.ok(a.lead.deletedAt, "the placeholder is hidden");
+      const again = await online.holdSlot({ typeId: onType.id, branchId: branch.id, doctorId: onDr2.id, startAt: at(16 * 60).toISOString() });
+      assert.equal(again.ok, false, "the same slot can't be held twice");
+    });
+
+    let verified = "";
+    await check("OTP: wrong code refused, right code gives a verified-phone token", async () => {
+      const sent = await otp.issueOtp(phone, "online_booking", "127.0.0.1");
+      assert.ok(sent.ok && sent.devCode, "dev channel returns the code outside production");
+      const bad = await otp.verifyOtp(phone, "online_booking", sent.ok && sent.devCode === "000000" ? "111111" : "000000");
+      assert.equal(bad.ok, false);
+      const good = await otp.verifyOtp(phone, "online_booking", sent.ok ? sent.devCode! : "");
+      assert.ok(good.ok);
+      verified = good.ok ? good.token : "";
+      assert.equal(otp.readVerified(verified, "online_booking"), phone.replace(/\s/g, ""));
+      assert.equal(otp.readVerified(verified, "intake_form"), null, "a token is only good for its purpose");
+    });
+
+    await check("completing creates the patient (UTM source + campaign), both consents, and starts reminders", async () => {
+      const r = await online.completeBooking({
+        holdToken: holdTok,
+        phone: otp.readVerified(verified, "online_booking")!,
+        name: "Priya Test",
+        email: "priya@example.com",
+        consentMessages: true,
+        consentMarketing: false,
+        utm: { source: "instagram", campaign: "Campaign X" },
+      });
+      assert.ok(r.ok && r.done, !r.ok ? r.error : "");
+      const a = await prisma.appointment.findUniqueOrThrow({ where: { id: holdTok.split(".")[0] }, include: { lead: { include: { consents: true } } } });
+      assert.equal(a.status, "booked");
+      assert.equal(a.lead.source, "instagram");
+      assert.equal(a.lead.campaign, "Campaign X");
+      assert.equal(a.lead.stage, "appointment_scheduled");
+      const consents = Object.fromEntries(a.lead.consents.map((c) => [c.purpose, c.granted]));
+      assert.deepEqual(consents, { appointment_messages: true, marketing: false });
+      assert.ok((await prisma.appointmentReminder.count({ where: { appointmentId: a.id } })) >= 1);
+      extraLeads.push(a.leadId);
+    });
+
+    await check("the same phone booking again links to the existing patient (no duplicate)", async () => {
+      const h = await online.holdSlot({ typeId: onType.id, branchId: branch.id, doctorId: onDr2.id, startAt: at(17 * 60).toISOString() });
+      assert.ok(h.ok);
+      const r = await online.completeBooking({ holdToken: h.ok ? h.holdToken : "", phone: otp.readVerified(verified, "online_booking")!, name: "Priya T", consentMessages: true, consentMarketing: false });
+      assert.ok(r.ok && r.done);
+      const n = await prisma.lead.count({ where: { phone: { contains: phone.slice(-10) }, deletedAt: null } });
+      assert.equal(n, 1);
+    });
+
+    await check("booking needs the appointment-messages consent", async () => {
+      const h = await online.holdSlot({ typeId: onType.id, branchId: branch.id, doctorId: onDr2.id, startAt: at(18 * 60).toISOString() });
+      assert.ok(h.ok);
+      const r = await online.completeBooking({ holdToken: h.ok ? h.holdToken : "", phone, name: "X", consentMessages: false, consentMarketing: true });
+      assert.equal(r.ok, false);
+      if (h.ok) await online.releaseHold(h.holdToken);
+    });
+
+    await check("existing-patients-only services refuse a phone with no history", async () => {
+      await prisma.appointmentType.update({ where: { id: onType.id }, data: { onlineAudience: "existing" } });
+      const h = await online.holdSlot({ typeId: onType.id, branchId: branch.id, doctorId: onDr2.id, startAt: at(18 * 60 + 30).toISOString() });
+      assert.ok(h.ok);
+      const r = await online.completeBooking({ holdToken: h.ok ? h.holdToken : "", phone: "+919000000999", name: "New Person", consentMessages: true, consentMarketing: false });
+      assert.equal(r.ok, false);
+      assert.match(!r.ok ? r.error : "", /existing patients/);
+      await prisma.appointmentType.update({ where: { id: onType.id }, data: { onlineAudience: "anyone" } });
+      if (h.ok) await online.releaseHold(h.holdToken);
+    });
+
+    await check("an expired hold can't be completed", async () => {
+      const h = await online.holdSlot({ typeId: onType.id, branchId: branch.id, doctorId: onDr2.id, startAt: at(19 * 60).toISOString() });
+      assert.ok(h.ok);
+      const id = h.ok ? h.holdToken.split(".")[0] : "";
+      await prisma.appointment.update({ where: { id }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
+      const r = await online.completeBooking({ holdToken: h.ok ? h.holdToken : "", phone, name: "Late", consentMessages: true, consentMarketing: false });
+      assert.equal(r.ok, false);
+    });
+
+    // §2.7 — intake against the database.
+    const intake = await import("../lib/scheduling/intake/service");
+    const { STARTER_HAIR_LOSS } = await import("../lib/scheduling/intake/schema");
+    const form = await prisma.intakeForm.create({ data: { name: `${tag} hair loss`, key: `${tag}-intake` } });
+    const ver = await prisma.intakeFormVersion.create({ data: { formId: form.id, version: 1, schema: STARTER_HAIR_LOSS as object } });
+    await prisma.intakeForm.update({ where: { id: form.id }, data: { currentVersionId: ver.id } });
+    const ixType = await prisma.appointmentType.create({
+      data: { name: `${tag} intake consult`, durationMin: 30, intakeFormId: form.id, requirements: { create: [{ kind: "doctor" }, { kind: "room", subtype: "consult2" }] } },
+    });
+    extraTypes.push(ixType.id);
+    const ixDr = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} intake doctor` } });
+    extraResources.push(ixDr.id);
+    const ixLead = await prisma.lead.create({ data: { name: `${tag} intake patient`, phone: `+91988${String(Date.now()).slice(-7)}`, source: "manual" } });
+    extraLeads.push(ixLead.id);
+    const ixAppt = await bookAppointment({ leadId: ixLead.id, branchId: branch.id, typeId: ixType.id, resourceIds: [ixDr.id], startAt: at(20 * 60 - 60), acknowledgeWarnings: true }, actor);
+    const ixId = ixAppt.ok ? ixAppt.appointmentId : "";
+    const ixA = await prisma.appointment.findUniqueOrThrow({ where: { id: ixId } });
+    const formToken = intake.intakeToken(ixId, ixA.startAt);
+    const goodAnswers = {
+      dob: "1992-05-01", thyroid: "yes", thyroid_medication: "Thyronorm 50 mcg", diabetes: "no", blood_thinners: "yes",
+      bleeding_disorder: "no", keloid: "no", allergies: "No known allergies", concern: "Thinning at the crown",
+      consent_data: true, consent_treatment_photos: true, consent_marketing_photos: false,
+    };
+
+    await check("the {intake_link} is there while the form is due", async () => {
+      assert.ok(ixAppt.ok);
+      assert.match(await intake.intakeLinkFor(ixId), /\/f\//);
+    });
+
+    await check("a different phone than the patient's is refused", async () => {
+      const r = await intake.submitIntake({ token: formToken, verifiedPhone: "+919111111111", answers: goodAnswers, photos: [] });
+      assert.equal(r.ok, false);
+    });
+
+    await check("missing conditional answer is refused (thyroid yes, no medication)", async () => {
+      const r = await intake.submitIntake({ token: formToken, verifiedPhone: ixLead.phone, answers: { ...goodAnswers, thyroid_medication: "" }, photos: [] });
+      assert.equal(r.ok, false);
+    });
+
+    await check("submit: red flag recorded, one consent row per purpose, photos stored", async () => {
+      const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+      const r = await intake.submitIntake({ token: formToken, verifiedPhone: ixLead.phone, answers: goodAnswers, photos: [{ field: "photos", slot: "crown", mime: "image/jpeg", bytes: jpeg }] });
+      assert.ok(r.ok, !r.ok ? r.errors.join("; ") : "");
+      const resp = await prisma.intakeResponse.findFirstOrThrow({ where: { appointmentId: ixId }, include: { photos: true } });
+      assert.deepEqual(resp.redFlags, ["blood_thinners"]);
+      assert.equal(resp.photos.length, 1);
+      const consents = await prisma.consentRecord.findMany({ where: { leadId: ixLead.id, source: "intake_form" } });
+      const byPurpose = Object.fromEntries(consents.map((c) => [c.purpose, c.granted]));
+      assert.deepEqual(byPurpose, { data_processing: true, treatment_photos: true, marketing_photos: false });
+    });
+
+    await check("after submitting, the link line drops out and a second submit is refused", async () => {
+      assert.equal(await intake.intakeLinkFor(ixId), "");
+      const r = await intake.submitIntake({ token: formToken, verifiedPhone: ixLead.phone, answers: goodAnswers, photos: [] });
+      assert.equal(r.ok, false);
+    });
+
+    await check("a returning patient's prefill carries answers but never consents", async () => {
+      const pre = await intake.prefillFor(ixLead.id, form.id, STARTER_HAIR_LOSS);
+      assert.equal(pre.thyroid_medication, "Thyronorm 50 mcg");
+      assert.equal(pre.consent_data, undefined);
+    });
+
+    await check("intake status shows complete with its red-flag count", async () => {
+      const st = (await intake.intakeStatus([ixId])).get(ixId);
+      assert.equal(st?.state, "complete");
+      assert.equal(st?.redFlags, 1);
+    });
+
+    // §2.8 — treatment plans against the database.
+    const series = await import("../lib/scheduling/series");
+    const drP = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} plan surgeon` } });
+    extraResources.push(drP.id);
+    await prisma.seriesTemplate.create({
+      data: {
+        name: `${tag} package`,
+        anchorTypeId: anyRoom.id,
+        autoStart: true,
+        steps: {
+          create: [
+            { order: 1, label: "Surgery", typeId: anyRoom.id, offsetValue: 0, offsetUnit: "days", toleranceDays: 0 },
+            { order: 2, label: "Post-op check", typeId: anyRoom.id, offsetValue: 1, offsetUnit: "days", toleranceDays: 0 },
+            { order: 3, label: "Scab review", typeId: anyRoom.id, offsetValue: 10, offsetUnit: "days", toleranceDays: 2 },
+            { order: 4, label: "PRP 1", typeId: anyRoom.id, offsetValue: 1, offsetUnit: "months", toleranceDays: 7 },
+            { order: 5, label: "PRP 2", typeId: anyRoom.id, offsetValue: 3, offsetUnit: "months", toleranceDays: 7 },
+          ],
+        },
+      },
+    });
+    const pLead = await prisma.lead.create({ data: { name: `${tag} plan patient`, phone: `+91977${String(Date.now()).slice(-7)}`, source: "manual" } });
+    extraLeads.push(pLead.id);
+    const anchorBooking = await bookAppointment({ leadId: pLead.id, branchId: branch.id, typeId: anyRoom.id, resourceIds: [drP.id], startAt: at(10 * 60), acknowledgeWarnings: true }, actor);
+    const anchorId = anchorBooking.ok ? anchorBooking.appointmentId : "";
+    let planId = "";
+
+    await check("booking the anchor type starts the plan automatically, pre-booking steps due within 30 days with the surgeon", async () => {
+      assert.ok(anchorBooking.ok);
+      const plan = await prisma.treatmentPlan.findFirstOrThrow({ where: { leadId: pLead.id }, include: { steps: { orderBy: { order: "asc" }, include: { appointment: { include: { resources: true } } } } } });
+      planId = plan.id;
+      assert.equal(plan.anchorAppointmentId, anchorId);
+      const st = plan.steps.map((x) => x.status);
+      assert.deepEqual(st.slice(0, 3), ["booked", "booked", "booked"], `steps: ${st.join(",")}`);
+      assert.equal(st[4], "planned");
+      assert.ok(plan.steps[1].appointment!.resources.some((r) => r.resourceId === drP.id), "follow-up is with the surgeon");
+      // Only one plan, even if booked again
+      await series.autoStartFor(anchorId);
+      assert.equal(await prisma.treatmentPlan.count({ where: { leadId: pLead.id } }), 1);
+    });
+
+    await check("moving the anchor shifts the later steps, re-books them, and flags the plan for review", async () => {
+      const before = await prisma.plannedStep.findFirstOrThrow({ where: { planId, order: 2 } });
+      const moved = await rescheduleAppointment(anchorId, { startAt: new Date(at(10 * 60).getTime() + 2 * 86_400_000) }, actor);
+      assert.ok(moved.ok, !moved.ok ? moved.error : "");
+      const plan = await prisma.treatmentPlan.findUniqueOrThrow({ where: { id: planId }, include: { steps: { orderBy: { order: "asc" }, include: { appointment: true } } } });
+      assert.equal(plan.needsReview, true);
+      assert.equal(plan.anchorAppointmentId, moved.ok ? moved.appointmentId : "");
+      const s2 = plan.steps[1];
+      assert.ok(s2.targetAt.getTime() > before.targetAt.getTime(), "post-op check moved later");
+      assert.ok(s2.appointment && s2.appointment.startAt >= s2.dueFrom && s2.appointment.startAt <= s2.dueTo, "and its booking sits in the new window");
+    });
+
+    await check("completing a step counts it; cancelling one puts it back to planned", async () => {
+      const plan = await prisma.treatmentPlan.findUniqueOrThrow({ where: { id: planId }, include: { steps: { orderBy: { order: "asc" } } } });
+      const s2 = plan.steps[1];
+      const s3 = plan.steps[2];
+      await changeAppointmentStatus(s2.appointmentId!, "checked_in", {}, actor);
+      await changeAppointmentStatus(s2.appointmentId!, "completed", {}, actor);
+      assert.equal((await prisma.plannedStep.findUniqueOrThrow({ where: { id: s2.id } })).status, "completed");
+      assert.ok((await prisma.auditLog.count({ where: { action: "series.step.completed", entityId: pLead.id } })) >= 1);
+      await changeAppointmentStatus(s3.appointmentId!, "cancelled", { reason: "travel", cancelledBy: "patient" }, actor);
+      const s3After = await prisma.plannedStep.findUniqueOrThrow({ where: { id: s3.id } });
+      assert.equal(s3After.status, "planned");
+      assert.equal(s3After.appointmentId, null);
+    });
+
+    await check("recall: WhatsApp when the window opens, + SMS at day 3, a call task at day 7", async () => {
+      const { setBoolSetting } = await import("../lib/settings");
+      await setBoolSetting("scheduling.recallEnabled", true);
+      const s5 = await prisma.plannedStep.findFirstOrThrow({ where: { planId, order: 5 } });
+      const open = new Date(s5.dueFrom.getTime());
+      const noonAfter = (days: number) => istInstant(istDateKey(new Date(open.getTime() + days * 86_400_000)), 12 * 60);
+      await series.processRecalls(noonAfter(0));
+      assert.equal((await prisma.plannedStep.findUniqueOrThrow({ where: { id: s5.id } })).recallStage, 1);
+      await series.processRecalls(noonAfter(1));
+      assert.equal((await prisma.plannedStep.findUniqueOrThrow({ where: { id: s5.id } })).recallStage, 1, "nothing more before day 3");
+      await series.processRecalls(noonAfter(3));
+      assert.equal((await prisma.plannedStep.findUniqueOrThrow({ where: { id: s5.id } })).recallStage, 2);
+      await series.processRecalls(noonAfter(7));
+      const after = await prisma.plannedStep.findUniqueOrThrow({ where: { id: s5.id } });
+      assert.equal(after.callRequired, true);
+      await setBoolSetting("scheduling.recallEnabled", false);
+    });
+
+    await check("the recall link verifies and books the step; the recall list buckets by due date", async () => {
+      const s4 = await prisma.plannedStep.findFirstOrThrow({ where: { planId, order: 4 } });
+      assert.equal(series.readRecallToken(series.recallToken(s4.id, s4.dueTo)), s4.id);
+      assert.equal(series.readRecallToken(series.recallToken(s4.id, s4.dueTo) + "x"), null);
+      const list = await series.recallList(branch.id, new Date(s4.dueFrom.getTime() + 86_400_000));
+      assert.ok([...list.thisWeek, ...list.overdue].some((r) => r.id === s4.id));
+    });
+
+    await check("every write left an audit row", async () => {
+      const ids = (await prisma.appointment.findMany({ where: { typeId: type.id }, select: { id: true } })).map((a) => a.id);
+      const n = await prisma.auditLog.count({ where: { entityType: "appointment", entityId: { in: ids } } });
+      assert.ok(n >= 6, `expected ≥6 audit rows, got ${n}`);
+    });
+  } finally {
+    await prisma.appointment.deleteMany({ where: { typeId: { in: [type.id, ...extraTypes] } } });
+    await prisma.appointmentType.deleteMany({ where: { id: { in: [type.id, ...extraTypes] } } });
+    await prisma.intakeForm.deleteMany({ where: { key: `${tag}-intake` } });
+    await prisma.seriesTemplate.deleteMany({ where: { name: `${tag} package` } });
+    await prisma.resource.deleteMany({ where: { id: { in: [room.id, doctor.id, ...extraResources] } } });
+    await prisma.lead.deleteMany({ where: { id: { in: [lead.id, ...extraLeads] } } });
+    await prisma.branch.deleteMany({ where: { id: { in: [branch.id, ...extraBranches] } } });
+    await prisma.$disconnect();
+  }
+}
+
+// ── §3 integrations: how appointments meet the rest of the CRM ──────────────────
+// Own fixtures, deleted after. Grows with each §3 piece.
+async function section3Checks() {
+  console.log("§3 integrations");
+  const { prisma } = await import("../lib/prisma");
+  const { bookAppointment, cancelUpcomingForLead, changeAppointmentStatus } = await import("../lib/scheduling/booking");
+  const { MISSED_TITLE } = await import("../lib/scheduling/crm");
+  const { leadSchedulingTimeline } = await import("../lib/scheduling/leadTimeline");
+  const { readLeadHistory } = await import("../lib/audit");
+  const billing = await import("../lib/scheduling/billing");
+  const { onRazorpayPaid } = await import("../lib/scheduling/online");
+  const { verifyRazorpayWebhook } = await import("../lib/providers/razorpay");
+  const { createHmac } = await import("node:crypto");
+  const handoffs = await import("../lib/scheduling/handoffs");
+  const { appointmentsReport } = await import("../lib/reports/appointments");
+  const { resolveRange } = await import("../lib/reports/range");
+  const { quietWindow } = await import("../lib/scheduling/reminders");
+  const { runSchedulingRetention } = await import("../lib/dataRetention");
+  const { messageBlockFor } = await import("../lib/messages");
+  const { userSeesIntake } = await import("../lib/scheduling/calendar");
+  const tag = `s3-${Date.now()}`;
+  const actor = { id: null, email: "check@section3" };
+
+  const branch = await prisma.branch.create({ data: { code: `S${String(Date.now()).slice(-6)}`, name: `${tag} branch` } });
+  const other = await prisma.branch.create({ data: { code: `O${String(Date.now()).slice(-6)}`, name: `${tag} other` } });
+  const lead = await prisma.lead.create({ data: { name: `${tag} patient`, phone: "+910000000301", source: "manual" } });
+  const room = await prisma.resource.create({ data: { kind: "room", subtype: "consultation", name: `${tag} room`, branchId: branch.id } });
+  const doctor = await prisma.resource.create({ data: { kind: "doctor", name: `${tag} doctor` } });
+  const type = await prisma.appointmentType.create({
+    data: {
+      name: `${tag} consult`,
+      durationMin: 30,
+      requirements: { create: [{ kind: "room", subtype: "consultation", resourceId: room.id }, { kind: "doctor", resourceId: doctor.id }] },
+    },
+  });
+  const outsider = await prisma.user.create({ data: { email: `${tag}@x.test`, role: "doctor", branchId: other.id } });
+  const d = new Date(Date.now() + 3 * 86_400_000);
+  const dateKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d);
+  const at = (min: number) => istInstant(dateKey, min);
+  const base = { leadId: lead.id, branchId: branch.id, typeId: type.id, acknowledgeWarnings: true };
+
+  try {
+    await check("care messages: marketing opt-out doesn't stop them; clinical 'no' and an appointment-messages 'no' do", async () => {
+      await prisma.lead.update({ where: { id: lead.id }, data: { optedOut: true } });
+      assert.equal(await messageBlockFor(lead.id, { clinical: true }), null);
+      assert.ok(await messageBlockFor(lead.id), "marketing is blocked by the opt-out");
+      await prisma.lead.update({ where: { id: lead.id }, data: { optedOut: false, consentClinical: false } });
+      assert.ok(await messageBlockFor(lead.id, { clinical: true }));
+      await prisma.lead.update({ where: { id: lead.id }, data: { consentClinical: null } });
+      await prisma.consentRecord.create({ data: { leadId: lead.id, purpose: "appointment_messages", granted: false, text: "t", version: "1", source: "front_desk" } });
+      assert.ok(await messageBlockFor(lead.id, { clinical: true }), "latest appointment-messages 'no' blocks");
+      await new Promise((r) => setTimeout(r, 5));
+      await prisma.consentRecord.create({ data: { leadId: lead.id, purpose: "appointment_messages", granted: true, text: "t", version: "2", source: "front_desk" } });
+      assert.equal(await messageBlockFor(lead.id, { clinical: true }), null, "a later 'yes' wins");
+    });
+
+    await check("intake is visible only where the appointment is: an outside-branch doctor gets nothing", async () => {
+      const b = await bookAppointment({ ...base, startAt: at(10 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const form = await prisma.intakeForm.create({ data: { key: `${tag}-f`, name: "f" } });
+      const ver = await prisma.intakeFormVersion.create({ data: { formId: form.id, version: 1, schema: { sections: [] } } });
+      const r = await prisma.intakeResponse.create({
+        data: { leadId: lead.id, appointmentId: b.ok ? b.appointmentId : null, formId: form.id, versionId: ver.id, answers: {} },
+      });
+      assert.equal(await userSeesIntake({ id: outsider.id, role: "doctor" }, r.id), false);
+      assert.equal(await userSeesIntake({ id: outsider.id, role: "crm_admin" }, r.id), true, "all-branch viewers see it");
+      await prisma.intakeForm.delete({ where: { id: form.id } });
+    });
+
+    await check("a booking links itself to the patient's quote for the same treatment", async () => {
+      const q = await prisma.quote.create({ data: { leadId: lead.id, treatment: type.name, status: "sent" } });
+      const b = await bookAppointment({ ...base, startAt: at(11 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const a = await prisma.appointment.findUniqueOrThrow({ where: { id: b.ok ? b.appointmentId : "" } });
+      assert.equal(a.quoteId, q.id);
+    });
+
+    await check("attended → 'Consultation done'; never backwards", async () => {
+      await prisma.lead.update({ where: { id: lead.id }, data: { stage: "appointment_scheduled" } });
+      const a = await prisma.appointment.findFirstOrThrow({ where: { leadId: lead.id, startAt: at(11 * 60) } });
+      assert.ok((await changeAppointmentStatus(a.id, "checked_in", {}, actor)).ok);
+      assert.ok((await changeAppointmentStatus(a.id, "completed", {}, actor)).ok);
+      assert.equal((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).stage, "consultation_done");
+    });
+
+    await check("no-show → one 'call to rebook' follow-up for the owner, stage unchanged; none if already rebooked", async () => {
+      const b = await bookAppointment({ ...base, startAt: at(14 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      // The 10:00 booking from the intake check is still live → the patient "has another booking".
+      const first = await prisma.appointment.findFirstOrThrow({ where: { leadId: lead.id, startAt: at(14 * 60) } });
+      assert.ok((await changeAppointmentStatus(first.id, "no_show", {}, actor)).ok);
+      assert.equal(await prisma.leadFollowUpStep.count({ where: { leadId: lead.id, title: MISSED_TITLE } }), 0, "rebooked → no chase");
+      const ten = await prisma.appointment.findFirstOrThrow({ where: { leadId: lead.id, startAt: at(10 * 60) } });
+      assert.ok((await changeAppointmentStatus(ten.id, "no_show", {}, actor)).ok);
+      assert.equal(await prisma.leadFollowUpStep.count({ where: { leadId: lead.id, title: MISSED_TITLE } }), 1);
+      assert.equal((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).stage, "consultation_done");
+    });
+
+    await check("the lead page sees its appointments (masked for an outside-branch viewer) and their history", async () => {
+      const mine = await leadSchedulingTimeline(lead.id, { id: outsider.id, role: "crm_admin" });
+      assert.ok(mine.appointments.length >= 3 && mine.appointments.every((a) => a.typeName));
+      const theirs = await leadSchedulingTimeline(lead.id, { id: outsider.id, role: "doctor" });
+      assert.ok(theirs.appointments.every((a) => !a.visible && a.typeName === null));
+      const hist = await readLeadHistory(lead.id);
+      assert.ok(hist.some((h) => h.action === "appointment.book"));
+      assert.ok(hist.some((h) => h.action === "lead.stage.move"));
+    });
+
+    const pay = (appointmentId: string, n: number) =>
+      prisma.bookingPayment.create({ data: { appointmentId, amountPaise: 50_000, listPaise: 50_000, orderId: `${tag}-order-${n}` } });
+
+    await check("a paid deposit on a no-show becomes credit; it can be used once, or refunded", async () => {
+      const b = await bookAppointment({ ...base, startAt: at(15 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const id = b.ok ? b.appointmentId : "";
+      await pay(id, 1);
+      assert.equal((await billing.markPaid(`${tag}-order-1`, "pay_1", "checkout")).paid, true);
+      assert.equal((await billing.markPaid(`${tag}-order-1`, "pay_1", "webhook")).paid, false, "paid once");
+      assert.ok((await changeAppointmentStatus(id, "no_show", {}, actor)).ok);
+      const [credit] = await billing.availableCredits(lead.id);
+      assert.ok(credit && credit.amountPaise === 50_000 && credit.reason === "no_show");
+      const next = await bookAppointment({ ...base, startAt: at(16 * 60) }, actor);
+      assert.ok(next.ok);
+      const nextId = next.ok ? next.appointmentId : "";
+      assert.ok((await billing.applyCredit(credit.id, nextId, actor)).ok);
+      assert.equal((await billing.applyCredit(credit.id, nextId, actor)).ok, false, "a credit is used once");
+      assert.equal((await billing.refundCredit(credit.id, { reason: "x", mode: "recorded" }, actor)).ok, false, "used credit can't be refunded");
+    });
+
+    await check("Razorpay's webhook rescues a paid hold whose browser never came back, and credits a lapsed one", async () => {
+      const held = await bookAppointment({ ...base, startAt: at(17 * 60), holdMinutes: 10 }, actor);
+      assert.ok(held.ok, !held.ok ? held.error : "");
+      const heldId = held.ok ? held.appointmentId : "";
+      await pay(heldId, 2);
+      assert.equal(await onRazorpayPaid(`${tag}-order-2`, "pay_2"), "booked from the webhook");
+      assert.equal((await prisma.appointment.findUniqueOrThrow({ where: { id: heldId } })).status, "confirmed");
+      assert.equal(await onRazorpayPaid(`${tag}-order-2`, "pay_2"), "already recorded");
+
+      const lapsed = await bookAppointment({ ...base, startAt: at(18 * 60), holdMinutes: 10 }, actor);
+      const lapsedId = lapsed.ok ? lapsed.appointmentId : "";
+      await pay(lapsedId, 3);
+      assert.ok((await changeAppointmentStatus(lapsedId, "cancelled", { reason: "Hold expired", cancelledBy: "patient" }, actor)).ok);
+      assert.equal(await onRazorpayPaid(`${tag}-order-3`, "pay_3"), "kept as credit");
+      const c = await prisma.patientCredit.findFirstOrThrow({ where: { appointmentId: lapsedId } });
+      assert.equal(c.reason, "hold_lapsed");
+      assert.ok((await billing.refundCredit(c.id, { reason: "patient asked", mode: "recorded" }, actor)).ok);
+      assert.equal((await prisma.bookingPayment.findUniqueOrThrow({ where: { orderId: `${tag}-order-3` } })).status, "refunded");
+
+      process.env.RAZORPAY_WEBHOOK_SECRET = "whsec";
+      const body = JSON.stringify({ event: "payment.captured" });
+      assert.ok(verifyRazorpayWebhook(body, createHmac("sha256", "whsec").update(body).digest("hex")));
+      assert.equal(verifyRazorpayWebhook(body, "00"), false);
+      delete process.env.RAZORPAY_WEBHOOK_SECRET;
+    });
+
+    await check("a completed session is handed to Billing: session 1 of 3, a third of the quote", async () => {
+      await prisma.quote.create({ data: { leadId: lead.id, treatment: type.name, status: "converted", quantity: 3, price: 1000, totalPayable: 3150 } });
+      const b = await bookAppointment({ ...base, startAt: at(19 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const id = b.ok ? b.appointmentId : "";
+      assert.ok((await changeAppointmentStatus(id, "checked_in", {}, actor)).ok);
+      assert.ok((await changeAppointmentStatus(id, "completed", {}, actor)).ok);
+      const ev = await prisma.revenueEvent.findUniqueOrThrow({ where: { appointmentId: id } });
+      assert.equal(ev.sessionNo, 1);
+      assert.equal(ev.sessions, 3);
+      assert.equal(ev.amount, 1050);
+    });
+
+    await check("check-in opens an encounter for the EMR; completing the visit closes it", async () => {
+      const b = await bookAppointment({ ...base, startAt: at(9 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const id = b.ok ? b.appointmentId : "";
+      assert.ok((await changeAppointmentStatus(id, "checked_in", {}, actor)).ok);
+      const open = await prisma.encounter.findUniqueOrThrow({ where: { appointmentId: id } });
+      assert.equal(open.status, "open");
+      assert.equal(open.doctorId, doctor.id);
+      assert.ok((await changeAppointmentStatus(id, "completed", {}, actor)).ok);
+      assert.equal((await prisma.encounter.findUniqueOrThrow({ where: { appointmentId: id } })).status, "closed");
+    });
+
+    await check("confirming reserves the type's consumables; cancelling releases them", async () => {
+      await prisma.appointmentTypeConsumable.create({ data: { typeId: type.id, sku: "GK-01", name: "Graft kit", quantity: 2 } });
+      const b = await bookAppointment({ ...base, startAt: at(13 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const id = b.ok ? b.appointmentId : "";
+      assert.equal(await prisma.consumableReservation.count({ where: { appointmentId: id } }), 0, "nothing until confirmed");
+      assert.ok((await changeAppointmentStatus(id, "confirmed", {}, actor)).ok);
+      const r = await prisma.consumableReservation.findFirstOrThrow({ where: { appointmentId: id } });
+      assert.equal(r.status, "requested");
+      assert.equal(r.quantity, 2);
+      assert.ok((await changeAppointmentStatus(id, "cancelled", { reason: "x", cancelledBy: "clinic" }, actor)).ok);
+      assert.equal((await prisma.consumableReservation.findFirstOrThrow({ where: { appointmentId: id } })).status, "released");
+    });
+
+    await check("an HR leave feed blocks the doctor, opens rebooking cases, and is idempotent; withdrawing it works", async () => {
+      await prisma.resource.update({ where: { id: doctor.id }, data: { externalRef: `${tag}-EMP7` } });
+      const b = await bookAppointment({ ...base, startAt: at(19 * 60 + 30) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const feed = { source: "hr" as const, externalId: `${tag}-L1`, resource: `${tag}-EMP7`, startAt: at(19 * 60 + 15), endAt: at(21 * 60), status: "approved" as const };
+      const first = await handoffs.upsertExternalTimeOff(feed);
+      assert.ok(first.ok && first.state === "created" && first.affected >= 1, JSON.stringify(first));
+      const again = await handoffs.upsertExternalTimeOff(feed);
+      assert.ok(again.ok && again.state === "unchanged");
+      const off = await prisma.resourceTimeOff.findUniqueOrThrow({ where: { externalId: `${tag}-L1` } });
+      assert.equal(off.source, "hr");
+      assert.equal(off.status, "approved");
+      const gone = await handoffs.upsertExternalTimeOff({ ...feed, status: "cancelled" });
+      assert.ok(gone.ok && gone.state === "cancelled");
+      assert.equal((await handoffs.upsertExternalTimeOff({ ...feed, resource: "nobody" })).ok, false);
+    });
+
+    await check("utilisation counts each doctor's completed visits, no-shows and hours, by type", async () => {
+      const rows = await handoffs.utilisation({ from: at(0), to: at(24 * 60), kind: "doctor" });
+      const mine = rows.find((r) => r.resourceId === doctor.id);
+      assert.ok(mine, "the doctor is in the report");
+      assert.ok(mine!.completed >= 3 && mine!.noShows >= 2, JSON.stringify(mine));
+      assert.equal(mine!.byType[type.name], mine!.completed);
+      assert.equal(mine!.externalRef, `${tag}-EMP7`);
+    });
+
+    await check("the Appointments report reads the calendar: no-shows against those who came, room use, doctors", async () => {
+      const r = await appointmentsReport(resolveRange({ from: dateKey, to: dateKey }));
+      assert.ok(r.totals.attended >= 3 && r.totals.noShows >= 2, JSON.stringify(r.totals));
+      assert.ok(r.totals.noShowPct! > 0 && r.totals.noShowPct! < 100);
+      const myRoom = r.rooms.find((x) => x.id === room.id);
+      assert.ok(myRoom && myRoom.openHours === 11 && myRoom.bookedHours > 0, JSON.stringify(myRoom));
+      assert.ok(r.doctors.some((x) => x.id === doctor.id && x.completed >= 3));
+    });
+
+    await check("appointment messages follow the BRANCH's quiet hours (one window with campaigns)", async () => {
+      assert.deepEqual(await quietWindow(branch.id), { start: 20 * 60, end: 9 * 60 }, "branch default 20–09");
+      await prisma.branch.update({ where: { id: branch.id }, data: { quietStartHour: 22, quietEndHour: 7 } });
+      assert.deepEqual(await quietWindow(branch.id), { start: 22 * 60, end: 7 * 60 });
+    });
+
+    await check("retention: expired OTP codes go after 7 days; intake photos only past their window", async () => {
+      const old = await prisma.otpChallenge.create({ data: { phone: "+910000000399", purpose: "intake_form", codeHash: "x", expiresAt: new Date(Date.now() - 10 * 86_400_000) } });
+      const fresh = await prisma.otpChallenge.create({ data: { phone: "+910000000399", purpose: "intake_form", codeHash: "x", expiresAt: new Date(Date.now() - 86_400_000) } });
+      const form = await prisma.intakeForm.create({ data: { key: `${tag}-rf`, name: "rf" } });
+      const ver = await prisma.intakeFormVersion.create({ data: { formId: form.id, version: 1, schema: { sections: [] } } });
+      const resp = await prisma.intakeResponse.create({ data: { leadId: lead.id, formId: form.id, versionId: ver.id, answers: {}, submittedAt: new Date(Date.now() - 400 * 86_400_000) } });
+      await prisma.intakePhoto.create({ data: { responseId: resp.id, slot: "front", mime: "image/jpeg", size: 1, bytes: new Uint8Array([1]) } });
+      delete process.env.INTAKE_PHOTO_RETENTION_MONTHS;
+      await runSchedulingRetention();
+      assert.equal(await prisma.otpChallenge.count({ where: { id: old.id } }), 0);
+      assert.equal(await prisma.otpChallenge.count({ where: { id: fresh.id } }), 1);
+      assert.equal(await prisma.intakePhoto.count({ where: { responseId: resp.id } }), 1, "no window set → photos kept");
+      process.env.INTAKE_PHOTO_RETENTION_MONTHS = "12";
+      await runSchedulingRetention();
+      delete process.env.INTAKE_PHOTO_RETENTION_MONTHS;
+      assert.equal(await prisma.intakePhoto.count({ where: { responseId: resp.id } }), 0);
+      assert.equal(await prisma.intakeResponse.count({ where: { id: resp.id } }), 1, "the answers stay");
+      await prisma.otpChallenge.delete({ where: { id: fresh.id } });
+      await prisma.intakeForm.delete({ where: { id: form.id } });
+    });
+
+    await check("trashing a lead cancels its upcoming appointments and frees their rooms", async () => {
+      const b = await bookAppointment({ ...base, startAt: at(12 * 60) }, actor);
+      assert.ok(b.ok, !b.ok ? b.error : "");
+      const n = await cancelUpcomingForLead(lead.id, "trashed", actor);
+      assert.ok(n >= 1, `expected ≥1 cancelled, got ${n}`);
+      // Completed visits keep their room (history); no LIVE booking may.
+      const live = await prisma.appointmentResource.count({
+        where: { resourceId: room.id, blocking: true, appointment: { status: { in: ["tentative", "booked", "confirmed"] } } },
+      });
+      assert.equal(live, 0);
+    });
+  } finally {
+    await prisma.revenueEvent.deleteMany({ where: { leadId: lead.id } });
+    await prisma.appointment.deleteMany({ where: { typeId: type.id } });
+    await prisma.quote.deleteMany({ where: { leadId: lead.id } });
+    await prisma.appointmentType.delete({ where: { id: type.id } });
+    await prisma.resource.deleteMany({ where: { id: { in: [room.id, doctor.id] } } });
+    await prisma.user.delete({ where: { id: outsider.id } });
+    await prisma.lead.delete({ where: { id: lead.id } });
+    await prisma.branch.deleteMany({ where: { id: { in: [branch.id, other.id] } } });
+  }
+}
+
+(async () => {
+  await engineChecks();
+  await spec21Checks();
+  await spec22Checks();
+  await spec29Checks();
+  await spec24Checks();
+  await spec27Checks();
+  await spec28Checks();
+  if (process.env.CHECK_DB !== "0") {
+    await section3Checks();
+    await dbChecks();
+  }
+  console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);
+  // The messaging modules (WhatsApp/Redis) keep sockets open; exit explicitly so the
+  // check finishes in CI and in a terminal alike.
+  process.exit(process.exitCode ?? 0);
+})();

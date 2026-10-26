@@ -1,6 +1,6 @@
 # 12 — Reports (§reports)
 
-Ten management read-outs at `/reports`, over one shared date range. The Dashboard
+Eleven management read-outs at `/reports`, over one shared date range. The Dashboard
 answers *"what's happening right now"*; this answers *"what happened, and is it getting
 better."*
 
@@ -17,12 +17,13 @@ imported because nothing in the CRM knows what a click cost (see
 | 2 | AI Contact Rate | How many of them the AI actually reached |
 | 3 | Handoff Speed | How fast a counsellor picked up what the AI handed over |
 | 4 | Counsellor Performance | Leads handled, consultations booked, quotes, conversions |
-| 5 | Source Attribution | Cost per lead, per consultation, per surgery |
+| 5 | Source Attribution | Cost per lead, per consultation, per patient who came, per surgery |
 | 6 | Lost Lead Analysis | Why we lose people before they're ever quoted |
 | 7 | 💰 Treatment Mix | What we quote, what converts, at what value |
 | 8 | 💰 Lost Quote Analysis | Quotes rejected, withdrawn or lapsed — and the pricing signal |
 | 9 | 💰 Multi-Quote | How often one patient buys two treatments, and which pairs |
 | 10 | 💰 Repeat Treatment | Who comes back, how long they take, what it's worth |
+| 11 | Appointments | No-show rate, wait after check-in, room and doctor utilisation, recall compliance, booking lead time, and which sources / campaigns actually turn up — read from the calendar |
 
 ## Who sees what
 
@@ -123,6 +124,7 @@ blank rather than zero.
 | Report 5 | `lib/reports/attribution.ts` |
 | Reports 6 & 8 | `lib/reports/lost.ts` |
 | Reports 7, 9, 10 | `lib/reports/money.ts` |
+| Report 11 | `lib/reports/appointments.ts` |
 | Ad spend + coverage | `lib/adSpend.ts` |
 | Page, tabs, capability gate | `app/(dashboard)/reports/page.tsx` + `sections/` |
 | Presentational primitives | `components/ReportUI.tsx`, `components/ReportRangePicker.tsx` |
@@ -131,10 +133,13 @@ blank rather than zero.
 
 Stated here because a report that hides its limits is worse than one that has none.
 
-- **No appointment records.** "Consultation booked" is inferred from the lead's *current*
-  stage (plus anyone who bought). A lead who booked and was later marked Lost reads as
-  lost. Real counts need the calendar work in
-  [deferred-todo.md](../deferred-todo.md).
+- **"Consultation booked" is still stage-based** in reports 4 and 5 (plus anyone who
+  bought), so a lead who booked and was later marked Lost reads as lost. The calendar's
+  real counts sit beside it: report 5's **Came** column and report 11 count appointments
+  a patient actually attended. Visits from before the calendar went live aren't in them.
+- **Room utilisation assumes the room is free whenever the branch is open.** Room-level
+  downtime isn't subtracted; doctors get hours and visits, not a percentage, because most
+  have no roster to divide by.
 - **One handover per lead.** `Lead.handoverAt` holds the most recent handover only, so a
   lead handed over twice contributes once, and an earlier handover outside the range isn't
   counted at all. Report 3 measures handovers as they stand, not a full event history.

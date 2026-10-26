@@ -187,6 +187,40 @@ export async function updateMessageStatus(
   if (row) void publishLeadMessageEvent(row.leadId);
 }
 
+/// Why a message may NOT go to this lead, or null when it may. The one consent rule for
+/// every channel — WhatsApp here, and SMS / email in the reminder and recall senders, which
+/// call this before sending (they used to skip consent entirely, so "no" stopped WhatsApp
+/// only).
+///   • a lead in the trash gets nothing;
+///   • a CARE message (`clinical`) follows clinical consent and the patient's latest
+///     "messages about my appointments" answer (ConsentRecord `appointment_messages`), not
+///     the marketing opt-out;
+///   • anything else follows the marketing opt-out.
+export async function messageBlock(
+  lead: { id: string; deletedAt: Date | null; optedOut: boolean; consentClinical: boolean | null },
+  opts: { clinical?: boolean } = {},
+): Promise<string | null> {
+  if (lead.deletedAt) return "Lead is in the trash";
+  if (!opts.clinical) return lead.optedOut ? "Lead has opted out of messaging" : null;
+  if (lead.consentClinical === false) return "Clinical consent withheld — care messages are not permitted";
+  const latest = await prisma.consentRecord.findFirst({
+    where: { leadId: lead.id, purpose: "appointment_messages" },
+    orderBy: { createdAt: "desc" },
+    select: { granted: true },
+  });
+  if (latest?.granted === false) return "The patient declined messages about their appointments";
+  return null;
+}
+
+/// `messageBlock` by lead id, for senders that hold only the id.
+export async function messageBlockFor(leadId: string, opts: { clinical?: boolean } = {}): Promise<string | null> {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { id: true, deletedAt: true, optedOut: true, consentClinical: true },
+  });
+  return lead ? messageBlock(lead, opts) : "Lead not found";
+}
+
 type SendOpts = {
   /// true = system/AI-sent (automated outreach); false/omitted = manual agent send.
   automated?: boolean;
@@ -196,7 +230,8 @@ type SendOpts = {
   /// messages are governed by CLINICAL consent, so they are exempt from the
   /// `optedOut` marketing suppression — a patient who unsubscribed from promotions
   /// still gets their day-7 post-op check-in. An explicit `consentClinical === false`
-  /// still refuses. Only lib/postSales/ sets this; nothing else should.
+  /// still refuses. Set by lib/postSales/ (care check-ins) and lib/scheduling/
+  /// (appointment reminders and changes — transactional, §3.2 2.4); nothing else.
   clinical?: boolean;
 };
 
@@ -227,7 +262,10 @@ export async function sendLeadText(
 ): Promise<{ ok: true; message: Message } | { ok: false; error: string }> {
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) return { ok: false, error: "Lead not found" };
-  if (lead.optedOut) return { ok: false, error: "Lead has opted out of messaging" };
+  // A care / appointment message follows CLINICAL consent, not the marketing opt-out
+  // (§post-sales, §3.2 2.4) — see messageBlock.
+  const blocked = await messageBlock(lead, opts);
+  if (blocked) return { ok: false, error: blocked };
   if (!(await isServiceWindowOpen(leadId))) {
     return logBlocked(leadId, "text", body, "Outside the 24h window — needs an approved template", opts);
   }
@@ -390,13 +428,9 @@ export async function sendLeadTemplate(
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) return { ok: false, error: "Lead not found" };
   // A clinical care message is exempt from the marketing opt-out (§post-sales), but
-  // never from clinical consent being explicitly withheld.
-  if (opts.clinical) {
-    if (lead.consentClinical === false)
-      return { ok: false, error: "Clinical consent withheld — care messages are not permitted" };
-  } else if (lead.optedOut) {
-    return { ok: false, error: "Lead has opted out of messaging" };
-  }
+  // never from clinical consent being withheld — see messageBlock.
+  const blocked = await messageBlock(lead, opts);
+  if (blocked) return { ok: false, error: blocked };
 
   const res = await sendWhatsAppTemplate(lead.phone, templateName, languageCode, components);
   // Log what the PATIENT actually received — the approved body with its {{n}}

@@ -85,6 +85,36 @@ export const CAPABILITIES = [
   "postsales.manage",
   "postsales.checkins",
   "postsales.policy",
+  // Appointments & scheduling (§3.2). `view` = see the calendar and appointments;
+  // `book` = book / reschedule / cancel (front desk, call centre); `checkin` = run the
+  // day — check in, start, complete, mark no-show; `configure` = branch hours and
+  // holidays, resources and rosters, appointment types, patient flags, the module's
+  // switches.
+  "appointments.view",
+  "appointments.book",
+  "appointments.checkin",
+  "appointments.configure",
+  // Book over a clash on a CONSULTATION room, with a logged reason (§2.1.c). Never
+  // applies to an OT or the OT team. Branch managers by default.
+  "appointments.override",
+  // §2.2 cross-branch. `viewAllBranches` = see patient details on EVERY branch's
+  // calendar; without it, other branches show free/busy only ("Booked") — 2.2.b.
+  // `bookAnyBranch` = book / move / cancel at a branch other than your own — the call
+  // centre, head office and branch managers (2.2.c).
+  "appointments.viewAllBranches",
+  "appointments.bookAnyBranch",
+  // §2.9.a — approve / reject doctors' leave (head office; + admin). Anyone linked to a
+  // doctor/staff resource can REQUEST their own leave without a capability.
+  "appointments.approveLeave",
+  // §2.7 — intake answers are HEALTH DATA. `viewIntake` = read a patient's intake answers
+  // and photos (clinical team + branch managers); everyone else sees only "complete /
+  // pending" and the red-flag count. `verifyIntake` = mark a patient-reported answer
+  // verified (clinicians).
+  "appointments.viewIntake",
+  "appointments.verifyIntake",
+  // §3, decision 3.c — refund a patient's credit (a deposit kept from a missed visit).
+  // Applying credit to a booking needs only `book`; giving money back is a manager's call.
+  "appointments.refund",
   "calls.view",
   "analytics.view",
   // Reports (§reports) — the management read-outs, split in two because they answer to
@@ -175,6 +205,23 @@ export const CAPABILITY_GROUPS: {
     ],
   },
   {
+    key: "appointments",
+    label: "Appointments",
+    capabilities: [
+      { key: "appointments.view", label: "View calendar & appointments" },
+      { key: "appointments.book", label: "Book / reschedule / cancel" },
+      { key: "appointments.checkin", label: "Check in / start / complete / no-show" },
+      { key: "appointments.configure", label: "Configure hours, resources, types & flags" },
+      { key: "appointments.override", label: "Override a consultation-room clash" },
+      { key: "appointments.viewAllBranches", label: "See patient details at every branch" },
+      { key: "appointments.bookAnyBranch", label: "Book at any branch (not just own)" },
+      { key: "appointments.approveLeave", label: "Approve doctors' leave / mark emergency" },
+      { key: "appointments.viewIntake", label: "Read intake forms (health data)" },
+      { key: "appointments.verifyIntake", label: "Verify intake answers (clinical)" },
+      { key: "appointments.refund", label: "Refund a patient's credit" },
+    ],
+  },
+  {
     key: "calls",
     label: "Calls",
     capabilities: [{ key: "calls.view", label: "View call history" }],
@@ -233,6 +280,9 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     // close out care check-ins they made by phone, but they don't move clinical stages.
     "postsales.view",
     "postsales.checkins",
+    "appointments.view",
+    "appointments.book",
+    "appointments.checkin",
   ],
   telecaller: [
     "leads.view",
@@ -256,6 +306,10 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     // clinical stages — "The Post-Sales team owns these stages. Sales counsellors
     // can't edit them." (§post-sales)
     "postsales.view",
+    "appointments.view",
+    "appointments.book",
+    "appointments.viewAllBranches",
+    "appointments.bookAnyBranch",
   ],
   telecalling_head: [
     "leads.view",
@@ -283,6 +337,10 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "campaigns.winback",
     "campaigns.manage",
     "postsales.view",
+    "appointments.view",
+    "appointments.book",
+    "appointments.viewAllBranches",
+    "appointments.bookAnyBranch",
   ],
   branch_manager: [
     "leads.view",
@@ -321,6 +379,15 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "postsales.manage",
     "postsales.checkins",
     "postsales.policy",
+    "appointments.view",
+    "appointments.book",
+    "appointments.checkin",
+    "appointments.configure",
+    "appointments.override",
+    "appointments.viewAllBranches",
+    "appointments.bookAnyBranch",
+    "appointments.viewIntake",
+    "appointments.refund",
   ],
   sales_head: [
     "leads.view",
@@ -357,6 +424,12 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     // Oversight of the clinical pipeline, but not editing it — the post-sales team owns
     // those stages.
     "postsales.view",
+    "appointments.view",
+    "appointments.book",
+    "appointments.viewAllBranches",
+    "appointments.bookAnyBranch",
+    "appointments.approveLeave",
+    "appointments.refund",
   ],
 
   // ── The post-sales / clinical roles (§post-sales). Note what is ABSENT from all
@@ -367,16 +440,25 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "postsales.view",
     "postsales.manage",
     "postsales.checkins",
+    "appointments.view",
+    "appointments.checkin",
+    "appointments.viewIntake",
+    "appointments.verifyIntake",
   ],
   ot_team: [
     "postsales.view",
     // The OT team drives Pre-Op → Surgery Done and records the surgery date.
     "postsales.manage",
+    "appointments.view",
   ],
   post_sales_consultant: [
     "postsales.view",
     "postsales.manage",
     "postsales.checkins",
+    "appointments.view",
+    "appointments.book",
+    "appointments.viewIntake",
+    "appointments.verifyIntake",
   ],
 };
 
@@ -460,6 +542,8 @@ export function routeCapability(pathname: string): Capability | null {
   if (pathname.startsWith("/reports")) return "reports.view";
   if (pathname.startsWith("/post-sales/policies")) return "postsales.policy";
   if (pathname.startsWith("/post-sales")) return "postsales.view";
+  if (pathname.startsWith("/appointments/setup")) return "appointments.configure";
+  if (pathname.startsWith("/appointments")) return "appointments.view";
   if (pathname.startsWith("/templates")) return "templates.manage";
   if (pathname.startsWith("/chatbot")) return "chatbot.manage";
   if (pathname.startsWith("/settings")) return "settings.manage";

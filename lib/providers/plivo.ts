@@ -220,6 +220,98 @@ export function recordingWhisperPlivoXML(): string {
   );
 }
 
+// ── Inbound: a patient rings the clinic line (§presence) ─────────────────────
+// The ladder is the Twilio one, rebuilt in Plivo XML: every <Dial> carries an `action`
+// back to /api/plivo/inbound, which fires when that leg ends and decides the next hop.
+// WHO rings is decided in lib/inboundRouting.ts, not here.
+
+const INBOUND_GREETING =
+  process.env.CLINIC_CALL_GREETING ??
+  "Thank you for calling Cara Clinic. Please hold while we connect you to your counsellor. " +
+    "This call may be recorded for quality and training purposes.";
+
+/// Ring one counsellor for the caller. The greeting (with the recording disclosure, §C1) is
+/// spoken on the first hop only — a caller walking the ladder shouldn't hear it again
+/// between attempts.
+///
+/// `confirmSound` is fetched only when the COUNSELLOR answers and is played to them alone,
+/// which makes it both the whisper ("your patient Priya is calling") and the earliest
+/// reliable "they picked up" signal. The `<Record>` before the `<Dial>` is the same
+/// three-attribute recipe as the outbound call — see dialLeadPlivoXML.
+///
+/// On an Indian route the caller ID on the counsellor's leg must be a number we rent from
+/// Plivo, so their handset shows the clinic line, not the patient — which is why the
+/// whisper names the caller.
+export function inboundDialRepPlivoXML(opts: {
+  repPhone: string;
+  whisperUrl: string;
+  actionUrl: string;
+  recordingCallbackUrl: string;
+  timeoutSec: number;
+  greet: boolean;
+}): string {
+  const maxLength = Number(process.env.PLIVO_MAX_RECORDING_SECONDS ?? 3600);
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<Response>` +
+    (opts.greet ? `<Speak>${xmlEscape(INBOUND_GREETING)}</Speak>` : "") +
+    `<Record recordSession="true" startOnDialAnswer="true" redirect="false" ` +
+    `fileFormat="mp3" maxLength="${maxLength}" recordChannelType="stereo" ` +
+    `callbackUrl="${xmlEscape(opts.recordingCallbackUrl)}" callbackMethod="POST"/>` +
+    `<Dial callerId="${xmlEscape(plivoRepCallerId(opts.repPhone))}" ` +
+    `action="${xmlEscape(opts.actionUrl)}" method="POST" timeout="${opts.timeoutSec}" ` +
+    `confirmSound="${xmlEscape(opts.whisperUrl)}" confirmSoundMethod="POST">` +
+    `<Number>${xmlEscape(opts.repPhone)}</Number>` +
+    `</Dial>` +
+    `</Response>`
+  );
+}
+
+/// Played to the COUNSELLOR when they pick up an inbound call, before the caller is bridged.
+export function inboundWhisperPlivoXML(patientName: string | null, sticky: boolean): string {
+  const text = patientName
+    ? `${sticky ? "Your patient" : "Patient"} ${patientName} is calling the clinic. Connecting now.`
+    : "A patient is calling the clinic. Connecting now.";
+  return `<?xml version="1.0" encoding="UTF-8"?><Response><Speak>${xmlEscape(text)}</Speak></Response>`;
+}
+
+/// Nobody free on the first pass: hold briefly, then run the whole ladder once more.
+export function inboundHoldPlivoXML(retryUrl: string, holdSec: number): string {
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<Response>` +
+    `<Speak>All our counsellors are with patients right now. Please hold for a moment.</Speak>` +
+    `<Wait length="${holdSec}"/>` +
+    `<Redirect method="POST">${xmlEscape(retryUrl)}</Redirect>` +
+    `</Response>`
+  );
+}
+
+/// Last resort — take a message. `actionUrl` fires when the message ends, files it on the
+/// call and answers with the goodbye (Plivo follows the action, so nothing after <Record>
+/// would play). `callbackUrl` fires once the audio is actually downloadable, which is when
+/// it can be transcribed.
+export function inboundVoicemailPlivoXML(actionUrl: string, callbackUrl: string, maxSec = 120): string {
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<Response>` +
+    `<Speak>We are sorry to keep you waiting. Please leave your name and message after the tone, ` +
+    `and a counsellor will call you back.</Speak>` +
+    `<Record action="${xmlEscape(actionUrl)}" method="POST" maxLength="${maxSec}" ` +
+    `playBeep="true" timeout="5" finishOnKey="#" fileFormat="mp3" ` +
+    `callbackUrl="${xmlEscape(callbackUrl)}" callbackMethod="POST"/>` +
+    `</Response>`
+  );
+}
+
+/// End the call, optionally saying something first.
+export function hangupPlivoXML(say?: string): string {
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<Response>${say ? `<Speak>${xmlEscape(say)}</Speak>` : ""}<Hangup/></Response>`
+  );
+}
+
 // ── Signature validation (V3) ────────────────────────────────────────────────
 // Ported from Plivo's own node SDK (`utils/v3Security.js`) rather than from the prose docs,
 // which are ambiguous about one detail that decides every outcome: whether a separator sits
@@ -298,6 +390,27 @@ export function verifyPlivoSignature(
     const b = Buffer.from(candidate.trim());
     return a.length === b.length && timingSafeEqual(a, b);
   });
+}
+
+/// Read a Plivo webhook's form params and verify its signature over the exact public URL it
+/// called. `params` is null when the signature fails.
+export async function readSignedPlivoRequest(
+  req: Request,
+): Promise<{ url: URL; params: Record<string, string> | null }> {
+  const url = new URL(req.url);
+  const params: Record<string, string> = {};
+  const type = req.headers.get("content-type") ?? "";
+  if (type.includes("form")) {
+    const form = await req.formData();
+    for (const [k, v] of form.entries()) params[k] = String(v);
+  }
+  const ok = verifyPlivoSignature(
+    `${publicBase()}${url.pathname}${url.search}`,
+    params,
+    req.headers.get("x-plivo-signature-v3"),
+    req.headers.get("x-plivo-signature-v3-nonce"),
+  );
+  return { url, params: ok ? params : null };
 }
 
 /// Delete a recording's audio at Plivo (§compliance C3 — erasure / retention). The recording

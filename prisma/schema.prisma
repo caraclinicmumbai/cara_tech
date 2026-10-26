@@ -107,7 +107,7 @@ model Lead {
   //    explicitly recorded, which for a patient with a converted quote is treated as
   //    consenting (they are under the clinic's care). Only an explicit `false` blocks
   //    care messages. See lib/postSales/checkins.ts. ──
-  consentClinical Boolean?
+  consentClinical   Boolean?
   // The language the patient is comfortable in, e.g. "Hindi", "Marathi" (§post-sales
   // handover summary). Carried into the handover so post-sales never has to guess.
   preferredLanguage String?
@@ -147,6 +147,7 @@ model Lead {
   externalId String? // provider's lead id (Meta leadgen_id, Google lead_id) — dedup key
   campaign   String? // campaign id/name
   adId       String? // ad / adgroup / creative id
+  medium     String? // utm_medium (cpc, social, email…) — how the click arrived, from online booking
 
   // ── Soft delete / trash (§3.1) — a staff-removed lead. When set it's excluded
   //    from lists, metrics, dedup, and calling; it shows in the Deleted section,
@@ -169,6 +170,12 @@ model Lead {
   postSalesCheckIns   PostSalesCheckIn[]
   notifications       Notification[]
   chatReads           ChatRead[]
+  appointments        Appointment[]
+  flags               LeadFlag[]
+  consents            ConsentRecord[]
+  credits             PatientCredit[]
+  intakeResponses     IntakeResponse[]
+  treatmentPlans      TreatmentPlan[]
 
   @@index([status])
   @@index([phone])
@@ -229,7 +236,7 @@ model SalesRep {
   handledCalls  Call[]             @relation("CallHandler")
   ownedQuotes   Quote[]            @relation("QuoteOwner")
   followUpSteps LeadFollowUpStep[] @relation("FollowUpOwner")
-  user         User? // the login account linked to this rep (§3.1 RBAC)
+  user          User? // the login account linked to this rep (§3.1 RBAC)
 
   @@index([active, lastAssignedAt])
   // Fast lookup for the round-robin (available reps) and the idle-sweep.
@@ -418,6 +425,12 @@ model User {
   doctorJourneys     PostSalesJourney[] @relation("JourneyDoctor")
   otJourneys         PostSalesJourney[] @relation("JourneyOtLead")
   consultantJourneys PostSalesJourney[] @relation("JourneyConsultant")
+
+  // ── Scheduling (§3.2) — the doctor/staff resource this login IS (if any), and the
+  //    appointments this login booked. ──
+  schedulingResource Resource?
+  appointmentsBooked Appointment[] @relation("AppointmentBookedBy")
+  flagsSet           LeadFlag[]    @relation("LeadFlagSetBy")
 }
 
 /// A temporary grant of access to a lead (§handover) — lets a counsellor act on a
@@ -468,6 +481,10 @@ model Notification {
   // Dedup key so a repeated trigger (a second handover on the same cycle, a retried
   // webhook) doesn't stack identical bells. Null = never deduped.
   dedupeKey String? @unique
+
+  // Where clicking it goes when it isn't about one lead (an appointment worklist, a
+  // leave request). Null = the lead page, as before.
+  href String?
 
   readAt    DateTime? // null = unread; drives the bell's badge count
   createdAt DateTime  @default(now())
@@ -565,8 +582,8 @@ model QuoteCreditDispute {
   /// open | upheld | rejected. `upheld` moves the credit to the claimant.
   status String @default("open")
 
-  decidedById String?
-  decidedAt   DateTime?
+  decidedById  String?
+  decidedAt    DateTime?
   /// The Sales Head's reasoning. Mandatory on a decision — this is the record that
   /// settles the argument.
   decisionNote String?
@@ -654,6 +671,10 @@ model CatalogItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  appointmentTypes AppointmentType[]
+
+  quotes           Quote[]
 
   @@unique([type, name])
   @@index([active])
@@ -796,18 +817,28 @@ model Branch {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  leads            Lead[]
-  reps             SalesRep[]
-  users            User[]            @relation("UserHomeBranch")
-  quotes           Quote[]           @relation("QuoteBranch")
-  invoicedQuotes   Quote[]           @relation("QuoteInvoicedBranch")
-  invoicesRaised   Invoice[]         @relation("InvoiceBranch")
-  creditDisputesRaised   QuoteCreditDispute[] @relation("DisputeClaimant")
-  creditDisputesAgainst  QuoteCreditDispute[] @relation("DisputeCredited")
-  chatbotFlows     ChatbotFlow[]
-  campaignSettings CampaignSetting[]
-  postSalesJourneys PostSalesJourney[] @relation("JourneyBranch")
-  adSpend          AdSpend[]          @relation("AdSpendBranch")
+  leads                 Lead[]
+  reps                  SalesRep[]
+  users                 User[]               @relation("UserHomeBranch")
+  quotes                Quote[]              @relation("QuoteBranch")
+  invoicedQuotes        Quote[]              @relation("QuoteInvoicedBranch")
+  invoicesRaised        Invoice[]            @relation("InvoiceBranch")
+  creditDisputesRaised  QuoteCreditDispute[] @relation("DisputeClaimant")
+  creditDisputesAgainst QuoteCreditDispute[] @relation("DisputeCredited")
+  chatbotFlows          ChatbotFlow[]
+  campaignSettings      CampaignSetting[]
+  postSalesJourneys     PostSalesJourney[]   @relation("JourneyBranch")
+  adSpend               AdSpend[]            @relation("AdSpendBranch")
+
+  // ── Scheduling (§3.2) ──
+  hours              BranchHours[]
+  closures           BranchClosure[]
+  resources          Resource[]
+  resourceSchedules  ResourceSchedule[]
+  appointments       Appointment[]
+  scheduleExceptions ResourceScheduleException[]
+  travelFrom         BranchTravelTime[]          @relation("TravelFrom")
+  travelTo           BranchTravelTime[]          @relation("TravelTo")
 
   @@index([active])
 }
@@ -926,11 +957,15 @@ model Quote {
   leadId    String
   lead      Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
   treatment String // e.g. "Hair transplant (FUE)", "PRP"
+  /// The catalogue item it was picked from, when it was (free text has none). Lets an
+  /// appointment type or a treatment series match the quote by item, not by name.
+  catalogItemId String?
+  catalogItem   CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
 
   // Quote lifecycle — independent of the lead's person-track stage.
   // drafted | sent | viewed | accepted | awaiting_payment | converted |
   // in_treatment | completed | rejected | expired | replaced | withdrawn
-  status       String  @default("drafted")
+  status String @default("drafted")
 
   // Cycle: 1 = first time we've quoted this person for this treatment, 2 = repeat, …
   cycle Int @default(1)
@@ -988,15 +1023,16 @@ model Quote {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  versions QuoteVersion[]
+  versions      QuoteVersion[]
+  appointments  Appointment[]
   /// Invoices raised against THIS quote (§billing). Its existence is what makes the
   /// quote "converted"; the invoicing branch earns the credit.
-  invoices Invoice[]
+  invoices      Invoice[]
   /// The one credit dispute this quote may carry (§branch credit).
   creditDispute QuoteCreditDispute?
   // The post-sales journey this quote opened on conversion (§post-sales) — at most
   // one per quote. Two converted treatments = two journeys, running independently.
-  journey  PostSalesJourney?
+  journey       PostSalesJourney?
 
   @@index([leadId])
   @@index([status])
@@ -1075,7 +1111,7 @@ model PostSalesJourney {
 
   /// When surgery actually happened. Set on the move to `surgery_done` and it is
   /// the ANCHOR for the whole check-in schedule (day 1 / 7 / 30 / 90 after this).
-  surgeryAt DateTime?
+  surgeryAt           DateTime?
   /// Set once the check-in rows have been generated for `surgeryAt`, so re-entering
   /// the stage doesn't duplicate them. Cleared when the surgery date is corrected.
   checkInsScheduledAt DateTime?
@@ -1100,8 +1136,9 @@ model PostSalesJourney {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  checkIns PostSalesCheckIn[]
-  notes    PostSalesNote[]
+  checkIns     PostSalesCheckIn[]
+  appointments Appointment[]
+  notes        PostSalesNote[]
 
   @@index([stage])
   @@index([stageDueAt])
@@ -1134,7 +1171,7 @@ model PostSalesCheckIn {
 
   /// Days after surgery this check-in is for: 1 | 7 | 30 | 90 (per-treatment override
   /// possible via TreatmentStagePolicy.checkInDays).
-  dayOffset Int
+  dayOffset    Int
   /// When it should go out (may be pushed by coordination / quiet hours).
   scheduledFor DateTime
   /// The un-nudged surgeryAt + dayOffset, so the UI can show that it was moved.
@@ -1146,17 +1183,17 @@ model PostSalesCheckIn {
   /// failed — send errored after retries.
   status String @default("pending")
 
-  sentAt        DateTime?
+  sentAt         DateTime?
   /// The Message row this produced, so the check-in links into the patient's thread.
-  messageId     String?
-  attempts      Int       @default(0)
-  lastError     String?
+  messageId      String?
+  attempts       Int       @default(0)
+  lastError      String?
   /// Why it can't be automated (status=blocked) — shown to the consultant as a task.
-  blockedReason String?
+  blockedReason  String?
   /// Why the date moved (coordination clash / quiet hours), for the UI + audit.
   deferredReason String?
   /// How many times it has been pushed — a safety valve so a clash can't push forever.
-  deferrals      Int      @default(0)
+  deferrals      Int       @default(0)
 
   /// Who marked it done/skipped by hand (User.id), mirroring the audit convention.
   completedById String?
@@ -1244,4 +1281,896 @@ model AuditLog {
   @@index([actorId])
   @@index([at])
   @@index([action])
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Module 3.2 — Appointment, Scheduling & Front Desk
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// The rule the whole module exists for: a ROOM, a piece of EQUIPMENT or a member of
+// SUPPORT STAFF is never in two places at once. Doctors may be double-booked (the
+// clinic's decision), but only with a warning someone acknowledged, which is audited.
+//
+// The guarantee is enforced in lib/scheduling/booking.ts, not here: every booking
+// takes a Postgres advisory lock per resource, re-checks overlaps inside the lock,
+// then inserts — so two receptionists clicking the same OT slot at the same second
+// cannot both win. AppointmentResource rows are what that check reads.
+//
+// Times are stored as UTC instants; weekly patterns (branch hours, doctor rosters)
+// are IST wall-clock minutes-from-midnight, because "Andheri opens at 10" is a
+// wall-clock fact, not an instant.
+
+/// Weekly opening hours for a branch (§3.2 1.C). One row per weekday per branch.
+/// A branch with NO rows uses the built-in default (lib/scheduling/hours.ts), so a
+/// fresh branch is bookable before anyone has configured it. Once configured, a
+/// weekday is either open between [openMin, closeMin) or `closed`.
+model BranchHours {
+  id       String  @id @default(cuid())
+  branchId String
+  branch   Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  weekday  Int // 0 = Sunday … 6 = Saturday (IST)
+  openMin  Int // minutes from IST midnight, e.g. 600 = 10:00
+  closeMin Int // exclusive, e.g. 1200 = 20:00
+  closed   Boolean @default(false)
+
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([branchId, weekday])
+}
+
+/// A holiday, blackout or partial closure (§3.2 1.C) — "no slots on Diwali". A null
+/// branch means EVERY branch (a chain-wide holiday). Dates are IST calendar dates,
+/// inclusive. A partial closure (startMin/endMin set) blocks only that part of each day.
+model BranchClosure {
+  id        String   @id @default(cuid())
+  branchId  String?
+  branch    Branch?  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  startMin  Int? // partial-day closure: null = the whole day
+  endMin    Int?
+  reason    String
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([startDate, endDate])
+  @@index([branchId])
+}
+
+/// Anything that must be free for an appointment to happen (§3.2 1.4, 1.D).
+///   kind    : doctor | room | equipment | staff
+///   subtype : narrows a kind so an appointment type can ask for "any OT room" or
+///             "two technicians" rather than a named one — room: consultation | ot |
+///             procedure; staff: technician | nurse | anaesthetist | …; free text.
+///   branchId: rooms and equipment live in ONE branch. Doctors and staff may move
+///             between branches — leave it null, and say where they are on which day
+///             with ResourceSchedule.
+model Resource {
+  id             String    @id @default(cuid())
+  kind           String
+  subtype        String?
+  name           String
+  branchId       String?
+  branch         Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  /// The staff login this doctor / staff member signs in as — so a doctor sees their
+  /// own schedule. Unique: one person is one resource.
+  userId         String?   @unique
+  user           User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  color          String?
+  notes          String?
+  active         Boolean   @default(true)
+  sortOrder      Int       @default(0)
+  /// Rooms only: a branch manager may override a clash on this room, with a logged
+  /// reason (§2.1.c — consultation rooms yes, OT never).
+  allowOverride  Boolean   @default(false)
+  /// Visiting / consultant doctors (§2.9.e): bookable only between these IST dates,
+  /// inclusive. Null = no limit on that side.
+  availableFrom  DateTime? @db.Date
+  availableUntil DateTime? @db.Date
+  /// The id this person or machine has in ANOTHER system — the HR employee code (3.8) or
+  /// the asset tag (3.9) — so their feeds can name a resource without knowing our ids.
+  externalRef    String?   @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  schedules    ResourceSchedule[]
+  exceptions   ResourceScheduleException[]
+  timeOff      ResourceTimeOff[]
+  bookings     AppointmentResource[]
+  requirements AppointmentTypeRequirement[]
+
+  @@index([kind, active])
+  @@index([branchId])
+}
+
+/// When a doctor / staff member works, and WHERE (§3.2 "doctor availability"). Dr X
+/// at Andheri Mon/Wed 10–2 is two rows. A person with NO rows is available whenever
+/// the branch is open (so setup isn't a prerequisite for booking); once they have
+/// rows, they are bookable only inside them. Rooms/equipment don't use this — they
+/// follow their branch's hours.
+model ResourceSchedule {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  branchId   String
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  weekday    Int // 0 = Sunday … 6 = Saturday (IST)
+  startMin   Int
+  endMin     Int
+
+  createdAt DateTime @default(now())
+
+  @@index([resourceId, weekday])
+  @@index([branchId, weekday])
+}
+
+/// A block of time a resource is unavailable — leave, a conference, a machine under
+/// maintenance. `source` says who put it there: `manual` today; `leave` (3.8 HR) and
+/// `maintenance` (3.9 Assets) when those modules feed it.
+model ResourceTimeOff {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  startAt    DateTime
+  endAt      DateTime
+  reason     String?
+  /// manual | hr (3.8 leave feed) | assets (3.9 maintenance / calibration feed)
+  source     String   @default("manual")
+  /// The feeding system's own id for this absence — makes its retries and updates land
+  /// on the same row.
+  externalId String?  @unique
+
+  /// §2.9 leave workflow. requested = tentative (warns, doesn't block) → approved
+  /// (blocks every branch at once) | rejected | cancelled. Rows from before the
+  /// workflow, and anything an admin enters directly, are approved.
+  status String @default("approved")
+  /// leave | conference | training | travel | emergency | maintenance | other
+  kind   String @default("leave")
+
+  requestedById String?
+  decidedById   String?
+  decidedAt     DateTime?
+  decisionNote  String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  rebookingCases RebookingCase[]
+
+  @@index([resourceId, startAt])
+  @@index([status])
+}
+
+/// A one-off change to someone's weekly roster for ONE date (§2.2 "exceptions — one-off
+/// changes"): Dr Asif at Powai instead of Andheri this Saturday, or an extra Sunday
+/// clinic. When a person has any exception rows for a date, those rows REPLACE their
+/// weekly roster for that date entirely. A day off is ResourceTimeOff, not this.
+model ResourceScheduleException {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  date       DateTime @db.Date
+  branchId   String
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  startMin   Int
+  endMin     Int
+  note       String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([resourceId, date])
+}
+
+/// How long it takes a doctor or staff member to get from one branch to another
+/// (§2.2.a — a configurable matrix, with a default for any pair not listed). Stored
+/// once per unordered pair: branchAId < branchBId.
+model BranchTravelTime {
+  id        String @id @default(cuid())
+  branchAId String
+  branchA   Branch @relation("TravelFrom", fields: [branchAId], references: [id], onDelete: Cascade)
+  branchBId String
+  branchB   Branch @relation("TravelTo", fields: [branchBId], references: [id], onDelete: Cascade)
+  minutes   Int
+
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([branchAId, branchBId])
+}
+
+/// What is being booked (§3.2 1.4) — "Hair Transplant Consultation", "FUE Surgery –
+/// Day 1", "PRP Session". Optionally tied to the catalog item it bills as.
+model AppointmentType {
+  id                     String       @id @default(cuid())
+  name                   String       @unique
+  code                   String?
+  category               String? // e.g. Hair | Skin | Surgery — groups the picker
+  durationMin            Int
+  /// Turnover time after the appointment (cleaning an OT, resetting a laser). The
+  /// resources stay blocked for it; the patient's slot doesn't include it.
+  bufferAfterMin         Int          @default(0)
+  catalogItemId          String?
+  catalogItem            CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  onlineBookable         Boolean      @default(false)
+  prepInstructions       String?
+  /// §2.4.b — the patient can reschedule / cancel themselves from the reminder link up
+  /// to this many hours before; inside it the link says "please call" and the request
+  /// lands on the patient-care worklist. Consultation 4, procedures 24, surgery 72.
+  selfServiceCutoffHours Int          @default(4)
+  /// §2.3.a — who may book this online: anyone (first consultation) | existing
+  /// (follow-ups, PRP for patients already treated — they verify their phone first and
+  /// get their own surgeon).
+  onlineAudience         String       @default("anyone")
+  /// §2.3.b — consultations only: pay online at booking, at a discount. Off until
+  /// Razorpay is configured AND switched on per type.
+  onlinePrepay           Boolean      @default(false)
+  /// Consultation fee in whole rupees (the price shown / charged online).
+  onlineFee              Int?
+  /// Discount for paying online at booking, percent.
+  prepayDiscountPct      Int?
+  /// §2.7 — the intake form sent with this type's bookings (null = none).
+  intakeFormId           String?
+  intakeForm             IntakeForm?  @relation(fields: [intakeFormId], references: [id], onDelete: SetNull)
+  color                  String?
+  active                 Boolean      @default(true)
+  sortOrder              Int          @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requirements  AppointmentTypeRequirement[]
+  appointments  Appointment[]
+  reminderRules ReminderRule[]
+  consumables   AppointmentTypeConsumable[]
+
+  @@index([active])
+}
+
+/// One resource need of an appointment type: "1 doctor", "1 room of subtype ot",
+/// "2 staff of subtype technician", or a SPECIFIC resource ("the Sapphire machine").
+model AppointmentTypeRequirement {
+  id         String          @id @default(cuid())
+  typeId     String
+  type       AppointmentType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  kind       String // doctor | room | equipment | staff
+  subtype    String?
+  resourceId String?
+  resource   Resource?       @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  quantity   Int             @default(1)
+
+  @@index([typeId])
+}
+
+/// A booking of a patient into a slot (§3.2 1.5). The patient is the Lead — Cara has
+/// no separate patient table; the lead record is the person.
+///
+/// status: tentative | booked | confirmed | checked_in | in_progress | completed |
+///         rescheduled | cancelled | no_show — keys and allowed moves in
+///         lib/scheduling/status.ts.
+///
+/// A reschedule never edits the time in place: the old row becomes `rescheduled` and
+/// a NEW row points back at it (rescheduledFromId), so "when was I told my slot
+/// changed" is a chain of rows, not a lost overwrite (§3.2 1.E).
+model Appointment {
+  id       String          @id @default(cuid())
+  leadId   String
+  lead     Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  branchId String
+  branch   Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  typeId   String
+  type     AppointmentType @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  startAt  DateTime
+  endAt    DateTime // the patient's end; resources may be held longer (bufferAfterMin)
+
+  status          String   @default("booked")
+  statusChangedAt DateTime @default(now())
+  /// front_desk | call_centre | online | walk_in | series | import
+  source          String   @default("front_desk")
+  notes           String?
+
+  bookedById String?
+  bookedBy   User?   @relation("AppointmentBookedBy", fields: [bookedById], references: [id], onDelete: SetNull)
+
+  /// A tentative hold (online booking) lapses at this instant if not completed.
+  holdExpiresAt DateTime?
+
+  confirmedAt  DateTime?
+  checkedInAt  DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+  noShowAt     DateTime?
+  cancelReason String?
+  /// patient | clinic — who called it off.
+  cancelledBy  String?
+
+  /// Booked onto a doctor who already had someone at that time, with the warning
+  /// acknowledged. Kept on the row (not only in the audit log) so utilisation and
+  /// "how often do we overbook Dr X" are a query.
+  doctorOverbooked Boolean @default(false)
+  /// A branch manager booked over a clash on a consultation room (§2.1.c). The reason
+  /// and who did it are kept on the row as well as in the audit log, so "how often do
+  /// we override, and who" is a query.
+  overrideReason   String?
+  overriddenById   String?
+
+  rescheduledFromId String?      @unique
+  rescheduledFrom   Appointment? @relation("AppointmentReschedule", fields: [rescheduledFromId], references: [id], onDelete: SetNull)
+  rescheduledTo     Appointment? @relation("AppointmentReschedule")
+
+  quoteId   String?
+  quote     Quote?            @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  journeyId String?
+  journey   PostSalesJourney? @relation(fields: [journeyId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  resources       AppointmentResource[]
+  rebookingCases  RebookingCase[]
+  reminders       AppointmentReminder[]
+  payments        BookingPayment[]
+  intakeResponses IntakeResponse[]
+  plannedStep     PlannedStep?
+  encounter       Encounter?
+  consumables     ConsumableReservation[]
+  anchoredPlans   TreatmentPlan[]       @relation("PlanAnchor")
+
+  @@index([branchId, startAt])
+  @@index([leadId])
+  @@index([status])
+  @@index([startAt])
+  @@index([holdExpiresAt])
+}
+
+/// Which resources an appointment holds, and for exactly how long (startAt..endAt
+/// INCLUDING the type's turnover buffer). This is the table the double-booking check
+/// reads. `blocking` goes false when the appointment is cancelled, rescheduled away
+/// or marked no-show — the row stays for history, the time is freed.
+model AppointmentResource {
+  id            String      @id @default(cuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  resourceId    String
+  resource      Resource    @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  startAt       DateTime
+  endAt         DateTime
+  blocking      Boolean     @default(true)
+
+  @@unique([appointmentId, resourceId])
+  @@index([resourceId, startAt])
+}
+
+/// A kind of flag that can be pinned to a patient and shown on their appointment card
+/// (★ Priority, medical alert, …). Admin-defined, so the clinic can add one without a
+/// code change. `icon` is a key from components/Icon.tsx (no emoji — see the design
+/// system); `tone` is a tag colour from the tag palette.
+model FlagDefinition {
+  id          String  @id @default(cuid())
+  key         String  @unique
+  label       String
+  description String?
+  icon        String  @default("star")
+  tone        String  @default("citric")
+  active      Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leadFlags LeadFlag[]
+}
+
+/// A flag pinned to a patient. One of each kind per patient; removing it deletes the
+/// row (the audit log keeps who set and cleared it).
+model LeadFlag {
+  id      String         @id @default(cuid())
+  leadId  String
+  lead    Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  flagId  String
+  flag    FlagDefinition @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  note    String?
+  setById String?
+  setBy   User?          @relation("LeadFlagSetBy", fields: [setById], references: [id], onDelete: SetNull)
+  setAt   DateTime       @default(now())
+
+  @@unique([leadId, flagId])
+  @@index([flagId])
+}
+
+/// An existing appointment that no longer fits (§2.9 "needs rebooking"): its doctor
+/// went on leave, their roster changed, a machine went down. The system NEVER cancels
+/// or moves it on its own — it lands here with suggested alternatives, an owner and a
+/// due date, and stays until a person resolves it.
+///
+/// status: open → proposed (a new time chosen, patient being told) →
+///         resolved | patient_declined (call required) | dismissed
+model RebookingCase {
+  id            String           @id @default(cuid())
+  appointmentId String
+  appointment   Appointment      @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  /// What caused it: leave | emergency | roster | exception | downtime | contract
+  cause         String
+  reason        String
+  timeOffId     String?
+  timeOff       ResourceTimeOff? @relation(fields: [timeOffId], references: [id], onDelete: SetNull)
+  branchId      String
+  /// The person accountable for sorting it out — the branch manager, else unassigned.
+  ownerId       String?
+  /// Resolve before this; past it, the case escalates.
+  dueAt         DateTime
+  urgent        Boolean          @default(false)
+
+  status            String    @default("open")
+  newAppointmentId  String?
+  resolutionNote    String?
+  resolvedById      String?
+  resolvedAt        DateTime?
+  patientNotifiedAt DateTime?
+  escalatedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, dueAt])
+  @@index([branchId, status])
+  @@index([appointmentId])
+}
+
+/// A reusable appointment message (§2.4 "message-template engine with variables").
+/// `body` is plain English with {placeholders} — {patient_name}, {date}, {time},
+/// {branch}, {branch_phone}, {map_link}, {doctor}, {service}, {prep}, {link},
+/// {clinic}. The same text drives every channel, with each channel's own constraint
+/// recorded beside it:
+///   WhatsApp — outside the 24h window Meta only delivers PRE-APPROVED templates:
+///              `whatsappTemplateName` + the placeholders that fill its {{1}}, {{2}}…
+///   SMS      — India's DLT rules require a registered template id per message.
+///   Email    — subject (+ the body).
+model AppointmentMessageTemplate {
+  id                   String   @id @default(cuid())
+  key                  String   @unique
+  name                 String
+  body                 String
+  whatsappTemplateName String?
+  whatsappLanguage     String   @default("en")
+  whatsappParams       String[] @default([])
+  smsDltTemplateId     String?
+  emailSubject         String?
+  active               Boolean  @default(true)
+
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rules     ReminderRule[]
+  reminders AppointmentReminder[]
+}
+
+/// When to message, per appointment type (§2.4.a — head office edits these).
+///   kind: on_booking (straight away) | before (minutesBefore the start) |
+///         morning_of (at atMin, IST, on the appointment day)
+///   channels: whatsapp | sms | email — WhatsApp first; SMS when WhatsApp can't
+///             deliver (if smsFallback); email in parallel when listed.
+///   quietExempt: may go out inside quiet hours (the morning-of-surgery reminder).
+model ReminderRule {
+  id            String                     @id @default(cuid())
+  typeId        String
+  type          AppointmentType            @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  kind          String
+  minutesBefore Int?
+  atMin         Int?
+  templateId    String
+  template      AppointmentMessageTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  channels      String[]                   @default(["whatsapp"])
+  smsFallback   Boolean                    @default(true)
+  quietExempt   Boolean                    @default(false)
+  sortOrder     Int                        @default(0)
+
+  reminders AppointmentReminder[]
+
+  @@index([typeId])
+}
+
+/// One scheduled message for one appointment — generated from the type's rules when
+/// it's booked, cancelled when it moves or ends (a moved appointment gets fresh ones),
+/// and the log of what actually happened on each channel (§2.4 "all messages logged").
+model AppointmentReminder {
+  id            String                     @id @default(cuid())
+  appointmentId String
+  appointment   Appointment                @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  ruleId        String?
+  rule          ReminderRule?              @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  templateId    String
+  template      AppointmentMessageTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  dueAt         DateTime
+  channels      String[]
+  smsFallback   Boolean                    @default(true)
+  quietExempt   Boolean                    @default(false)
+
+  /// pending | sent | failed | skipped | cancelled
+  status    String    @default("pending")
+  sentAt    DateTime?
+  attempts  Int       @default(0)
+  lastError String?
+  /// Per-channel outcome: "sent" | "delivered" | "read" | "failed: …" | "skipped: …"
+  whatsapp  String?
+  waId      String?
+  sms       String?
+  smsRef    String?
+  email     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, dueAt])
+  @@index([appointmentId])
+  @@index([waId])
+}
+
+/// A one-time code sent to a phone (§2.3 "mobile number verified by OTP"). Only a hash
+/// of the code is stored. Expires after 10 minutes and allows 5 attempts.
+model OtpChallenge {
+  id         String    @id @default(cuid())
+  phone      String
+  purpose    String // online_booking | intake_form
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  verifiedAt DateTime?
+  channel    String? // whatsapp | sms | dev
+  createdAt  DateTime  @default(now())
+
+  @@index([phone, purpose, createdAt])
+}
+
+/// What a person agreed to, exactly, and when (§2.3, §2.7, DPDP). Append-only: a
+/// withdrawal is a NEW row with granted = false. Every purpose is separate — consent to
+/// appointment messages is never bundled with marketing, and photo consent for treatment
+/// records is never bundled with marketing use of photos.
+///   purpose: appointment_messages | marketing | treatment_photos | marketing_photos |
+///            data_processing | guardian
+model ConsentRecord {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  purpose   String
+  granted   Boolean
+  /// The exact wording shown, and its version — "what did they actually agree to".
+  text      String
+  version   String
+  source    String // online_booking | intake_form | front_desk
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([leadId, purpose, createdAt])
+}
+
+/// A payment taken online at booking (§2.3.b — consultations, at a discount). Amounts
+/// are in paise. Ties to Billing (3.4) later; today it records what was paid and lets
+/// the desk see it.
+model BookingPayment {
+  id            String      @id @default(cuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  provider      String      @default("razorpay")
+  amountPaise   Int
+  listPaise     Int
+  discountPct   Int         @default(0)
+  currency      String      @default("INR")
+  orderId       String      @unique
+  paymentId     String?
+  /// created | paid | failed | refunded
+  status        String      @default("created")
+  paidAt        DateTime?
+  /// How the payment was confirmed: the patient's browser (checkout callback) or
+  /// Razorpay's own server webhook — the webhook is what rescues a closed tab.
+  confirmedVia  String?
+  createdAt     DateTime    @default(now())
+
+  credit PatientCredit?
+
+  @@index([appointmentId])
+}
+
+/// Money a patient has with the clinic (§3, decision 3.c). A deposit paid online for an
+/// appointment that then didn't happen — no-show, cancelled, or a hold that lapsed after
+/// the money was taken — is KEPT AS CREDIT for the next booking, never forfeited by the
+/// system. Applying it, or refunding it, is a person's decision and is recorded here.
+model PatientCredit {
+  id              String          @id @default(cuid())
+  leadId          String
+  lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  amountPaise     Int
+  currency        String          @default("INR")
+  /// The payment it came from — one credit per payment.
+  paymentId       String?         @unique
+  payment         BookingPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  /// The appointment that didn't happen.
+  appointmentId   String?
+  /// no_show | late_cancel | cancelled | clinic_cancelled | hold_lapsed — for the desk, not a rule.
+  reason          String
+  /// available | applied | refunded
+  status          String          @default("available")
+  appliedToId     String? // the appointment it was used for
+  appliedAt       DateTime?
+  appliedById     String?
+  refundedAt      DateTime?
+  refundedById    String?
+  refundReason    String?
+  /// Razorpay refund id, or "recorded" when the refund was made outside the CRM.
+  refundRef       String?
+  createdAt       DateTime        @default(now())
+
+  @@index([leadId, status])
+}
+
+/// A completed session, handed to Billing (§3, 3.4 "completed sessions trigger revenue
+/// recognition"). The CRM records the fact — which visit, for which quote, which session
+/// of how many, and the per-session value — and Billing (or the clinic's accounting
+/// export) consumes it. One row per appointment.
+model RevenueEvent {
+  id            String    @id @default(cuid())
+  kind          String    @default("session_completed")
+  appointmentId String    @unique
+  leadId        String
+  quoteId       String?
+  planId        String?
+  /// 1-based session number within the quote / plan, and the total — "3 of 6".
+  sessionNo     Int?
+  sessions      Int?
+  /// Per-session value in whole rupees (quote total ÷ sessions); null when unknown.
+  amount        Int?
+  branchId      String
+  occurredAt    DateTime
+  /// Set by the consumer once it has taken the row.
+  exportedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([exportedAt, occurredAt])
+}
+
+/// A pre-consultation intake form (§2.7) — "hair loss consultation", "surgery pre-op".
+/// The questions live in versions: editing publishes a NEW version and old answers keep
+/// pointing at the exact version the patient saw (2.7 "version every form").
+model IntakeForm {
+  id               String   @id @default(cuid())
+  key              String   @unique
+  name             String
+  active           Boolean  @default(true)
+  /// The version new patients get. Null until first published.
+  currentVersionId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  versions         IntakeFormVersion[]
+  appointmentTypes AppointmentType[]
+  responses        IntakeResponse[]
+}
+
+/// One immutable published version of a form. `schema` is JSON (lib/scheduling/intake
+/// /schema.ts): sections of fields — text, textarea, number, date, yes/no, select,
+/// multi-select, photos, consent, info — with required, options (an option can be a RED
+/// FLAG), conditional display (showIf), and an EMR mapping hint for 3.3.
+model IntakeFormVersion {
+  id          String     @id @default(cuid())
+  formId      String
+  form        IntakeForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  version     Int
+  schema      Json
+  createdById String?
+  createdAt   DateTime   @default(now())
+
+  responses IntakeResponse[]
+
+  @@unique([formId, version])
+}
+
+/// A patient's answers (§2.7). Everything here is PATIENT-REPORTED until a clinician
+/// verifies it, field by field (`verifiedFields`) — the doctor confirming "thyroid,
+/// Thyronorm 50 mcg" turns that answer from "patient-reported" to "verified".
+model IntakeResponse {
+  id             String            @id @default(cuid())
+  leadId         String
+  lead           Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  appointmentId  String?
+  appointment    Appointment?      @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  formId         String
+  form           IntakeForm        @relation(fields: [formId], references: [id], onDelete: Cascade)
+  versionId      String
+  version        IntakeFormVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  /// submitted (patient finished) — partial answers are kept in the browser, not here.
+  status         String            @default("submitted")
+  answers        Json
+  /// Field keys whose answers are red flags (blood thinners, bleeding disorder…).
+  redFlags       String[]          @default([])
+  verifiedFields String[]          @default([])
+  reviewedById   String?
+  reviewedAt     DateTime?
+  /// The phone the OTP was sent to when the patient accepted (2.7.f).
+  verifiedPhone  String?
+  ip             String?
+  userAgent      String?
+  submittedAt    DateTime          @default(now())
+
+  photos IntakePhoto[]
+
+  @@index([leadId])
+  @@index([appointmentId])
+}
+
+/// A photo the patient uploaded with their intake (2.7.d) — front, top, crown, donor…
+/// Stored in the database for now (resized in the browser, size-capped); moves to the
+/// document store with 3.12. Served only through a staff-session-gated route.
+model IntakePhoto {
+  id         String         @id @default(cuid())
+  responseId String
+  response   IntakeResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  slot       String
+  mime       String
+  size       Int
+  bytes      Bytes
+  createdAt  DateTime       @default(now())
+
+  @@index([responseId])
+}
+
+/// A multi-session treatment series (§2.8) — "FUE Hair Transplant Package": the
+/// surgery, then post-op checks, PRP sessions and a 12-month review, each as an offset
+/// from the anchor (Day 0) with a tolerance window. Clinic-editable (2.8.a — intervals
+/// from the clinical lead; 1 month between treatments by default).
+///   anchorTypeId + autoStart: booking an appointment of this type for a patient with a
+///   converted quote for `packageName` starts the plan automatically.
+model SeriesTemplate {
+  id           String   @id @default(cuid())
+  name         String
+  active       Boolean  @default(true)
+  anchorTypeId String?
+  /// The package (quote treatment / catalog item name) this series belongs to.
+  packageName  String?
+  autoStart    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  steps SeriesStep[]
+  plans TreatmentPlan[]
+}
+
+/// One step of a series template. Offset from the anchor in days or calendar months;
+/// the step is "due" between target − tolerance and target + tolerance.
+model SeriesStep {
+  id            String         @id @default(cuid())
+  templateId    String
+  template      SeriesTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  order         Int
+  label         String
+  typeId        String
+  offsetValue   Int
+  offsetUnit    String         @default("months") // days | months
+  toleranceDays Int            @default(7)
+  /// Follow-ups with the surgeon (2.8.f): book the plan's doctor.
+  sameDoctor    Boolean        @default(true)
+
+  @@index([templateId])
+}
+
+/// A patient's own plan (§2.8) — generated from a template (or built by hand), editable
+/// for this patient without touching the template. If the anchor moves (surgery
+/// rescheduled), every dependent step shifts and the plan is flagged for review.
+model TreatmentPlan {
+  id                  String          @id @default(cuid())
+  leadId              String
+  lead                Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  templateId          String?
+  template            SeriesTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  name                String
+  anchorAt            DateTime
+  anchorAppointmentId String?
+  anchorAppointment   Appointment?    @relation("PlanAnchor", fields: [anchorAppointmentId], references: [id], onDelete: SetNull)
+  branchId            String
+  /// The surgeon — follow-ups book them (2.8.f).
+  doctorId            String?
+  /// active | completed | cancelled
+  status              String          @default("active")
+  needsReview         Boolean         @default(false)
+  reviewNote          String?
+  createdById         String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  steps PlannedStep[]
+
+  @@index([leadId])
+  @@index([anchorAppointmentId])
+}
+
+/// One step of a patient's plan. status: planned (not booked yet) | booked |
+/// completed | waived. "Due" and "overdue" are computed from dueFrom / dueTo.
+/// Recall (2.8.d): stage 0 → WhatsApp when the window opens → 1: WhatsApp + SMS three
+/// days later → 2: a call task at seven days (`callRequired`).
+model PlannedStep {
+  id            String        @id @default(cuid())
+  planId        String
+  plan          TreatmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  order         Int
+  label         String
+  typeId        String
+  offsetValue   Int
+  offsetUnit    String        @default("months")
+  toleranceDays Int           @default(7)
+  sameDoctor    Boolean       @default(true)
+  targetAt      DateTime
+  dueFrom       DateTime
+  dueTo         DateTime
+  status        String        @default("planned")
+  appointmentId String?       @unique
+  appointment   Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  recallStage   Int           @default(0)
+  lastRecallAt  DateTime?
+  callRequired  Boolean       @default(false)
+  note          String?
+  completedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([planId])
+  @@index([status, dueFrom])
+}
+
+// ── §3 hand-offs to modules not built yet (decision 3.a) ─────────────────────────
+// Our side of each integration, so the module plugs in rather than rewires.
+
+/// An encounter (3.3 EMR): opened when the patient is CHECKED IN, closed when the visit is
+/// completed. The EMR will hang its clinical notes off this row; today it is the record
+/// that the patient was physically seen, by whom and when. One per appointment.
+model Encounter {
+  id               String      @id @default(cuid())
+  appointmentId    String      @unique
+  appointment      Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  leadId           String
+  branchId         String
+  doctorId         String? // Resource id of the appointment's doctor
+  /// The intake form filled in for this visit — the "patient-reported" section.
+  intakeResponseId String?
+  /// open (checked in) | closed (completed) | cancelled (left before being seen)
+  status           String      @default("open")
+  openedAt         DateTime    @default(now())
+  closedAt         DateTime?
+
+  @@index([leadId, openedAt])
+}
+
+/// What an appointment type uses up (3.5 Inventory): "1 graft kit", "2 PRP kits". `sku` is
+/// the inventory system's code; until 3.5 exists it is whatever the clinic calls the item.
+model AppointmentTypeConsumable {
+  id       String          @id @default(cuid())
+  typeId   String
+  type     AppointmentType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  sku      String
+  name     String
+  quantity Int             @default(1)
+
+  @@unique([typeId, sku])
+}
+
+/// A request to set consumables aside for one appointment (3.5). Raised when the
+/// appointment is CONFIRMED; released if it is cancelled, missed or moved; consumed when it
+/// is completed. Inventory reads `requested` rows and answers with stock — no stock is
+/// counted here.
+model ConsumableReservation {
+  id            String      @id @default(cuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  sku           String
+  name          String
+  quantity      Int
+  /// requested | released | consumed
+  status        String      @default("requested")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([appointmentId, sku])
+  @@index([status, createdAt])
 }

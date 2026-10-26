@@ -75,8 +75,8 @@ export function isWon(status: string): boolean {
 ///
 /// Caveat worth knowing when reading these numbers: `stage` is the lead's CURRENT
 /// position, not an event log. A lead who booked and was later marked Lost reads as
-/// lost, not as a consultation. There is no appointment record to count instead until
-/// the calendar work lands (see docs/deferred-todo.md).
+/// lost, not as a consultation. Where the calendar has the answer, reports read it instead:
+/// Source Attribution's "Came" column and the Appointments report count real visits.
 const APPOINTMENT_RANK = stageRank("appointment_scheduled");
 const CONSULTED_RANK = stageRank("consultation_done");
 

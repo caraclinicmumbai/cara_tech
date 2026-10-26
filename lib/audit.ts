@@ -217,6 +217,30 @@ export async function readLeadAudit(leadId: string, actions?: string[]): Promise
   return rows.map(toEntry);
 }
 
+/// A lead's change history WITH its appointments' events (§3, 3.1) — bookings, moves,
+/// status changes, payments — which are audited against the appointment, not the lead, and
+/// so never showed on the lead page. Newest first, capped like readLeadAudit.
+export async function readLeadHistory(leadId: string): Promise<AuditEntry[]> {
+  const appointmentIds = (
+    await prisma.appointment.findMany({ where: { leadId }, select: { id: true } })
+  ).map((a) => a.id);
+  const rows = await prisma.auditLog.findMany({
+    where: {
+      OR: [
+        { entityType: "lead", entityId: leadId, action: { startsWith: "lead." } },
+        // intake.* and series.* events are filed against the lead too.
+        { entityType: "lead", entityId: leadId, action: { startsWith: "intake." } },
+        { entityType: "lead", entityId: leadId, action: { startsWith: "series." } },
+        ...(appointmentIds.length ? [{ entityType: "appointment", entityId: { in: appointmentIds } }] : []),
+      ],
+    },
+    orderBy: { at: "desc" },
+    take: 200,
+    select: ENTRY_SELECT,
+  });
+  return rows.map(toEntry);
+}
+
 // Back-compat alias used by the ownership panel (handover/access history).
 // `lead.assign` is the first owner (rota or creator) — without it the history started at the
 // first handover and never said who the lead was given to in the first place.
@@ -293,6 +317,24 @@ export function actionLabel(action: string): string {
     "presence.change": "Status changed",
     "presence.auto": "Status auto-changed",
     "rep.remove": "Rep removed",
+    "appointment.book": "Appointment booked",
+    "appointment.book.override": "Appointment booked (room override)",
+    "appointment.reschedule": "Appointment moved",
+    "appointment.status": "Appointment status",
+    "appointment.claim": "Online booking confirmed",
+    "appointment.payment": "Appointment payment",
+    "appointment.rebooking.detect": "Needs rebooking",
+    "appointment.rebooking.apply": "Rebooked",
+    "appointment.rebooking.status": "Rebooking updated",
+    "intake.submit": "Intake form submitted",
+    "intake.verify": "Intake answer verified",
+    "intake.unverify": "Intake verification removed",
+    "series.plan.create": "Treatment plan started",
+    "series.plan.shift": "Treatment plan moved",
+    "series.step.completed": "Plan session completed",
+    "series.step.extend": "Plan session window extended",
+    "series.step.retarget": "Plan session re-targeted",
+    "series.step.waive": "Plan session waived",
   };
   return map[action] ?? action;
 }

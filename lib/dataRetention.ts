@@ -97,3 +97,46 @@ export async function runRetentionPurge(now: Date = new Date()): Promise<Retenti
 
   return { enabled: true, scanned, purged };
 }
+
+// ── Appointments (§3, §4 compliance) ─────────────────────────────────────────
+// What the calendar holds, and how long:
+//   • OTP challenges — a hashed code, a phone number and a timestamp, useful for minutes.
+//     Deleted 7 days after they expire, always (no window to choose: they are security
+//     plumbing, not a record of anything).
+//   • Intake PHOTOS — the most sensitive thing a patient uploads, and the heaviest. Deleted
+//     after INTAKE_PHOTO_RETENTION_MONTHS (off by default). The response keeps a note that
+//     photos were taken and removed.
+//   • Intake ANSWERS, consents, appointments, payments — kept. They are the clinical,
+//     consent and financial record; how long those must be held is a 3.12 / EMR policy
+//     decision, not a calendar default.
+const OTP_KEEP_DAYS = 7;
+
+export function intakePhotoRetentionMonths(): number | null {
+  const n = Number(process.env.INTAKE_PHOTO_RETENTION_MONTHS ?? "");
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
+export async function runSchedulingRetention(now: Date = new Date()): Promise<{ otps: number; photos: number }> {
+  const otps = await prisma.otpChallenge.deleteMany({
+    where: { expiresAt: { lt: new Date(now.getTime() - OTP_KEEP_DAYS * 86_400_000) } },
+  });
+
+  let photos = 0;
+  const months = intakePhotoRetentionMonths();
+  if (months) {
+    const cutoff = retentionCutoff(now, months);
+    const res = await prisma.intakePhoto.deleteMany({ where: { response: { submittedAt: { lt: cutoff } } } });
+    photos = res.count;
+    if (photos > 0) {
+      logger.info(`Retention: deleted ${photos} intake photo(s) older than ${months} month(s)`);
+      await writeAudit({
+        action: "data.retention.purge",
+        entityType: "intake_photo",
+        newValue: String(photos),
+        reason: `Deleted intake photos older than ${months} months`,
+        meta: { months, cutoff: cutoff.toISOString() },
+      }).catch((err) => logger.error(`Intake photo retention audit failed: ${String(err)}`));
+    }
+  }
+  return { otps: otps.count, photos };
+}

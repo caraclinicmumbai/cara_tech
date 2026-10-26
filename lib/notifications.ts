@@ -17,13 +17,21 @@ import { logger } from "@/lib/logger";
 ///   handover_cover — someone else's lead needs covering while its owner is away
 ///   access_grant   — you were given temporary access to a lead you don't own
 ///   call_failed    — a click-to-call you started never reached the patient
+///   missed_call    — your patient rang the clinic line and nobody picked up
 ///   followup_due   — a follow-up you own has come due (§follow-up reminders)
+///   appointment_rebooking — appointments need rebooking (§3.2 2.9: leave, roster change)
+///   leave_request  — a doctor's leave is waiting for your approval (§3.2 2.9)
+///   intake_red_flag — a patient's intake answers include a red flag (§3.2 2.7)
 export type NotificationKind =
   | "handover"
   | "handover_cover"
   | "access_grant"
   | "call_failed"
-  | "followup_due";
+  | "missed_call"
+  | "followup_due"
+  | "appointment_rebooking"
+  | "leave_request"
+  | "intake_red_flag";
 
 export type NotifyInput = {
   /// Recipient login (User.id).
@@ -36,6 +44,8 @@ export type NotifyInput = {
   /// Stable key that makes a repeat trigger a no-op (a retried webhook, a second
   /// handover in the same cycle). Omit to always create a new row.
   dedupeKey?: string | null;
+  /// Where the bell entry goes when it isn't a lead page (a worklist). Optional.
+  href?: string | null;
 };
 
 /// Raise one in-app notification. Returns false when it was deduped or failed —
@@ -60,6 +70,7 @@ export async function notifyUser(input: NotifyInput): Promise<boolean> {
         body: input.body ?? null,
         leadId: input.leadId ?? null,
         dedupeKey: input.dedupeKey ?? null,
+        href: input.href ?? null,
       },
     });
     return true;
@@ -99,6 +110,7 @@ export type NotificationView = {
   title: string;
   body: string | null;
   leadId: string | null;
+  href: string | null;
   read: boolean;
   createdAt: string;
 };
@@ -125,6 +137,7 @@ export async function listNotifications(
       title: n.title,
       body: n.body,
       leadId: n.leadId,
+      href: n.href,
       read: !!n.readAt,
       createdAt: n.createdAt.toISOString(),
     })),
