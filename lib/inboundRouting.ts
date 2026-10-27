@@ -10,13 +10,19 @@
 //   3. Nobody free → the caller is held briefly, then offered voicemail, and the
 //      owner gets a "return this call" step on the lead's roadmap.
 //
+// A FIRST-TIME caller has nobody to be sticky to. They ring the telecallers round-robin,
+// and the lead is NOT assigned until one of them answers — whoever picks up owns the lead
+// from then on, so the next call is sticky to them (claimUnownedLead, called from the
+// whisper routes on answer). Assigning a rota pick before anyone rang used to give the
+// lead to a telecaller who might never have spoken to the patient.
+//
 // Deliberately provider-agnostic: this module decides WHO, and knows nothing about
 // TwiML, webhooks or signatures. The Twilio adapter lives in app/api/twilio/inbound.
 // Swapping to another carrier means writing a new adapter against `routeInboundCall`,
 // not rewriting the policy.
 import { prisma } from "@/lib/prisma";
 import { ingestLead } from "@/lib/leadIntake";
-import { pickNextRep, pickReplacementFor, assignLeadToRep } from "@/lib/salesReps";
+import { pickNextTelecaller, pickReplacementFor } from "@/lib/salesReps";
 import { dialablePhone } from "@/lib/phone";
 import { logger } from "@/lib/logger";
 
@@ -46,6 +52,8 @@ export type InboundRoute =
       rep: RoutableRep;
       /// True when we reached the lead's own owner (the sticky target).
       sticky: boolean;
+      /// The lead has no owner yet: whoever answers this leg becomes its owner.
+      firstTime: boolean;
       /// Why this rep, in words — logged and shown on the lead.
       reason: string;
     }
@@ -120,19 +128,14 @@ async function leadForCaller(fromPhone: string): Promise<InboundLead> {
     };
   }
 
-  // Unknown caller: capture them now so the conversation has somewhere to live and
-  // the next call is sticky. `inbound_call` never triggers an automated AI call.
+  // Unknown caller: capture them now so the conversation has somewhere to live.
+  // `inbound_call` never triggers an automated AI call. The lead is left UNOWNED — the
+  // telecaller who answers this call claims it.
   const { lead } = await ingestLead({
     name: `Caller ${digits.slice(-4) || "unknown"}`,
     phone: fromPhone,
     source: "inbound_call",
-  });
-  // ingestLead assigns an owner round-robin AFTER building the row it returns, so the
-  // object in hand still says unassigned. Re-read it — otherwise this call would pick
-  // a second rep and overwrite the owner intake just chose.
-  const owned = await prisma.lead.findUnique({
-    where: { id: lead.id },
-    select: { assignedRepId: true, assignedRep: { select: { name: true } } },
+    deferOwner: true,
   });
   logger.info(`Inbound call from unknown number ${fromPhone} → created lead ${lead.id}`);
   return {
@@ -140,8 +143,8 @@ async function leadForCaller(fromPhone: string): Promise<InboundLead> {
     name: lead.name,
     phone: lead.phone,
     isNew: true,
-    ownerRepId: owned?.assignedRepId ?? null,
-    ownerRepName: owned?.assignedRep?.name ?? null,
+    ownerRepId: null,
+    ownerRepName: null,
   };
 }
 
@@ -156,6 +159,31 @@ export async function routeInboundCall(
 ): Promise<InboundRoute> {
   const exclude = new Set(opts.exclude ?? []);
   const lead = await leadForCaller(fromPhone);
+
+  // ── First-time caller (no owner yet): telecallers, round-robin ──
+  if (!lead.ownerRepId) {
+    const tried = [...exclude];
+    for (let i = 0; i < 10; i++) {
+      const candidate = await pickNextTelecaller(tried);
+      if (!candidate) break;
+      tried.push(candidate.id);
+      if (!isReachable(candidate)) continue;
+      return {
+        kind: "connect",
+        lead,
+        rep: {
+          id: candidate.id,
+          name: candidate.name,
+          phone: dialablePhone(candidate.phone)!,
+          speciality: candidate.speciality,
+        },
+        sticky: false,
+        firstTime: true,
+        reason: `New caller - round-robin to ${candidate.name}`,
+      };
+    }
+    return { kind: "nobody", lead, reason: "No telecaller is available" };
+  }
 
   // ── 1. The owner, if they can take it ──
   if (lead.ownerRepId && !exclude.has(lead.ownerRepId)) {
@@ -176,6 +204,7 @@ export async function routeInboundCall(
           speciality: owner.speciality,
         },
         sticky: true,
+        firstTime: false,
         reason: `${owner.name} owns this lead`,
       };
     }
@@ -197,9 +226,7 @@ export async function routeInboundCall(
   const tried = new Set(exclude);
   if (lead.ownerRepId) tried.add(lead.ownerRepId);
   for (let i = 0; i < 5; i++) {
-    const candidate = lead.ownerRepId
-      ? await pickReplacementFor({ id: lead.ownerRepId, speciality: ownerSpeciality })
-      : await pickNextRep();
+    const candidate = await pickReplacementFor({ id: lead.ownerRepId, speciality: ownerSpeciality });
     if (!candidate) break;
     if (tried.has(candidate.id)) {
       tried.add(candidate.id);
@@ -209,15 +236,8 @@ export async function routeInboundCall(
       tried.add(candidate.id);
       continue;
     }
-    // Who the caller "belonged to" before this call — the reason line must name them,
-    // not the person we just picked.
+    // Who the caller belongs to — the reason line names them, not the cover.
     const previousOwner = lead.ownerRepName;
-    // An unowned caller now has a person on the case — make it stick for next time.
-    if (!lead.ownerRepId) {
-      await assignLeadToRep(lead.id, candidate.id);
-      lead.ownerRepId = candidate.id;
-      lead.ownerRepName = candidate.name;
-    }
     const sameSkill =
       !!ownerSpeciality && candidate.speciality?.toLowerCase() === ownerSpeciality.toLowerCase();
     return {
@@ -230,6 +250,7 @@ export async function routeInboundCall(
         speciality: candidate.speciality,
       },
       sticky: false,
+      firstTime: false,
       reason: previousOwner
         ? `${previousOwner} unavailable - covered by ${candidate.name}${sameSkill ? " (same speciality)" : ""}`
         : `Round-robin to ${candidate.name}`,

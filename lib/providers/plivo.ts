@@ -268,10 +268,13 @@ export function inboundDialRepPlivoXML(opts: {
 }
 
 /// Played to the COUNSELLOR when they pick up an inbound call, before the caller is bridged.
-export function inboundWhisperPlivoXML(patientName: string | null, sticky: boolean): string {
-  const text = patientName
-    ? `${sticky ? "Your patient" : "Patient"} ${patientName} is calling the clinic. Connecting now.`
-    : "A patient is calling the clinic. Connecting now.";
+/// `newCaller`: a first-time caller who has just become this counsellor's lead.
+export function inboundWhisperPlivoXML(patientName: string | null, sticky: boolean, newCaller = false): string {
+  const text = newCaller
+    ? "A new patient is calling the clinic. They are now your lead. Connecting now."
+    : patientName
+      ? `${sticky ? "Your patient" : "Patient"} ${patientName} is calling the clinic. Connecting now.`
+      : "A patient is calling the clinic. Connecting now.";
   return `<?xml version="1.0" encoding="UTF-8"?><Response><Speak>${xmlEscape(text)}</Speak></Response>`;
 }
 

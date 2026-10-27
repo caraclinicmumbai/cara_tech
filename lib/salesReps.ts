@@ -19,6 +19,62 @@ export const ASSIGNABLE_REP: Prisma.SalesRepWhereInput = {
   user: { isNot: null },
 };
 
+/// The telecallers' rota: assignable reps whose login is a Telecaller / Counsellor. A
+/// first-time caller to the clinic line rings only these — branch managers and other roles
+/// that happen to carry a rep record are in the general rota, but not on the phones.
+export const TELECALLER_REP: Prisma.SalesRepWhereInput = {
+  ...ASSIGNABLE_REP,
+  user: { is: { role: "telecaller" } },
+};
+
+const ROTA_ORDER = [
+  { lastAssignedAt: { sort: "asc" as const, nulls: "first" as const } },
+  { createdAt: "asc" as const },
+];
+
+/// The next telecaller to ring for a first-time caller: available, not already on a call,
+/// and not one of `exclude` (already rung on this call). Advances the round-robin cursor, so
+/// the next new caller starts with the next person.
+export async function pickNextTelecaller(exclude: string[] = []): Promise<SalesRep | null> {
+  const rep = await prisma.salesRep.findFirst({
+    where: {
+      ...TELECALLER_REP,
+      availability: "available",
+      onCall: false,
+      ...(exclude.length ? { id: { notIn: exclude } } : {}),
+    },
+    orderBy: ROTA_ORDER,
+  });
+  if (!rep) return null;
+  await prisma.salesRep.update({ where: { id: rep.id }, data: { lastAssignedAt: new Date() } });
+  return rep;
+}
+
+/// Give an UNOWNED lead to `repId` — the telecaller who just answered its first call — and
+/// hand them the lead's unowned follow-up steps with it. A lead that already has an owner is
+/// left alone: one conditional update, so two callbacks for the same answer can't both claim.
+/// Returns true when this call made the assignment.
+export async function claimUnownedLead(leadId: string, repId: string, reason: string): Promise<boolean> {
+  const rep = await prisma.salesRep.findUnique({ where: { id: repId }, select: { name: true } });
+  const claimed = await prisma.lead.updateMany({
+    where: { id: leadId, assignedRepId: null },
+    data: { assignedRepId: repId, assignedAt: new Date() },
+  });
+  if (claimed.count === 0) return false;
+  await prisma.leadFollowUpStep.updateMany({
+    where: { leadId, ownerKind: "rep", ownerRepId: null, status: "pending" },
+    data: { ownerRepId: repId },
+  });
+  await writeAudit({
+    action: "lead.assign", entityType: "lead", entityId: leadId,
+    oldValue: "Unassigned", newValue: rep?.name ?? repId,
+    reason,
+    meta: { repId, system: true },
+  });
+  logger.info(`Lead ${leadId} claimed by rep ${repId} (${reason})`);
+  return true;
+}
+
 /// Pick the next rep round-robin (least-recently-assigned AVAILABLE rep) and advance
 /// the cursor. Sales heads are excluded — they're managers, not the rota. Only reps
 /// whose availability is "available" are eligible (§presence): in-consultation, on
@@ -45,9 +101,9 @@ export async function pickNextRep(): Promise<SalesRep | null> {
 /// rota — for backfilling historical leads, where "who is at their desk right now"
 /// is meaningless and piling every old lead on the one available rep is worse.
 export async function pickOwnerRep(
-  opts: { preferAvailable?: boolean } = {},
+  opts: { preferAvailable?: boolean; pool?: Prisma.SalesRepWhereInput } = {},
 ): Promise<SalesRep | null> {
-  const base = ASSIGNABLE_REP;
+  const base = opts.pool ?? ASSIGNABLE_REP;
   const order = [
     { lastAssignedAt: { sort: "asc" as const, nulls: "first" as const } },
     { createdAt: "asc" as const },

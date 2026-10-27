@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import { inboundWhisperTwiML, verifyTwilioSignature, publicBase } from "@/lib/providers/twilio";
 import { beginConsultation } from "@/lib/presence";
+import { claimUnownedLead } from "@/lib/salesReps";
 import { logger } from "@/lib/logger";
 
 export async function POST(req: Request) {
@@ -30,7 +31,14 @@ export async function POST(req: Request) {
   // Best-effort: a presence hiccup must never stop the call connecting.
   if (repId) void beginConsultation(repId);
 
-  return new NextResponse(inboundWhisperTwiML(name, sticky), {
+  // A first-time caller has no owner yet — whoever answers claims the lead.
+  const leadId = url.searchParams.get("leadId");
+  const claimed =
+    leadId && repId
+      ? await claimUnownedLead(leadId, repId, "Answered their first call to the clinic").catch(() => false)
+      : false;
+
+  return new NextResponse(inboundWhisperTwiML(name, sticky, claimed), {
     status: 200,
     headers: { "Content-Type": "text/xml" },
   });

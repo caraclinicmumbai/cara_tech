@@ -5,6 +5,8 @@
 //      the right name even if a later callback is lost.
 //   3. Flip them to In-Consultation (§presence), so the next inbound call routes to
 //      somebody else instead of ringing a handset that is already in use.
+//   4. A first-time caller has no owner yet — whoever answers claims the lead, so every
+//      later call from this number rings them first.
 //
 // Plivo fetches this only when the counsellor's leg answers — the earliest reliable "they
 // picked up" signal. A failed signature still gets a generic whisper rather than a 403: the
@@ -15,6 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { readSignedPlivoRequest, inboundWhisperPlivoXML } from "@/lib/providers/plivo";
 import { markInboundConnected } from "@/lib/inboundCallLog";
 import { beginConsultation } from "@/lib/presence";
+import { claimUnownedLead } from "@/lib/salesReps";
 import { logger } from "@/lib/logger";
 
 const xml = (body: string) =>
@@ -34,7 +37,7 @@ export async function POST(req: Request) {
   const call = callId
     ? await prisma.call.findUnique({
         where: { id: callId },
-        select: { id: true, callType: true, lead: { select: { name: true } } },
+        select: { id: true, callType: true, leadId: true, lead: { select: { name: true } } },
       })
     : null;
 
@@ -42,5 +45,10 @@ export async function POST(req: Request) {
   if (call?.callType === "inbound") await markInboundConnected(call.id, { repId: repId ?? undefined });
   if (repId) void beginConsultation(repId);
 
-  return xml(inboundWhisperPlivoXML(call?.lead.name ?? null, sticky));
+  const claimed =
+    call?.callType === "inbound" && repId
+      ? await claimUnownedLead(call.leadId, repId, "Answered their first call to the clinic").catch(() => false)
+      : false;
+
+  return xml(inboundWhisperPlivoXML(claimed ? null : (call?.lead.name ?? null), sticky, claimed));
 }

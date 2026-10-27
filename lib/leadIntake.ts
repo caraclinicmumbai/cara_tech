@@ -61,6 +61,10 @@ export type NormalizedLead = {
   /// The login (User.id) that created this lead — for Front-Desk "own leads"
   /// scoping. Set for staff-entered leads (manual / walk-in); null for intake.
   createdById?: string;
+  /// Leave the lead unowned at intake. A first-time caller on the clinic line is owned by
+  /// whichever telecaller answers (lib/inboundRouting.ts), not by a rota pick made before
+  /// anyone's phone has rung.
+  deferOwner?: boolean;
 };
 
 /// Consent basis for a self-served DIGITAL source (§compliance C2). Meta/Google
@@ -255,7 +259,7 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
   let ownerRepId: string | null = null;
   try {
     const creatorRep = input.createdById ? await creatorAsOwner(input.createdById) : null;
-    const owner = creatorRep ?? (await pickOwnerRep());
+    const owner = creatorRep ?? (input.deferOwner ? null : await pickOwnerRep());
     if (owner) {
       await assignLeadToRep(
         lead.id,
@@ -263,7 +267,7 @@ export async function ingestLead(input: NormalizedLead): Promise<IngestResult> {
         creatorRep ? { reason: "Created the lead", actor: { id: input.createdById, email: creatorRep.email } } : {},
       );
       ownerRepId = owner.id;
-    } else {
+    } else if (!input.deferOwner) {
       logger.warn(`Lead ${lead.id} created with no owner — no active sales rep on the roster`);
     }
   } catch (err) {

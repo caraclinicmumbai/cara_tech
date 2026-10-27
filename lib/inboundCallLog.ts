@@ -17,6 +17,7 @@ import type { Call } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notifyCounsellor } from "@/lib/counsellor";
 import { notifyRep } from "@/lib/notifications";
+import { pickOwnerRep, claimUnownedLead, TELECALLER_REP } from "@/lib/salesReps";
 import type { CallProvider } from "@/lib/providers/recordings";
 import { logger } from "@/lib/logger";
 
@@ -139,6 +140,19 @@ export async function raiseMissedCallFollowUp(
   reason: string,
   voicemail: boolean,
 ): Promise<void> {
+  // A first-time caller nobody answered has no owner yet. The callback still has to be
+  // somebody's job, so the next telecaller in the rota gets the lead.
+  if (!lead.assignedRepId) {
+    try {
+      const rep = (await pickOwnerRep({ pool: TELECALLER_REP })) ?? (await pickOwnerRep());
+      if (rep && (await claimUnownedLead(lead.id, rep.id, "Missed their first call to the clinic - next in the rota"))) {
+        lead = { ...lead, assignedRepId: rep.id, assignedRep: { name: rep.name } };
+      }
+    } catch (err) {
+      logger.error(`Missed first call on lead ${lead.id}: could not assign an owner: ${String(err)}`);
+    }
+  }
+
   try {
     const max = await prisma.leadFollowUpStep.aggregate({
       where: { leadId: lead.id },
