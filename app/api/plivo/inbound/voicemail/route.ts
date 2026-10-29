@@ -10,7 +10,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { readSignedPlivoRequest, hangupPlivoXML } from "@/lib/providers/plivo";
-import { markInboundMissed } from "@/lib/inboundCallLog";
+import { markInboundMissed, MIN_VOICEMAIL_SECONDS } from "@/lib/inboundCallLog";
 import { transcribeAndScoreCall } from "@/lib/callTranscription";
 import { logger } from "@/lib/logger";
 
@@ -45,6 +45,11 @@ export async function POST(req: Request) {
       ? Math.round(parseInt(params.RecordingDurationMs, 10) / 1000)
       : undefined;
 
+  // A fraction of a second is a caller hanging up at the tone — a missed call, not a message.
+  if (duration != null && Number.isFinite(duration) && duration < MIN_VOICEMAIL_SECONDS) {
+    await markInboundMissed(call.id, { reason: "They hung up at the voicemail tone." });
+    return done();
+  }
   await markInboundMissed(call.id, {
     voicemail: { recordingUrl, duration },
     reason: "Nobody was free — they left a voicemail.",

@@ -95,7 +95,12 @@ clinic would be the worst possible first impression, so they go to the manual qu
 | Telecallers, round-robin | first-time caller (lead has no owner) | `pickNextTelecaller()` |
 
 **Reachable** means: `active`, `availability === "available"`, **not** already `onCall`,
-and carrying a dialable number. A sales head who personally owns a lead still gets
+and carrying a dialable number. **During clinic hours** (outside the 22:00–10:00 IST call
+window) Cara also rings people marked **Offline** once nobody Available is left — and the
+lead's own owner even if they're Offline. Presence auto-sets anyone Offline after 15 minutes
+without the CRM open, which says nothing about whether their phone is in their pocket; the
+first live test rang nobody because of exactly that. **Break** and **In consultation** are
+never rung. A sales head who personally owns a lead still gets
 their own caller back — the round-robin excludes managers, but stickiness is about who
 this patient knows.
 
@@ -142,7 +147,12 @@ everyone happened to be busy.
 
 ### 5. Voicemail
 
-On Plivo, `/api/plivo/inbound/voicemail` attaches the message to the call's row
+On Plivo, every unanswered call's hang-up also fetches the call's recording from Plivo's
+API (`collectPlivoVoicemail`, retrying for about a minute) — the first live voicemail never
+reached the CRM through the callbacks, though Plivo had recorded it. Recordings under a
+second are a caller hanging up at the tone and stay a plain missed call.
+
+`/api/plivo/inbound/voicemail` attaches the message to the call's row
 (IVR Missed, outcome `voicemail`) and transcribes it once Plivo says the audio is ready
 (`ready=1`). If the caller hangs up mid-message, the hang-up marks the call missed first and
 the recording upgrades it to voicemail without a second alert.
@@ -209,9 +219,11 @@ does not move.
 - **First-time callers only ring users with the Telecaller / Counsellor role** who are on
   the roster with a login and marked Available. No such telecaller → straight to hold,
   then voicemail.
-- **The owner is rung only while their status is Available.** A counsellor marked
-  offline / on break / in consultation is skipped and the call goes to cover — keep
-  presence up to date, or patients will reach someone else.
+- **Offline people are rung in clinic hours.** Someone genuinely off shift but left as
+  Offline (not Break) may get a call on their mobile. Set Break, or deactivate the rep,
+  for leave.
+- **The call log and dashboard refresh themselves every 15 / 30 s** and the bell every
+  15 s — not instantly.
 - **On Twilio, a caller who hangs up without leaving a voicemail leaves no row.** Only the
   Plivo adapter logs the call from its first ring.
 - **A Twilio +91 number needs India regulatory approval** (KYC bundle, address proof)

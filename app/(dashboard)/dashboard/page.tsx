@@ -10,6 +10,7 @@ import { QueueCard } from "@/components/dashboard/QueueCard";
 import { IconPhone, IconHandover } from "@/components/Icon";
 import { callOutcomeLabel } from "@/lib/clickToCallLog";
 import { callTypeLabel } from "@/lib/inboundCallLog";
+import { AutoRefresh } from "@/components/AutoRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-4">
+      <AutoRefresh everyMs={30_000} />
       {/* Greeting rather than a page title: this screen is the first thing the
           desk sees each morning, and it should open by naming the day. */}
       <header className="flex flex-wrap items-end justify-between gap-3">

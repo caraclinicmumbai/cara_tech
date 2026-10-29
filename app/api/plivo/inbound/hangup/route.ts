@@ -9,7 +9,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { readSignedPlivoRequest } from "@/lib/providers/plivo";
-import { markInboundMissed } from "@/lib/inboundCallLog";
+import { markInboundMissed, collectPlivoVoicemail } from "@/lib/inboundCallLog";
 import { endConsultation } from "@/lib/presence";
 import { logger } from "@/lib/logger";
 
@@ -33,8 +33,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
-  if (call.outcome === "ringing") {
-    await markInboundMissed(call.id, { reason: "They hung up before anyone answered." });
+  if (call.outcome === "ringing" || call.outcome === "missed") {
+    if (call.outcome === "ringing") {
+      await markInboundMissed(call.id, { reason: "They hung up before anyone answered." });
+    }
+    // If they left a message, make sure it lands even when Plivo's voicemail callbacks
+    // didn't reach us — fetched from Plivo by call id, in the background.
+    void collectPlivoVoicemail(call.id, callUuid);
   }
   if (call.handledById) void endConsultation(call.handledById);
 

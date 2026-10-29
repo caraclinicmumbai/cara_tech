@@ -24,6 +24,7 @@ import { prisma } from "@/lib/prisma";
 import { ingestLead } from "@/lib/leadIntake";
 import { pickNextTelecaller, pickReplacementFor } from "@/lib/salesReps";
 import { dialablePhone } from "@/lib/phone";
+import { isWithinDnd } from "@/lib/callWindow";
 import { logger } from "@/lib/logger";
 
 /// A rep who can actually take a call right now.
@@ -76,19 +77,29 @@ export { dialablePhone };
 
 /// A rep is reachable when they're employed, on the floor, not already talking, and
 /// carry a number we can actually dial.
-function isReachable(rep: {
-  name: string;
-  active: boolean;
-  availability: string;
-  onCall: boolean;
-  phone: string | null;
-}): boolean {
-  if (!(rep.active && rep.availability === "available" && !rep.onCall)) return false;
+///
+/// `relaxed` also accepts Offline. Presence flips a counsellor to Offline after 15 minutes
+/// without the CRM open (lib/presence.ts sweepIdle), which says nothing about whether
+/// their phone is in their pocket — and a patient ringing the clinic must reach SOMEONE.
+/// So during clinic hours, when nobody is marked Available, Offline people are rung too.
+/// Break and In-Consultation stay excluded: those are deliberate "don't ring me".
+function isReachable(
+  rep: { name: string; active: boolean; availability: string; onCall: boolean; phone: string | null },
+  relaxed = false,
+): boolean {
+  const statusOk = rep.availability === "available" || (relaxed && rep.availability === "offline");
+  if (!(rep.active && statusOk && !rep.onCall)) return false;
   if (!dialablePhone(rep.phone)) {
     logger.warn(`Inbound routing: skipping ${rep.name} — phone "${rep.phone}" is not dialable`);
     return false;
   }
   return true;
+}
+
+/// Is it clinic hours — when an Offline counsellor may still be rung? The same window
+/// outbound calling uses (10:00–22:00 IST by default, lib/callWindow.ts).
+function clinicHours(): boolean {
+  return !isWithinDnd();
 }
 
 const REP_FIELDS = {
@@ -159,102 +170,73 @@ export async function routeInboundCall(
 ): Promise<InboundRoute> {
   const exclude = new Set(opts.exclude ?? []);
   const lead = await leadForCaller(fromPhone);
+  const relaxOk = clinicHours();
+
+  const connect = (
+    rep: { id: string; name: string; phone: string | null; speciality: string | null },
+    extra: { sticky: boolean; firstTime: boolean; reason: string },
+  ): InboundRoute => ({
+    kind: "connect",
+    lead,
+    rep: { id: rep.id, name: rep.name, phone: dialablePhone(rep.phone)!, speciality: rep.speciality },
+    ...extra,
+  });
+
+  /// The next telecaller in the rota who can take it — Available first, then (in clinic
+  /// hours) Offline. Skips everyone in `tried`, and adds whoever it looks at to it.
+  const nextTelecaller = async (tried: string[]) => {
+    for (const relaxed of relaxOk ? [false, true] : [false]) {
+      for (let i = 0; i < 20; i++) {
+        const candidate = await pickNextTelecaller(tried, { includeOffline: relaxed });
+        if (!candidate) break;
+        tried.push(candidate.id);
+        if (isReachable(candidate, relaxed)) return candidate;
+      }
+    }
+    return null;
+  };
 
   // ── First-time caller (no owner yet): telecallers, round-robin ──
   if (!lead.ownerRepId) {
-    const tried = [...exclude];
-    for (let i = 0; i < 10; i++) {
-      const candidate = await pickNextTelecaller(tried);
-      if (!candidate) break;
-      tried.push(candidate.id);
-      if (!isReachable(candidate)) continue;
-      return {
-        kind: "connect",
-        lead,
-        rep: {
-          id: candidate.id,
-          name: candidate.name,
-          phone: dialablePhone(candidate.phone)!,
-          speciality: candidate.speciality,
-        },
-        sticky: false,
-        firstTime: true,
-        reason: `New caller - round-robin to ${candidate.name}`,
-      };
-    }
-    return { kind: "nobody", lead, reason: "No telecaller is available" };
+    const rep = await nextTelecaller([...exclude]);
+    return rep
+      ? connect(rep, { sticky: false, firstTime: true, reason: `New caller - round-robin to ${rep.name}` })
+      : { kind: "nobody", lead, reason: "No telecaller is available" };
   }
 
-  // ── 1. The owner, if they can take it ──
-  if (lead.ownerRepId && !exclude.has(lead.ownerRepId)) {
-    const owner = await prisma.salesRep.findUnique({
-      where: { id: lead.ownerRepId },
-      select: REP_FIELDS,
-    });
-    // A sales head who personally owns a lead still gets their caller back: the
-    // round-robin excludes managers, but stickiness is about who this patient knows.
-    if (owner && isReachable(owner)) {
-      return {
-        kind: "connect",
-        lead,
-        rep: {
-          id: owner.id,
-          name: owner.name,
-          phone: dialablePhone(owner.phone)!,
-          speciality: owner.speciality,
-        },
-        sticky: true,
-        firstTime: false,
-        reason: `${owner.name} owns this lead`,
-      };
-    }
+  const owner = await prisma.salesRep.findUnique({ where: { id: lead.ownerRepId }, select: REP_FIELDS });
+
+  // ── 1. The owner — their patient is calling. Rung if Available, or Offline in clinic
+  // hours; skipped on Break / In consultation / already on a call. A sales head who
+  // personally owns a lead still gets their caller back: stickiness is about who this
+  // patient knows, not about the rota.
+  if (owner && !exclude.has(owner.id) && isReachable(owner, relaxOk)) {
+    return connect(owner, { sticky: true, firstTime: false, reason: `${owner.name} owns this lead` });
   }
 
-  // ── 2. A colleague — same speciality first, then the round-robin ──
-  // pickReplacementFor() already encodes "prefer the same skill, else anyone free",
-  // and advances the round-robin cursor so cover work spreads evenly.
-  let ownerSpeciality: string | null = null;
-  if (lead.ownerRepId) {
-    const owner = await prisma.salesRep.findUnique({
-      where: { id: lead.ownerRepId },
-      select: { speciality: true },
-    });
-    ownerSpeciality = owner?.speciality ?? null;
-  }
-
-  // Walk the ladder, skipping anyone already tried on this call.
+  // ── 2. An Available colleague — same speciality first, then the round-robin ──
+  // pickReplacementFor() encodes "prefer the same skill, else anyone free" and advances
+  // the round-robin cursor so cover work spreads evenly.
+  const ownerSpeciality = owner?.speciality ?? null;
   const tried = new Set(exclude);
-  if (lead.ownerRepId) tried.add(lead.ownerRepId);
+  tried.add(lead.ownerRepId);
+  const covered = (rep: { name: string; speciality: string | null }) => {
+    const sameSkill = !!ownerSpeciality && rep.speciality?.toLowerCase() === ownerSpeciality.toLowerCase();
+    return `${lead.ownerRepName ?? "Owner"} unavailable - covered by ${rep.name}${sameSkill ? " (same speciality)" : ""}`;
+  };
   for (let i = 0; i < 5; i++) {
     const candidate = await pickReplacementFor({ id: lead.ownerRepId, speciality: ownerSpeciality });
     if (!candidate) break;
-    if (tried.has(candidate.id)) {
-      tried.add(candidate.id);
-      continue; // already rang this one on this call — advance the cursor and retry
-    }
-    if (!isReachable(candidate)) {
-      tried.add(candidate.id);
-      continue;
-    }
-    // Who the caller belongs to — the reason line names them, not the cover.
-    const previousOwner = lead.ownerRepName;
-    const sameSkill =
-      !!ownerSpeciality && candidate.speciality?.toLowerCase() === ownerSpeciality.toLowerCase();
-    return {
-      kind: "connect",
-      lead,
-      rep: {
-        id: candidate.id,
-        name: candidate.name,
-        phone: dialablePhone(candidate.phone)!,
-        speciality: candidate.speciality,
-      },
-      sticky: false,
-      firstTime: false,
-      reason: previousOwner
-        ? `${previousOwner} unavailable - covered by ${candidate.name}${sameSkill ? " (same speciality)" : ""}`
-        : `Round-robin to ${candidate.name}`,
-    };
+    if (tried.has(candidate.id)) continue; // already rang this one on this call — the cursor moved on
+    tried.add(candidate.id);
+    if (!isReachable(candidate)) continue;
+    return connect(candidate, { sticky: false, firstTime: false, reason: covered(candidate) });
+  }
+
+  // ── 3. Nobody Available: in clinic hours, any telecaller not on a break ──
+  if (relaxOk) {
+    const rep = await nextTelecaller([...tried]);
+    if (rep) return connect(rep, { sticky: false, firstTime: false, reason: covered(rep) });
   }
 
   return {

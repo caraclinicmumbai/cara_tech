@@ -126,7 +126,7 @@ export async function POST(req: Request) {
   // purpose: someone who was busy a moment ago may be free now.
   if (!held) {
     logger.info(`Plivo inbound ${from} (call ${callUuid}) - nobody free, holding: ${route.reason}`);
-    return xml(inboundHoldPlivoXML(`${base}/api/plivo/inbound?held=1`, HOLD_SECONDS));
+    return xml(inboundHoldPlivoXML(`${base}/api/plivo/inbound?held=1`, HOLD_SECONDS, tried.length === 0));
   }
 
   logger.info(`Plivo inbound ${from} (call ${callUuid}) -> voicemail: ${route.reason}`);

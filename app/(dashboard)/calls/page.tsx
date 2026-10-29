@@ -4,6 +4,7 @@ import { formatIst } from "@/lib/datetime";
 import { currentUser, leadWhereForUser } from "@/lib/authz";
 import { callOutcomeLabel } from "@/lib/clickToCallLog";
 import { callTypeLabel, isInboundCallType } from "@/lib/inboundCallLog";
+import { AutoRefresh } from "@/components/AutoRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,8 @@ export default async function CallsPage() {
 
   return (
     <div className="space-y-4">
+      {/* New calls — an IVR Missed above all — appear without a manual refresh. */}
+      <AutoRefresh />
       <header className="cara-sec-hd">
         <div className="cara-eyebrow">History</div>
         <h1 className="cara-title">Call history ({calls.length})</h1>
@@ -60,7 +63,20 @@ export default async function CallsPage() {
                     ? (call.handledBy?.name ?? "—")
                     : "AI"}
                 </td>
-                <td>{callOutcomeLabel(call.outcome, call.createdAt)}</td>
+                <td>
+                  {callOutcomeLabel(call.outcome, call.createdAt)}
+                  {/* The voicemail or call recording, played from whichever provider holds it. */}
+                  {call.recordingUrl && (
+                    <a
+                      href={`/api/twilio/recording/${call.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="tone-link ml-2 text-xs hover:underline"
+                    >
+                      Listen
+                    </a>
+                  )}
+                </td>
                 <td>{call.sentiment ?? "—"}</td>
                 <td>{call.duration ? `${call.duration}s` : "—"}</td>
                 <td className="text-cara-muted">{formatIst(call.createdAt)}</td>

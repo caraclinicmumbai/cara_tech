@@ -28,6 +28,7 @@ import {
 } from "@/lib/leadOwnership";
 import { LeadOwnershipPanel } from "@/components/LeadOwnershipPanel";
 import { LeadEditForm } from "@/components/LeadEditForm";
+import { LeadNameField } from "@/components/LeadNameField";
 import { AuditTable } from "@/components/AuditTable";
 import { RecordViewLogger } from "@/components/RecordViewLogger";
 import { LeadQueueNav } from "@/components/LeadQueueNav";
@@ -288,7 +289,14 @@ export default async function LeadDetailPage({
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold">{lead.name}</h1>
+          <LeadNameField
+            leadId={lead.id}
+            name={lead.name}
+            phone={lead.phone}
+            email={lead.email}
+            interest={lead.interest}
+            canEdit={canEditLead}
+          />
           <Pill>{lead.status}</Pill>
           <StageSelect leadId={lead.id} stage={lead.stage} />
           {canViewQuotes && lead.quotes.length > 0 && (

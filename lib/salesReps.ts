@@ -35,11 +35,16 @@ const ROTA_ORDER = [
 /// The next telecaller to ring for a first-time caller: available, not already on a call,
 /// and not one of `exclude` (already rung on this call). Advances the round-robin cursor, so
 /// the next new caller starts with the next person.
-export async function pickNextTelecaller(exclude: string[] = []): Promise<SalesRep | null> {
+/// `includeOffline` widens it to Offline telecallers too (see isReachable in
+/// lib/inboundRouting.ts for when that's allowed). Break and In-Consultation never qualify.
+export async function pickNextTelecaller(
+  exclude: string[] = [],
+  opts: { includeOffline?: boolean } = {},
+): Promise<SalesRep | null> {
   const rep = await prisma.salesRep.findFirst({
     where: {
       ...TELECALLER_REP,
-      availability: "available",
+      availability: opts.includeOffline ? { in: ["available", "offline"] } : "available",
       onCall: false,
       ...(exclude.length ? { id: { notIn: exclude } } : {}),
     },

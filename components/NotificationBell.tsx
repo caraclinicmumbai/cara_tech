@@ -23,7 +23,8 @@ type Item = {
   createdAt: string;
 };
 
-const POLL_MS = 45_000;
+// 15s: a missed patient call is time-sensitive, and the request is one indexed query.
+const POLL_MS = 15_000;
 
 export function NotificationBell() {
   const router = useRouter();
