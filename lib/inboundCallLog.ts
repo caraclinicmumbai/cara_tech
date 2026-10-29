@@ -17,8 +17,14 @@ import type { Call } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notifyCounsellor } from "@/lib/counsellor";
 import { notifyRep } from "@/lib/notifications";
+import { pickOwnerRep, claimUnownedLead, TELECALLER_REP } from "@/lib/salesReps";
 import type { CallProvider } from "@/lib/providers/recordings";
+import { findPlivoRecordingForCall } from "@/lib/providers/plivo";
+import { transcribeAndScoreCall } from "@/lib/callTranscription";
 import { logger } from "@/lib/logger";
+
+/// Shorter than this is a caller hanging up at the tone, not a message.
+export const MIN_VOICEMAIL_SECONDS = 1;
 
 /// What the call log calls a call. Only the inbound kinds get a label of their own — the
 /// rest keep their stored key, as they always have.
@@ -139,6 +145,19 @@ export async function raiseMissedCallFollowUp(
   reason: string,
   voicemail: boolean,
 ): Promise<void> {
+  // A first-time caller nobody answered has no owner yet. The callback still has to be
+  // somebody's job, so the next telecaller in the rota gets the lead.
+  if (!lead.assignedRepId) {
+    try {
+      const rep = (await pickOwnerRep({ pool: TELECALLER_REP })) ?? (await pickOwnerRep());
+      if (rep && (await claimUnownedLead(lead.id, rep.id, "Missed their first call to the clinic - next in the rota"))) {
+        lead = { ...lead, assignedRepId: rep.id, assignedRep: { name: rep.name } };
+      }
+    } catch (err) {
+      logger.error(`Missed first call on lead ${lead.id}: could not assign an owner: ${String(err)}`);
+    }
+  }
+
   try {
     const max = await prisma.leadFollowUpStep.aggregate({
       where: { leadId: lead.id },
@@ -180,4 +199,31 @@ export async function raiseMissedCallFollowUp(
       voicemail ? "Voicemail left — transcript on the lead" : "",
     ].filter(Boolean),
   });
+}
+
+/// Collect the voicemail on a missed Plivo call straight from Plivo, in case its
+/// callbacks never reached us. The voicemail route is the normal path; this runs after the
+/// hang-up and retries for about a minute, because Plivo can take a few seconds to list a
+/// recording after the call ends. Stops as soon as the call has a recording either way.
+export async function collectPlivoVoicemail(callId: string, callUuid: string): Promise<void> {
+  for (const waitMs of [3_000, 10_000, 20_000, 30_000]) {
+    await new Promise((r) => setTimeout(r, waitMs));
+    const row = await prisma.call
+      .findUnique({ where: { id: callId }, select: { outcome: true, recordingUrl: true, transcript: true } })
+      .catch(() => null);
+    // Already filed by the voicemail route, or the call turned out to have connected.
+    if (!row || row.recordingUrl || (row.outcome !== "missed" && row.outcome !== "ringing")) return;
+
+    const rec = await findPlivoRecordingForCall(callUuid);
+    if (!rec) continue;
+    if (rec.durationSec < MIN_VOICEMAIL_SECONDS) return; // hung up at the tone
+
+    await markInboundMissed(callId, {
+      voicemail: { recordingUrl: rec.url, duration: rec.durationSec },
+      reason: "Nobody was free — they left a voicemail.",
+    });
+    logger.info(`Inbound call ${callId}: voicemail collected from Plivo (${rec.durationSec}s)`);
+    void transcribeAndScoreCall(callId, rec.url);
+    return;
+  }
 }

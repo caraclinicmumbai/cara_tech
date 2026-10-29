@@ -23,6 +23,20 @@ patient dials the clinic number
         └─ 5. voicemail → "Return missed call" on the owner's roadmap + Slack
 ```
 
+**A first-time caller** (no owner yet) skips rungs 1–3: the **telecallers** ring one by
+one, round-robin, and **whoever answers becomes the lead's owner** — every later call from
+that number is sticky to them. If nobody answers, the next telecaller in the rota gets the
+lead and the "Return missed call" step.
+
+```
+first-time caller
+        │
+        ├─ telecallers, round-robin (role "Telecaller / Counsellor", Available) — no owner yet
+        │      └─ the one who answers OWNS the lead from now on
+        ├─ ~25s hold, then one more pass over the telecallers
+        └─ voicemail / hang-up → next telecaller in the rota owns it + "Return missed call"
+```
+
 Each rung is tried for `INBOUND_RING_SECONDS` (default 20s) before moving on. A rep
 who simply doesn't pick up is carried in `tried` and not rung again on that call.
 
@@ -61,7 +75,13 @@ digits** — the same rule the duplicate detector uses, so `+919876543210` and
 **earliest**, which is the canonical person rather than whichever copy is newest.
 
 An unknown number becomes a lead there and then, named `Caller 1234` from the last
-four digits, with source **`inbound_call`**. That source is in `NEVER_AUTO_CALL`
+four digits, with source **`inbound_call`** — and **no owner** (`deferOwner`). The lead is
+claimed by the telecaller who answers (`claimUnownedLead()` in `lib/salesReps.ts`, called
+from the whisper routes, the earliest "they picked up" signal; on Plivo the completed dial
+claims it too, in case the whisper was lost). The claim is a conditional update, so it
+never overwrites an owner, and it hands the lead's unowned follow-up steps to the same
+person. A lead that already has an owner from any other source (web form, ad) is sticky
+to that owner as before. That source is in `NEVER_AUTO_CALL`
 alongside `walk_in`: firing an automated AI cold-call at someone who just rang the
 clinic would be the worst possible first impression, so they go to the manual queue.
 
@@ -71,15 +91,22 @@ clinic would be the worst possible first impression, so they go to the manual qu
 |---|---|---|
 | Owner (sticky) | `Lead.assignedRepId` is reachable | `routeInboundCall()` |
 | Same speciality | owner unreachable | `pickReplacementFor()` (`lib/salesReps.ts`) |
-| Round-robin | no same-skill colleague free | `pickReplacementFor()` / `pickNextRep()` |
+| Round-robin | no same-skill colleague free | `pickReplacementFor()` |
+| Telecallers, round-robin | first-time caller (lead has no owner) | `pickNextTelecaller()` |
 
 **Reachable** means: `active`, `availability === "available"`, **not** already `onCall`,
-and carrying a dialable number. A sales head who personally owns a lead still gets
+and carrying a dialable number. **During clinic hours** (outside the 22:00–10:00 IST call
+window) Cara also rings people marked **Offline** once nobody Available is left — and the
+lead's own owner even if they're Offline. Presence auto-sets anyone Offline after 15 minutes
+without the CRM open, which says nothing about whether their phone is in their pocket; the
+first live test rang nobody because of exactly that. **Break** and **In consultation** are
+never rung. A sales head who personally owns a lead still gets
 their own caller back — the round-robin excludes managers, but stickiness is about who
 this patient knows.
 
-A caller with no owner is **assigned** to whoever takes the call, so the next one is
-sticky. An unknown caller is assigned once, by intake, and not reassigned.
+Cover never takes ownership: when a colleague answers for an absent owner, the lead stays
+with its owner. Only an unowned lead is assigned — to whoever answers, or on a miss to the
+next telecaller in the rota (`raiseMissedCallFollowUp()`).
 
 > **Phone numbers must be dialable.** `SalesRep.phone` is documented as E.164 but the
 > roster is hand-typed. `dialablePhone()` upgrades a bare 10-digit Indian mobile to
@@ -120,7 +147,12 @@ everyone happened to be busy.
 
 ### 5. Voicemail
 
-On Plivo, `/api/plivo/inbound/voicemail` attaches the message to the call's row
+On Plivo, every unanswered call's hang-up also fetches the call's recording from Plivo's
+API (`collectPlivoVoicemail`, retrying for about a minute) — the first live voicemail never
+reached the CRM through the callbacks, though Plivo had recorded it. Recordings under a
+second are a caller hanging up at the tone and stay a plain missed call.
+
+`/api/plivo/inbound/voicemail` attaches the message to the call's row
 (IVR Missed, outcome `voicemail`) and transcribes it once Plivo says the audio is ready
 (`ready=1`). If the caller hangs up mid-message, the hang-up marks the call missed first and
 the recording upgrades it to voicemail without a second alert.
@@ -180,9 +212,18 @@ does not move.
 - **Not wired to a live number yet.** The Plivo number needs an Application pointing at
   the two URLs above. Everything here is verified against signed simulated Plivo and Twilio
   requests, not a real call.
-- **The owner is rung only while their status is Available.** A counsellor marked
-  offline / on break / in consultation is skipped and the call goes to cover — keep
-  presence up to date, or patients will reach someone else.
+- **The website number (+91 77770 34066, Airtel) must be forwarded to the Plivo 022
+  number**, and the forwarded call must still carry the patient's own number. If Airtel
+  presents its own number instead, every caller looks like one person. Verify with a test
+  call before relying on it.
+- **First-time callers only ring users with the Telecaller / Counsellor role** who are on
+  the roster with a login and marked Available. No such telecaller → straight to hold,
+  then voicemail.
+- **Offline people are rung in clinic hours.** Someone genuinely off shift but left as
+  Offline (not Break) may get a call on their mobile. Set Break, or deactivate the rep,
+  for leave.
+- **The call log and dashboard refresh themselves every 15 / 30 s** and the bell every
+  15 s — not instantly.
 - **On Twilio, a caller who hangs up without leaving a voicemail leaves no row.** Only the
   Plivo adapter logs the call from its first ring.
 - **A Twilio +91 number needs India regulatory approval** (KYC bundle, address proof)

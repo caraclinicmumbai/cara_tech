@@ -268,18 +268,24 @@ export function inboundDialRepPlivoXML(opts: {
 }
 
 /// Played to the COUNSELLOR when they pick up an inbound call, before the caller is bridged.
-export function inboundWhisperPlivoXML(patientName: string | null, sticky: boolean): string {
-  const text = patientName
-    ? `${sticky ? "Your patient" : "Patient"} ${patientName} is calling the clinic. Connecting now.`
-    : "A patient is calling the clinic. Connecting now.";
+/// `newCaller`: a first-time caller who has just become this counsellor's lead.
+export function inboundWhisperPlivoXML(patientName: string | null, sticky: boolean, newCaller = false): string {
+  const text = newCaller
+    ? "A new patient is calling the clinic. They are now your lead. Connecting now."
+    : patientName
+      ? `${sticky ? "Your patient" : "Patient"} ${patientName} is calling the clinic. Connecting now.`
+      : "A patient is calling the clinic. Connecting now.";
   return `<?xml version="1.0" encoding="UTF-8"?><Response><Speak>${xmlEscape(text)}</Speak></Response>`;
 }
 
 /// Nobody free on the first pass: hold briefly, then run the whole ladder once more.
-export function inboundHoldPlivoXML(retryUrl: string, holdSec: number): string {
+/// `greet` on the first hop — otherwise a caller nobody could take never hears the welcome
+/// or the recording disclosure (§C1) before being asked to leave a message.
+export function inboundHoldPlivoXML(retryUrl: string, holdSec: number, greet = false): string {
   return (
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<Response>` +
+    (greet ? `<Speak>${xmlEscape(INBOUND_GREETING)}</Speak>` : "") +
     `<Speak>All our counsellors are with patients right now. Please hold for a moment.</Speak>` +
     `<Wait length="${holdSec}"/>` +
     `<Redirect method="POST">${xmlEscape(retryUrl)}</Redirect>` +
@@ -411,6 +417,33 @@ export async function readSignedPlivoRequest(
     req.headers.get("x-plivo-signature-v3-nonce"),
   );
   return { url, params: ok ? params : null };
+}
+
+/// The recording Plivo made on this call, if any — looked up by call id rather than waited
+/// for. Used to collect a voicemail whose callbacks never reached us (a caller hanging up
+/// mid-message can skip the <Record> action). Returns the longest recording on the call.
+export async function findPlivoRecordingForCall(
+  callUuid: string,
+): Promise<{ url: string; durationSec: number } | null> {
+  const id = process.env.PLIVO_AUTH_ID;
+  const token = process.env.PLIVO_AUTH_TOKEN;
+  if (!id || !token || !callUuid) return null;
+  try {
+    const res = await axios.get(`${API}/${id}/Recording/`, {
+      params: { call_uuid: callUuid },
+      auth: { username: id, password: token },
+      timeout: 15_000,
+    });
+    const recs = (res.data?.objects ?? []) as { recording_url?: string; recording_duration_ms?: string }[];
+    const best = recs
+      .map((r) => ({ url: r.recording_url ?? "", ms: parseFloat(r.recording_duration_ms ?? "0") }))
+      .filter((r) => r.url)
+      .sort((a, b) => b.ms - a.ms)[0];
+    return best ? { url: best.url, durationSec: Math.round(best.ms / 1000) } : null;
+  } catch (err) {
+    logger.error(`Plivo recording lookup failed for call ${callUuid}: ${String(err)}`);
+    return null;
+  }
 }
 
 /// Delete a recording's audio at Plivo (§compliance C3 — erasure / retention). The recording

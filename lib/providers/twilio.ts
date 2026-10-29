@@ -321,12 +321,16 @@ export function inboundDialRepTwiML(opts: {
 
 /// Played to the COUNSELLOR when they pick up, before the caller is bridged — so they
 /// know who is on the line and whether this is their own patient calling back.
-export function inboundWhisperTwiML(patientName: string, sticky: boolean): string {
+/// `newCaller`: a first-time caller who has just become this counsellor's lead.
+export function inboundWhisperTwiML(patientName: string, sticky: boolean, newCaller = false): string {
   const who = sticky ? "Your patient" : "Patient";
+  const text = newCaller
+    ? "A new patient is calling the clinic. They are now your lead. Connecting now."
+    : `${who} ${patientName} is calling the clinic. Connecting now.`;
   return (
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<Response>` +
-    `<Say>${xmlEscape(`${who} ${patientName} is calling the clinic. Connecting now.`)}</Say>` +
+    `<Say>${xmlEscape(text)}</Say>` +
     `</Response>`
   );
 }

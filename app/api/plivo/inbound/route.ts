@@ -28,6 +28,7 @@ import {
 } from "@/lib/providers/plivo";
 import { callbackQuery } from "@/lib/clickToCallLog";
 import { endConsultation } from "@/lib/presence";
+import { claimUnownedLead } from "@/lib/salesReps";
 import { logger } from "@/lib/logger";
 
 /// How long one counsellor's phone rings before we move down the ladder.
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
   const logged = callUuid
     ? await prisma.call.findUnique({
         where: { providerSid: callUuid },
-        select: { id: true, lead: { select: { phone: true } } },
+        select: { id: true, leadId: true, lead: { select: { phone: true } } },
       })
     : null;
   // Continuation hops normally carry From too; the logged call is the fallback.
@@ -73,6 +74,10 @@ export async function POST(req: Request) {
         repId: lastRep ?? undefined,
         duration: Number.isFinite(talk) ? talk : undefined,
       });
+    }
+    // Normally the whisper already claimed a first-time caller; this covers a lost whisper.
+    if (logged && lastRep) {
+      await claimUnownedLead(logged.leadId, lastRep, "Answered their first call to the clinic").catch(() => false);
     }
     if (lastRep) void endConsultation(lastRep);
     return xml(hangupPlivoXML());
@@ -121,7 +126,7 @@ export async function POST(req: Request) {
   // purpose: someone who was busy a moment ago may be free now.
   if (!held) {
     logger.info(`Plivo inbound ${from} (call ${callUuid}) - nobody free, holding: ${route.reason}`);
-    return xml(inboundHoldPlivoXML(`${base}/api/plivo/inbound?held=1`, HOLD_SECONDS));
+    return xml(inboundHoldPlivoXML(`${base}/api/plivo/inbound?held=1`, HOLD_SECONDS, tried.length === 0));
   }
 
   logger.info(`Plivo inbound ${from} (call ${callUuid}) -> voicemail: ${route.reason}`);
