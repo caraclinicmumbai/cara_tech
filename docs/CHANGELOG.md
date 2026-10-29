@@ -7,6 +7,27 @@ Format: newest first.
 
 ---
 
+## 2026-10-29 — Inbound calls ring the team, and first-time callers belong to whoever answers
+
+Merge `689f798` (commits `6d83d03`, `a3a0b44`). No migration, no new settings. Flow doc updated:
+**[11-inbound-call-routing.md](flows/11-inbound-call-routing.md)**.
+
+**First-time callers.** A number the CRM doesn't know is no longer given an owner before
+anyone's phone rings. Telecallers ring one by one, round-robin, and whoever answers owns the
+lead; later calls ring them first. Nobody answers → the next telecaller in the rota owns it,
+with a "Return missed call" task.
+
+**Fixes from the first live test on 022 6423 1017.** (1) Nobody was rung: presence switches
+counsellors to Offline after 15 idle minutes, so the team looked away. In clinic hours,
+Offline telecallers and the lead's own owner are now rung too; Break / In consultation never
+are. (2) Plivo recorded the voicemail but it never reached the CRM; unanswered calls now
+fetch their recording from Plivo after hang-up. (3) The greeting and recording notice now
+play when nobody is free. (4) The call log and dashboard refresh themselves, the bell checks
+every 15s, and recordings have a Listen link. (5) The lead page heading has Rename /
+"Add patient's name".
+
+---
+
 ## 2026-10-26 — Appointments go live on main, and the clinic line answers on Plivo
 
 Merge `8b7e926` (dev → main, everything on `dev`). **13 additive migrations**
