@@ -7,6 +7,27 @@ Format: newest first.
 
 ---
 
+## 2026-10-30 — Leads table pages on the server; inbound calls spread across the team
+
+Merge `20ccb42` (commit `3d2e574`). **Migration:** `rep_ringing_until` (one nullable column on
+`SalesRep`, applied by the pre-deploy `prisma migrate deploy`). No new settings. Flow doc
+updated: **[11-inbound-call-routing.md](flows/11-inbound-call-routing.md)**.
+
+**Leads table.** It loaded every lead (10,000+) with every call and filtered in the browser.
+Search and the column filters now live in the URL and run in the database
+(`lib/leadList.ts`); 50 rows load per page with Previous / Next. Search matches phone digits
+as well as names. The Calls and CQS filters are now "Called / No calls yet" and
+"Scored / Not scored".
+
+**Inbound routing (third live test: six calls, one handset).** In clinic hours the telecaller
+round-robin treats Available and Offline as one rota — preferring Available sent every new
+caller to the one person who kept the CRM open. A rep's phone is reserved while it rings
+(`SalesRep.ringingUntil`), so two patients calling together ring two different people instead
+of the second hitting a busy line. Leads named "Unknown" (the legacy import's placeholder)
+get the inline **Add patient's name** control.
+
+---
+
 ## 2026-10-30 — Inbound calls can't ring out on a setting nobody can see
 
 Merge `443ef37` (commit `c86da4c`). No migration, no new settings. Flow doc updated:
