@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { saveLeadQueue } from "@/lib/leadQueue";
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { leadListFiltered, leadListQuery, type LeadListFilters } from "@/lib/leadList";
+import { useCallback, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { StageSelect } from "@/components/StageSelect";
 import { TagField } from "@/components/TagField";
 import { LeadDeleteButton } from "@/components/LeadDeleteButton";
@@ -65,11 +67,13 @@ type FilterKind = "none" | "enum" | "text" | "date";
 /// can fall behind on, while Created and Updated are history.
 type DateShortcut = "today" | "tomorrow" | "yesterday" | "overdue";
 
+/// One choice in a multi-select column filter — supplied by the server (lib/leadList.ts).
+export type FilterOption = { value: string; label: string };
+
 type Col = {
+  /// For a filterable column, its key in the URL (lib/leadList.ts).
   key: string;
   label: string;
-  /// Underlying value used for filtering/sorting ("" = empty, shown as "—").
-  value: (l: LeadRow) => string;
   /// What the CELL renders. Every column defines its own, so the header row and the
   /// body row are generated from ONE list and cannot drift apart.
   ///
@@ -78,15 +82,8 @@ type Col = {
   /// under the wrong heading. A table that quietly puts a phone number under "Created"
   /// is worse than one that's ugly, so the two are now the same list by construction.
   cell: (l: LeadRow, ctx: CellContext) => ReactNode;
-  /// For a "date" column: the row's date as YYYY-MM-DD, or "" when it has none.
-  dateValue?: (l: LeadRow) => string;
-  /// For a "date" column offering the Overdue shortcut: is this row past due?
-  dateOverdue?: (l: LeadRow) => boolean;
   dateShortcuts?: DateShortcut[];
-  /// Friendly label for a raw value in an enum filter dropdown.
-  display?: (v: string) => string;
   filter: FilterKind;
-  number?: boolean;
   /// Cell layout. `wrap` opts out of the default whitespace-nowrap.
   align?: "right";
   wrap?: boolean;
@@ -168,33 +165,72 @@ const SHORTCUT_LABEL: Record<DateShortcut, string> = {
   overdue: "Overdue",
 };
 
+/// How long typing pauses before the search / a "contains" filter reloads the table.
+const TYPING_DEBOUNCE_MS = 400;
+
+/// The leads table, one page at a time. `leads` is the page on screen; the search and the
+/// column filters are the URL (lib/leadList.ts) — changing one navigates, the server
+/// filters, and this re-renders with the new page.
 export function LeadsTable({
   leads,
+  filters,
+  total,
+  pageSize,
+  options,
   sourceLabels,
-  stageLabels,
   canDelete = false,
   canRemark = false,
 }: {
   leads: LeadRow[];
+  /// The filters the server applied to produce `leads`.
+  filters: LeadListFilters;
+  /// How many leads match them, across every page.
+  total: number;
+  pageSize: number;
+  /// The choices in each multi-select filter, by column key.
+  options: Record<string, FilterOption[]>;
   sourceLabels: Record<string, string>;
-  stageLabels: Record<string, string>;
   canDelete?: boolean;
   canRemark?: boolean;
 }) {
-  const [search, setSearch] = useState("");
-  const [enumFilters, setEnumFilters] = useState<Record<string, Set<string>>>({});
-  const [textFilters, setTextFilters] = useState<Record<string, string>>({});
+  const router = useRouter();
+  const [loading, startTransition] = useTransition();
+  /// What's typed into the search box and the "contains" filters. Kept here rather than
+  /// read back from `filters`, so the box doesn't fight the keyboard while the page reloads.
+  const [search, setSearch] = useState(filters.q);
+  const [textFilters, setTextFilters] = useState<Record<string, string>>(filters.texts);
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [openFilter, setOpenFilter] = useState<OpenFilter | null>(null);
+
+  const enumFilters = filters.enums as Record<string, string[] | undefined>;
   /// Date columns filter either to one calendar day ("2026-08-29") or to everything
   /// already past due — the two questions a desk actually asks of a follow-up date.
-  const [dateFilters, setDateFilters] = useState<Record<string, { day?: string; overdue?: boolean }>>({});
-  const [openFilter, setOpenFilter] = useState<OpenFilter | null>(null);
+  const dateFilters = filters.dates as Record<string, { day?: string; overdue?: boolean } | undefined>;
+
+  /// Load the table for `next`. Any change of filter goes back to page 1.
+  function go(next: Partial<LeadListFilters>) {
+    // A reload still waiting on the keyboard was built from older filters — this one wins.
+    if (typingTimer.current) clearTimeout(typingTimer.current);
+    const merged: LeadListFilters = {
+      ...filters,
+      q: search,
+      texts: textFilters as LeadListFilters["texts"],
+      page: 1,
+      ...next,
+    };
+    const qs = leadListQuery(merged);
+    startTransition(() => router.replace(qs ? `/leads?${qs}` : "/leads", { scroll: false }));
+  }
+  function goSoon(next: Partial<LeadListFilters>) {
+    if (typingTimer.current) clearTimeout(typingTimer.current);
+    typingTimer.current = setTimeout(() => go(next), TYPING_DEBOUNCE_MS);
+  }
 
   const columns: Col[] = useMemo(
     () => [
       {
         key: "name",
         label: "Name",
-        value: (l) => l.name,
         filter: "none",
         cell: (l, ctx) => (
           <>
@@ -216,18 +252,14 @@ export function LeadsTable({
       {
         key: "created",
         label: "Created",
-        value: (l) => l.created,
-        dateValue: (l) => l.createdDate,
         dateShortcuts: ["today", "yesterday"],
         filter: "date",
         cell: (l) => <span className={MUTED}>{l.created}</span>,
       },
-      { key: "phone", label: "Phone", value: (l) => l.phone, filter: "text", cell: (l) => l.phone },
+      { key: "phone", label: "Phone", filter: "text", cell: (l) => l.phone },
       {
         key: "source",
         label: "Source",
-        value: (l) => l.source ?? "",
-        display: (v) => (v ? (sourceLabels[v] ?? v) : "Other"),
         filter: "enum",
         cell: (l, ctx) => (
           <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs dark:bg-white/10">
@@ -238,7 +270,6 @@ export function LeadsTable({
       {
         key: "campaign",
         label: "Campaign",
-        value: (l) => l.campaign ?? "",
         filter: "text",
         cell: (l) =>
           l.campaign ? <span title={l.adId ? `Ad: ${l.adId}` : undefined}>{l.campaign}</span> : "—",
@@ -246,22 +277,18 @@ export function LeadsTable({
       {
         key: "stage",
         label: "Stage",
-        value: (l) => l.stage,
-        display: (v) => stageLabels[v] ?? v,
         filter: "enum",
         cell: (l) => <StageSelect leadId={l.id} stage={l.stage} />,
       },
       {
         key: "tag",
         label: "Tag",
-        value: (l) => l.tag ?? "",
         filter: "text",
         cell: (l) => <TagField leadId={l.id} tag={l.tag} />,
       },
       {
         key: "interest",
         label: "Treatment",
-        value: (l) => l.interest ?? "",
         filter: "text",
         wrap: true,
         cell: (l) => (
@@ -270,22 +297,17 @@ export function LeadsTable({
           </span>
         ),
       },
-      { key: "status", label: "Status", value: (l) => l.status, filter: "enum", cell: (l) => l.status },
+      { key: "status", label: "Status", filter: "enum", cell: (l) => l.status },
       {
-        key: "assignedRep",
+        key: "owner",
         label: "Owner",
-        value: (l) => l.assignedRep ?? "",
-        display: (v) => v || "Unassigned",
         filter: "enum",
         cell: (l) =>
           l.assignedRep ?? <span className="text-black/40 dark:text-white/40">Unassigned</span>,
       },
       {
-        key: "nextFollowUp",
+        key: "followUp",
         label: "Next follow-up",
-        value: (l) => l.nextFollowUp ?? "",
-        dateValue: (l) => l.nextFollowUpDate ?? "",
-        dateOverdue: (l) => l.nextFollowUpOverdue,
         dateShortcuts: ["today", "tomorrow", "overdue"],
         filter: "date",
         cell: (l) =>
@@ -306,7 +328,6 @@ export function LeadsTable({
       {
         key: "dealAmount",
         label: "Deal amount",
-        value: (l) => (l.dealAmount == null ? "" : String(l.dealAmount)),
         filter: "none",
         align: "right",
         cell: (l) =>
@@ -324,25 +345,19 @@ export function LeadsTable({
       {
         key: "calls",
         label: "Calls",
-        value: (l) => String(l.calls),
         filter: "enum",
-        number: true,
         cell: (l) => l.calls,
       },
       {
         key: "lastCall",
         label: "Last call",
-        value: (l) => l.lastCall ?? "",
         filter: "none",
         cell: (l) => <span className={MUTED}>{l.lastCall ?? "—"}</span>,
       },
       {
         key: "cqs",
         label: "CQS",
-        value: (l) => (l.cqs == null ? "" : String(l.cqs)),
-        display: (v) => (v === "" ? "—" : v),
         filter: "enum",
-        number: true,
         cell: (l) =>
           typeof l.cqs === "number" ? (
             <span
@@ -367,7 +382,6 @@ export function LeadsTable({
       {
         key: "remark",
         label: "Remark",
-        value: (l) => l.remark ?? "",
         filter: "text",
         wrap: true,
         cell: (l, ctx) =>
@@ -385,88 +399,51 @@ export function LeadsTable({
       {
         key: "updated",
         label: "Updated",
-        value: (l) => l.updated,
-        dateValue: (l) => l.updatedDate,
         dateShortcuts: ["today", "yesterday"],
         filter: "date",
         cell: (l) => <span className={MUTED}>{l.updated}</span>,
       },
     ],
-    [sourceLabels, stageLabels],
+    [],
   );
 
-  // Distinct values per enum column, for its dropdown.
-  const distinct = useMemo(() => {
-    const m: Record<string, string[]> = {};
-    for (const c of columns) {
-      if (c.filter !== "enum") continue;
-      const set = new Set<string>();
-      for (const l of leads) set.add(c.value(l));
-      m[c.key] = Array.from(set).sort((a, b) =>
-        c.number ? Number(a) - Number(b) : a.localeCompare(b),
-      );
-    }
-    return m;
-  }, [leads, columns]);
-
-  const rows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return leads.filter((l) => {
-      if (q && !l.name.toLowerCase().includes(q)) return false;
-      for (const c of columns) {
-        if (c.filter === "enum") {
-          const sel = enumFilters[c.key];
-          if (sel && sel.size > 0 && !sel.has(c.value(l))) return false;
-        } else if (c.filter === "text") {
-          const t = textFilters[c.key]?.trim().toLowerCase();
-          if (t && !c.value(l).toLowerCase().includes(t)) return false;
-        } else if (c.filter === "date") {
-          const f = dateFilters[c.key];
-          if (f?.day && c.dateValue?.(l) !== f.day) return false;
-          // "Overdue" is a property of the row, not of the date string: a step is
-          // missed once its due moment has passed, which the server already decided.
-          if (f?.overdue && !c.dateOverdue?.(l)) return false;
-        }
-      }
-      return true;
-    });
-  }, [leads, columns, search, enumFilters, textFilters, dateFilters]);
+  const rows = leads;
 
   function toggleEnum(key: string, v: string) {
-    setEnumFilters((prev) => {
-      const next = { ...prev };
-      const set = new Set(next[key] ?? []);
-      if (set.has(v)) set.delete(v);
-      else set.add(v);
-      if (set.size === 0) delete next[key];
-      else next[key] = set;
-      return next;
-    });
+    const set = new Set(enumFilters[key] ?? []);
+    if (set.has(v)) set.delete(v);
+    else set.add(v);
+    go({ enums: { ...filters.enums, [key]: set.size ? Array.from(set) : undefined } });
   }
   function setText(key: string, v: string) {
-    setTextFilters((prev) => {
-      const next = { ...prev };
-      if (v) next[key] = v;
-      else delete next[key];
-      return next;
-    });
+    const next = { ...textFilters };
+    if (v) next[key] = v;
+    else delete next[key];
+    setTextFilters(next);
+    goSoon({ texts: next });
   }
   function setDate(key: string, patch: { day?: string; overdue?: boolean } | null) {
-    setDateFilters((prev) => {
-      const next = { ...prev };
-      if (!patch || (!patch.day && !patch.overdue)) delete next[key];
-      else next[key] = patch;
-      return next;
-    });
+    const keep = patch && (patch.day || patch.overdue) ? patch : undefined;
+    go({ dates: { ...filters.dates, [key]: keep } });
   }
   function clearColumn(key: string) {
-    setEnumFilters((prev) => {
-      const n = { ...prev };
-      delete n[key];
-      return n;
+    const texts = { ...textFilters };
+    delete texts[key];
+    setTextFilters(texts);
+    go({
+      enums: { ...filters.enums, [key]: undefined },
+      texts,
+      dates: { ...filters.dates, [key]: undefined },
     });
-    setText(key, "");
-    setDate(key, null);
+  }
+  function clearAll() {
+    if (typingTimer.current) clearTimeout(typingTimer.current);
+    setSearch("");
+    setTextFilters({});
+    go({ q: "", enums: {}, texts: {}, dates: {} });
+  }
+  function goToPage(page: number) {
+    go({ page });
   }
 
   // Open the filter panel anchored just under the clicked caret. Rendered as a
@@ -483,12 +460,12 @@ export function LeadsTable({
   }
 
   const isFiltered = (key: string) =>
-    !!enumFilters[key]?.size || !!textFilters[key] || !!dateFilters[key];
-  const anyActive =
-    !!search ||
-    Object.keys(enumFilters).length > 0 ||
-    Object.keys(textFilters).length > 0 ||
-    Object.keys(dateFilters).length > 0;
+    !!enumFilters[key]?.length || !!textFilters[key] || !!dateFilters[key];
+  const anyActive = !!search || leadListFiltered({ ...filters, texts: textFilters });
+
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const firstShown = total === 0 ? 0 : (filters.page - 1) * pageSize + 1;
+  const lastShown = Math.min(total, filters.page * pageSize);
 
   const openCol = openFilter ? columns.find((c) => c.key === openFilter.key) : null;
 
@@ -499,15 +476,19 @@ export function LeadsTable({
     if (search.trim()) parts.push(`"${search.trim()}"`);
     for (const c of columns) {
       const sel = enumFilters[c.key];
-      if (sel?.size) parts.push(`${c.label}: ${Array.from(sel).slice(0, 2).join(", ")}${sel.size > 2 ? "…" : ""}`);
+      if (sel?.length) {
+        const names = sel.map((v) => options[c.key]?.find((o) => o.value === v)?.label ?? v);
+        parts.push(`${c.label}: ${names.slice(0, 2).join(", ")}${names.length > 2 ? "…" : ""}`);
+      }
       const t = textFilters[c.key]?.trim();
       if (t) parts.push(`${c.label}: ${t}`);
       const d = dateFilters[c.key];
       if (d?.day) parts.push(`${c.label}: ${d.day}`);
       if (d?.overdue) parts.push(`${c.label}: overdue`);
     }
+    if (pages > 1) parts.push(`page ${filters.page} of ${pages}`);
     return parts.length ? parts.join(" · ") : "All leads";
-  }, [columns, search, enumFilters, textFilters, dateFilters]);
+  }, [columns, search, enumFilters, textFilters, dateFilters, options, pages, filters.page]);
 
   // ── Sideways scrolling (§leads table) ──────────────────────────────
   // Eighteen columns don't fit on a laptop, and a mouse wheel only scrolls vertically —
@@ -579,15 +560,21 @@ export function LeadsTable({
           </span>
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search leads by name…"
-            aria-label="Search leads by name"
+            onChange={(e) => {
+              setSearch(e.target.value);
+              goSoon({ q: e.target.value });
+            }}
+            placeholder="Search by name or phone…"
+            aria-label="Search leads by name or phone"
             className="w-72 rounded-lg border-2 border-cara-rule bg-cara-surface-2 py-2 pl-9 pr-8 text-sm outline-none transition-colors placeholder:text-cara-faint focus:border-cara-beige-deep focus:bg-cara-page"
           />
           {search && (
             <button
               type="button"
-              onClick={() => setSearch("")}
+              onClick={() => {
+                setSearch("");
+                go({ q: "" });
+              }}
               aria-label="Clear search"
               className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1 text-sm text-cara-muted hover:text-cara-ink"
             >
@@ -596,18 +583,10 @@ export function LeadsTable({
           )}
         </div>
         <span className="text-sm text-black/50 dark:text-white/50">
-          {rows.length} of {leads.length}
+          {loading ? "Loading…" : `${firstShown.toLocaleString("en-IN")}–${lastShown.toLocaleString("en-IN")} of ${total.toLocaleString("en-IN")}`}
         </span>
         {anyActive && (
-          <button
-            onClick={() => {
-              setSearch("");
-              setEnumFilters({});
-              setTextFilters({});
-              setDateFilters({});
-            }}
-            className="tone-link text-sm hover:underline"
-          >
+          <button onClick={clearAll} className="tone-link text-sm hover:underline">
             Clear all filters
           </button>
         )}
@@ -647,7 +626,7 @@ export function LeadsTable({
         // state-setting out of an effect.
         ref={attachScroller}
         onScroll={(e) => syncScroll(e.currentTarget)}
-        className="cara-scroll-x rounded border border-black/10 dark:border-white/15"
+        className={`cara-scroll-x rounded border border-black/10 transition-opacity dark:border-white/15 ${loading ? "opacity-60" : ""}`}
       >
         <table className="min-w-full text-sm">
           <thead className="bg-black/5 text-left dark:bg-white/10">
@@ -713,7 +692,36 @@ export function LeadsTable({
             ))}
           </tbody>
         </table>
+        {rows.length === 0 && (
+          <p className="px-4 py-6 text-sm text-cara-muted">
+            {anyActive ? "No leads match these filters." : "No leads yet."}
+          </p>
+        )}
       </div>
+
+      {pages > 1 && (
+        <nav className="flex items-center justify-end gap-2 text-sm" aria-label="Leads pages">
+          <button
+            type="button"
+            onClick={() => goToPage(filters.page - 1)}
+            disabled={loading || filters.page <= 1}
+            className={scrollBtn}
+          >
+            ‹ Previous
+          </button>
+          <span className="tabular-nums text-cara-muted">
+            Page {filters.page} of {pages}
+          </span>
+          <button
+            type="button"
+            onClick={() => goToPage(filters.page + 1)}
+            disabled={loading || filters.page >= pages}
+            className={scrollBtn}
+          >
+            Next ›
+          </button>
+        </nav>
+      )}
 
       {/* Filter panel — fixed layer so the table's overflow can't clip it. */}
       {openFilter && openCol && (
@@ -781,19 +789,17 @@ export function LeadsTable({
               />
             ) : (
               <div className="max-h-56 space-y-0.5 overflow-auto">
-                {distinct[openCol.key]?.map((v) => (
+                {(options[openCol.key] ?? []).map(({ value: v, label }) => (
                   <label
-                    key={v || "∅"}
+                    key={v}
                     className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs hover:bg-black/5 dark:hover:bg-white/10"
                   >
                     <input
                       type="checkbox"
-                      checked={enumFilters[openCol.key]?.has(v) ?? false}
+                      checked={enumFilters[openCol.key]?.includes(v) ?? false}
                       onChange={() => toggleEnum(openCol.key, v)}
                     />
-                    <span className="truncate">
-                      {openCol.display ? openCol.display(v) : v || "—"}
-                    </span>
+                    <span className="truncate">{label}</span>
                   </label>
                 ))}
               </div>

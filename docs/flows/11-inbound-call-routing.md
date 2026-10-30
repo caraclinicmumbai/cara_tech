@@ -31,7 +31,8 @@ lead and the "Return missed call" step.
 ```
 first-time caller
         │
-        ├─ telecallers, round-robin (role "Telecaller / Counsellor", Available) — no owner yet
+        ├─ telecallers, round-robin (role "Telecaller / Counsellor"; in clinic hours
+        │    Available and Offline alike, never Break) — no owner yet
         │      └─ the one who answers OWNS the lead from now on
         ├─ ~25s hold, then one more pass over the telecallers
         └─ voicemail / hang-up → next telecaller in the rota owns it + "Return missed call"
@@ -39,6 +40,18 @@ first-time caller
 
 Each rung is tried for `INBOUND_RING_SECONDS` (default 20s) before moving on. A rep
 who simply doesn't pick up is carried in `tried` and not rung again on that call.
+
+**One ringing phone per rep.** Picking a rep reserves their phone for the ring
+(`SalesRep.ringingUntil`, set by `reserveForRinging()` in `lib/salesReps.ts` in one
+conditional update, released when that leg ends, and lapsing by itself after the ring time
+plus 10 s). Two patients calling at the same moment therefore ring two different people.
+Before this, the second call went to the same handset a few seconds after the first, hit
+"busy", and the first live test with two callers lost one of them.
+
+An existing record wins over a new one: a number the old CRM already knew (the legacy import
+brought in ~2,000 leads literally named "Unknown") is that lead, not a new `Caller 1234`.
+Imported leads have no owner, so they ring the telecaller rota like a first-time caller, and
+the lead page offers **Add patient's name** on them too.
 
 ## Trigger
 
@@ -95,9 +108,11 @@ clinic would be the worst possible first impression, so they go to the manual qu
 | Telecallers, round-robin | first-time caller (lead has no owner) | `pickNextTelecaller()` |
 
 **Reachable** means: `active`, `availability === "available"`, **not** already `onCall`,
-and carrying a dialable number. **During clinic hours** (outside the 22:00–10:00 IST call
-window) Cara also rings people marked **Offline** once nobody Available is left — and the
-lead's own owner even if they're Offline. Presence auto-sets anyone Offline after 15 minutes
+**not** ringing for another caller, and carrying a dialable number. **During clinic hours**
+(outside the 22:00–10:00 IST call window) people marked **Offline** count as reachable too,
+and the telecaller rota treats Available and Offline as **one** round-robin — preferring
+Available sent every new caller to the one telecaller who kept the CRM open (the second live
+test: six calls, one handset). The lead's own owner is rung even if they're Offline. Presence auto-sets anyone Offline after 15 minutes
 without the CRM open, which says nothing about whether their phone is in their pocket; the
 first live test rang nobody because of exactly that. **Break** and **In consultation** are
 never rung — except an **In consultation older than 2 hours**, which is treated as a call
@@ -221,9 +236,11 @@ does not move.
   number**, and the forwarded call must still carry the patient's own number. If Airtel
   presents its own number instead, every caller looks like one person. Verify with a test
   call before relying on it.
-- **First-time callers only ring users with the Telecaller / Counsellor role** who are on
-  the roster with a login and marked Available. No such telecaller → straight to hold,
-  then voicemail.
+- **First-time callers ring users with the Telecaller / Counsellor role** who are on the
+  roster with a login, not on Break, and have a dialable phone on their rep profile (in
+  clinic hours; Available only out of hours). A telecaller with no phone on their profile is
+  skipped with a warning in the log — check the roster when one person seems to get every
+  call. No telecaller at all → the rest of the sales rota, then hold, then voicemail.
 - **Offline people are rung in clinic hours.** Someone genuinely off shift but left as
   Offline (not Break) may get a call on their mobile. Set Break, or deactivate the rep,
   for leave.

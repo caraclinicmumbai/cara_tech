@@ -28,7 +28,7 @@ import {
 } from "@/lib/providers/plivo";
 import { callbackQuery } from "@/lib/clickToCallLog";
 import { endConsultation } from "@/lib/presence";
-import { claimUnownedLead } from "@/lib/salesReps";
+import { claimUnownedLead, releaseRinging } from "@/lib/salesReps";
 import { logger } from "@/lib/logger";
 
 /// How long one counsellor's phone rings before we move down the ladder.
@@ -67,6 +67,9 @@ export async function POST(req: Request) {
 
   // ── Continuation hop: how did the previous counsellor's leg end? ──
   const dialStatus = params.DialBLegStatus ?? params.DialStatus ?? null;
+  // Whatever happened on that leg, the counsellor's phone has stopped ringing for this
+  // caller — free it for the next one (routing reserved it when it was picked).
+  if (dialStatus && lastRep) await releaseRinging(lastRep);
   if (dialStatus === "completed" || dialStatus === "answered") {
     const talk = parseInt(params.DialBLegDuration ?? "", 10);
     if (logged) {
@@ -90,7 +93,7 @@ export async function POST(req: Request) {
 
   if (!from) return xml(hangupPlivoXML("Sorry, we could not identify your number. Please call again."));
 
-  const route = await routeInboundCall(from, { exclude: tried });
+  const route = await routeInboundCall(from, { exclude: tried, ringSeconds: RING_SECONDS });
   const call = await startInboundCall({ leadId: route.lead.id, providerSid: callUuid, provider: "plivo" });
   if (!call) logger.warn(`Plivo inbound ${from}: no CallUUID — this call will not appear in the call log`);
 

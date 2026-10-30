@@ -4,17 +4,24 @@
 // The rule, in order:
 //   1. STICKY — the rep who owns this caller's lead. A patient who calls back reaches
 //      the person they already spoke to, for as long as that person owns the lead.
-//   2. Only if the owner can't take it (offline, on a break, mid-consultation, already
-//      on a call, or simply didn't answer) do we look elsewhere — preferring a
+//   2. Only if the owner can't take it (on a break, mid-consultation, already on a call
+//      or ringing for another caller, or simply didn't answer) do we look elsewhere — preferring a
 //      colleague with the SAME speciality, then the round-robin.
 //   3. Nobody free → the caller is held briefly, then offered voicemail, and the
 //      owner gets a "return this call" step on the lead's roadmap.
 //
-// A FIRST-TIME caller has nobody to be sticky to. They ring the telecallers round-robin,
-// and the lead is NOT assigned until one of them answers — whoever picks up owns the lead
+// A FIRST-TIME caller has nobody to be sticky to. They ring the telecallers round-robin —
+// in clinic hours everyone not on a Break, whether the CRM shows them Available or Offline,
+// so new callers spread across the whole team instead of all landing on whoever happens to
+// have the CRM open — and the lead is NOT assigned until one of them answers — whoever picks up owns the lead
 // from then on, so the next call is sticky to them (claimUnownedLead, called from the
 // whisper routes on answer). Assigning a rota pick before anyone rang used to give the
 // lead to a telecaller who might never have spoken to the patient.
+//
+// A phone that's RINGING is taken. Picking a rep reserves their phone for the length of the
+// ring (reserveForRinging), so two patients calling together ring two different people —
+// before this, the second call went to the same handset a few seconds after the first and
+// failed as busy.
 //
 // Deliberately provider-agnostic: this module decides WHO, and knows nothing about
 // TwiML, webhooks or signatures. The Twilio adapter lives in app/api/twilio/inbound.
@@ -22,7 +29,12 @@
 // not rewriting the policy.
 import { prisma } from "@/lib/prisma";
 import { ingestLead } from "@/lib/leadIntake";
-import { pickNextTelecaller, pickReplacementFor, staleConsultationCutoff } from "@/lib/salesReps";
+import {
+  pickNextTelecaller,
+  pickReplacementFor,
+  staleConsultationCutoff,
+  reserveForRinging,
+} from "@/lib/salesReps";
 import { dialablePhone } from "@/lib/phone";
 import { isWithinDnd } from "@/lib/callWindow";
 import { logger } from "@/lib/logger";
@@ -83,7 +95,8 @@ export { dialablePhone };
 /// their phone is in their pocket — and a patient ringing the clinic must reach SOMEONE.
 /// So during clinic hours, when nobody is marked Available, Offline people are rung too.
 /// Break stays excluded: that's a deliberate "don't ring me". So does In-Consultation —
-/// unless it's over two hours old, which means a call whose end never reached us.
+/// unless it's over two hours old, which means a call whose end never reached us. A rep
+/// whose phone is ringing for another caller right now is not reachable either.
 function isReachable(
   rep: {
     name: string;
@@ -92,9 +105,12 @@ function isReachable(
     onCall: boolean;
     phone: string | null;
     availabilityAt?: Date | null;
+    ringingUntil?: Date | null;
   },
   relaxed = false,
 ): boolean {
+  // Already ringing for another caller — about to be busy.
+  if (rep.ringingUntil && rep.ringingUntil > new Date()) return false;
   const staleConsultation =
     rep.availability === "in_consultation" &&
     !!rep.availabilityAt &&
@@ -125,6 +141,7 @@ const REP_FIELDS = {
   availability: true,
   onCall: true,
   availabilityAt: true,
+  ringingUntil: true,
   salesHead: true,
 } as const;
 
@@ -179,13 +196,17 @@ async function leadForCaller(fromPhone: string): Promise<InboundLead> {
 /// `exclude` carries the reps already tried on THIS call — a rep whose phone rang out
 /// or was busy. That's what lets one call walk down the ladder (owner → same
 /// speciality → round-robin) instead of ringing the same silent handset forever.
+///
+/// Whoever is returned has had their phone reserved for `ringSeconds` (plus a margin) — the
+/// adapter dials them right away and releases the reservation when that leg ends.
 export async function routeInboundCall(
   fromPhone: string,
-  opts: { exclude?: string[] } = {},
+  opts: { exclude?: string[]; ringSeconds?: number } = {},
 ): Promise<InboundRoute> {
   const exclude = new Set(opts.exclude ?? []);
   const lead = await leadForCaller(fromPhone);
   const relaxOk = clinicHours();
+  const reserve = (repId: string) => reserveForRinging(repId, (opts.ringSeconds ?? 20) + 10);
 
   const connect = (
     rep: { id: string; name: string; phone: string | null; speciality: string | null },
@@ -197,23 +218,19 @@ export async function routeInboundCall(
     ...extra,
   });
 
-  /// The next telecaller in the rota who can take it — Available first, then (in clinic
-  /// hours) Offline. If no telecaller can, the rest of the sales rota the same way: a roster
-  /// where nobody carries the Telecaller role must not leave the clinic line ringing out.
-  /// Skips everyone in `tried`, and adds whoever it looks at to it.
+  /// The next telecaller in the rota who can take it. In clinic hours that's one rota of
+  /// Available and Offline alike — Offline only means "hasn't had the CRM open for 15
+  /// minutes", and preferring Available sent every new caller to the one person who keeps
+  /// the CRM open. Out of hours, Available only. If no telecaller can, the rest of the sales
+  /// rota the same way: a roster where nobody carries the Telecaller role must not leave the
+  /// clinic line ringing out. Skips everyone in `tried`, and adds whoever it looks at to it.
   const nextTelecaller = async (tried: string[]) => {
-    const tiers = [
-      { relaxed: false, anyRole: false },
-      { relaxed: true, anyRole: false },
-      { relaxed: false, anyRole: true },
-      { relaxed: true, anyRole: true },
-    ].filter((t) => relaxOk || !t.relaxed);
-    for (const { relaxed, anyRole } of tiers) {
+    for (const anyRole of [false, true]) {
       for (let i = 0; i < 20; i++) {
-        const candidate = await pickNextTelecaller(tried, { includeOffline: relaxed, anyRole });
+        const candidate = await pickNextTelecaller(tried, { includeOffline: relaxOk, anyRole });
         if (!candidate) break;
         tried.push(candidate.id);
-        if (isReachable(candidate, relaxed)) return candidate;
+        if (isReachable(candidate, relaxOk) && (await reserve(candidate.id))) return candidate;
       }
     }
     return null;
@@ -233,7 +250,7 @@ export async function routeInboundCall(
   // hours; skipped on Break / In consultation / already on a call. A sales head who
   // personally owns a lead still gets their caller back: stickiness is about who this
   // patient knows, not about the rota.
-  if (owner && !exclude.has(owner.id) && isReachable(owner, relaxOk)) {
+  if (owner && !exclude.has(owner.id) && isReachable(owner, relaxOk) && (await reserve(owner.id))) {
     return connect(owner, { sticky: true, firstTime: false, reason: `${owner.name} owns this lead` });
   }
 
@@ -252,7 +269,7 @@ export async function routeInboundCall(
     if (!candidate) break;
     if (tried.has(candidate.id)) continue; // already rang this one on this call — the cursor moved on
     tried.add(candidate.id);
-    if (!isReachable(candidate)) continue;
+    if (!isReachable(candidate) || !(await reserve(candidate.id))) continue;
     return connect(candidate, { sticky: false, firstTime: false, reason: covered(candidate) });
   }
 
