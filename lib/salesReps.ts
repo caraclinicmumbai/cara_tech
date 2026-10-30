@@ -27,6 +27,15 @@ export const TELECALLER_REP: Prisma.SalesRepWhereInput = {
   user: { is: { role: "telecaller" } },
 };
 
+/// An In-Consultation older than this is almost certainly a call whose end never reached us
+/// (a lost provider callback leaves the counsellor "on a call" forever, and the idle sweep
+/// skips anyone on a call). Long enough for any real consultation call.
+export const STALE_CONSULTATION_MS = 2 * 60 * 60_000;
+
+export function staleConsultationCutoff(now = Date.now()): Date {
+  return new Date(now - STALE_CONSULTATION_MS);
+}
+
 const ROTA_ORDER = [
   { lastAssignedAt: { sort: "asc" as const, nulls: "first" as const } },
   { createdAt: "asc" as const },
@@ -35,17 +44,26 @@ const ROTA_ORDER = [
 /// The next telecaller to ring for a first-time caller: available, not already on a call,
 /// and not one of `exclude` (already rung on this call). Advances the round-robin cursor, so
 /// the next new caller starts with the next person.
-/// `includeOffline` widens it to Offline telecallers too (see isReachable in
-/// lib/inboundRouting.ts for when that's allowed). Break and In-Consultation never qualify.
+/// `includeOffline` widens it to Offline telecallers, and to anyone whose In-Consultation is
+/// stale (see isReachable in lib/inboundRouting.ts for when that's allowed). Break never
+/// qualifies. `anyRole` widens the pool from telecallers to the whole assignable rota — the
+/// fallback when no telecaller can take the call.
 export async function pickNextTelecaller(
   exclude: string[] = [],
-  opts: { includeOffline?: boolean } = {},
+  opts: { includeOffline?: boolean; anyRole?: boolean } = {},
 ): Promise<SalesRep | null> {
+  const status: Prisma.SalesRepWhereInput = opts.includeOffline
+    ? {
+        OR: [
+          { availability: { in: ["available", "offline"] }, onCall: false },
+          { availability: "in_consultation", availabilityAt: { lt: staleConsultationCutoff() } },
+        ],
+      }
+    : { availability: "available", onCall: false };
   const rep = await prisma.salesRep.findFirst({
     where: {
-      ...TELECALLER_REP,
-      availability: opts.includeOffline ? { in: ["available", "offline"] } : "available",
-      onCall: false,
+      ...(opts.anyRole ? ASSIGNABLE_REP : TELECALLER_REP),
+      ...status,
       ...(exclude.length ? { id: { notIn: exclude } } : {}),
     },
     orderBy: ROTA_ORDER,

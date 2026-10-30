@@ -244,6 +244,9 @@ const INBOUND_GREETING =
 /// whisper names the caller.
 export function inboundDialRepPlivoXML(opts: {
   repPhone: string;
+  /// The clinic number the patient dialled — a number we rent from Plivo, so always a valid
+  /// caller ID. Used when PLIVO_REP_CALLER_ID / PLIVO_CALLER_ID aren't set.
+  clinicNumber?: string;
   whisperUrl: string;
   actionUrl: string;
   recordingCallbackUrl: string;
@@ -258,7 +261,7 @@ export function inboundDialRepPlivoXML(opts: {
     `<Record recordSession="true" startOnDialAnswer="true" redirect="false" ` +
     `fileFormat="mp3" maxLength="${maxLength}" recordChannelType="stereo" ` +
     `callbackUrl="${xmlEscape(opts.recordingCallbackUrl)}" callbackMethod="POST"/>` +
-    `<Dial callerId="${xmlEscape(plivoRepCallerId(opts.repPhone))}" ` +
+    `<Dial callerId="${xmlEscape(plivoRepCallerId(opts.repPhone) || opts.clinicNumber || "")}" ` +
     `action="${xmlEscape(opts.actionUrl)}" method="POST" timeout="${opts.timeoutSec}" ` +
     `confirmSound="${xmlEscape(opts.whisperUrl)}" confirmSoundMethod="POST">` +
     `<Number>${xmlEscape(opts.repPhone)}</Number>` +

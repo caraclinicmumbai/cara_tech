@@ -22,7 +22,7 @@
 // not rewriting the policy.
 import { prisma } from "@/lib/prisma";
 import { ingestLead } from "@/lib/leadIntake";
-import { pickNextTelecaller, pickReplacementFor } from "@/lib/salesReps";
+import { pickNextTelecaller, pickReplacementFor, staleConsultationCutoff } from "@/lib/salesReps";
 import { dialablePhone } from "@/lib/phone";
 import { isWithinDnd } from "@/lib/callWindow";
 import { logger } from "@/lib/logger";
@@ -82,13 +82,27 @@ export { dialablePhone };
 /// without the CRM open (lib/presence.ts sweepIdle), which says nothing about whether
 /// their phone is in their pocket — and a patient ringing the clinic must reach SOMEONE.
 /// So during clinic hours, when nobody is marked Available, Offline people are rung too.
-/// Break and In-Consultation stay excluded: those are deliberate "don't ring me".
+/// Break stays excluded: that's a deliberate "don't ring me". So does In-Consultation —
+/// unless it's over two hours old, which means a call whose end never reached us.
 function isReachable(
-  rep: { name: string; active: boolean; availability: string; onCall: boolean; phone: string | null },
+  rep: {
+    name: string;
+    active: boolean;
+    availability: string;
+    onCall: boolean;
+    phone: string | null;
+    availabilityAt?: Date | null;
+  },
   relaxed = false,
 ): boolean {
-  const statusOk = rep.availability === "available" || (relaxed && rep.availability === "offline");
-  if (!(rep.active && statusOk && !rep.onCall)) return false;
+  const staleConsultation =
+    rep.availability === "in_consultation" &&
+    !!rep.availabilityAt &&
+    rep.availabilityAt < staleConsultationCutoff();
+  const statusOk =
+    (rep.availability === "available" && !rep.onCall) ||
+    (relaxed && ((rep.availability === "offline" && !rep.onCall) || staleConsultation));
+  if (!(rep.active && statusOk)) return false;
   if (!dialablePhone(rep.phone)) {
     logger.warn(`Inbound routing: skipping ${rep.name} — phone "${rep.phone}" is not dialable`);
     return false;
@@ -110,6 +124,7 @@ const REP_FIELDS = {
   active: true,
   availability: true,
   onCall: true,
+  availabilityAt: true,
   salesHead: true,
 } as const;
 
@@ -183,11 +198,19 @@ export async function routeInboundCall(
   });
 
   /// The next telecaller in the rota who can take it — Available first, then (in clinic
-  /// hours) Offline. Skips everyone in `tried`, and adds whoever it looks at to it.
+  /// hours) Offline. If no telecaller can, the rest of the sales rota the same way: a roster
+  /// where nobody carries the Telecaller role must not leave the clinic line ringing out.
+  /// Skips everyone in `tried`, and adds whoever it looks at to it.
   const nextTelecaller = async (tried: string[]) => {
-    for (const relaxed of relaxOk ? [false, true] : [false]) {
+    const tiers = [
+      { relaxed: false, anyRole: false },
+      { relaxed: true, anyRole: false },
+      { relaxed: false, anyRole: true },
+      { relaxed: true, anyRole: true },
+    ].filter((t) => relaxOk || !t.relaxed);
+    for (const { relaxed, anyRole } of tiers) {
       for (let i = 0; i < 20; i++) {
-        const candidate = await pickNextTelecaller(tried, { includeOffline: relaxed });
+        const candidate = await pickNextTelecaller(tried, { includeOffline: relaxed, anyRole });
         if (!candidate) break;
         tried.push(candidate.id);
         if (isReachable(candidate, relaxed)) return candidate;

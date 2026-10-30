@@ -100,7 +100,12 @@ window) Cara also rings people marked **Offline** once nobody Available is left 
 lead's own owner even if they're Offline. Presence auto-sets anyone Offline after 15 minutes
 without the CRM open, which says nothing about whether their phone is in their pocket; the
 first live test rang nobody because of exactly that. **Break** and **In consultation** are
-never rung. A sales head who personally owns a lead still gets
+never rung — except an **In consultation older than 2 hours**, which is treated as a call
+whose end never reached Cara (lost callback) and rung like Offline. If **no telecaller**
+can take a first-time call, the rest of the sales rota (anyone with a login, not a sales
+head) is tried the same way, so a roster without the Telecaller role still answers. The
+counsellor's leg shows `PLIVO_REP_CALLER_ID` / `PLIVO_CALLER_ID`, or the clinic number
+the patient dialled when neither is set. A sales head who personally owns a lead still gets
 their own caller back — the round-robin excludes managers, but stickiness is about who
 this patient knows.
 
