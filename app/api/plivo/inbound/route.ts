@@ -112,6 +112,7 @@ export async function POST(req: Request) {
     return xml(
       inboundDialRepPlivoXML({
         repPhone: route.rep.phone,
+        clinicNumber: params.To,
         whisperUrl: `${base}/api/plivo/inbound/whisper?${whisper}${route.sticky ? "&sticky=1" : ""}`,
         actionUrl: `${base}/api/plivo/inbound?${next}`,
         recordingCallbackUrl: `${base}/api/webhooks/plivo/recording?${recording}&inbound=1`,
