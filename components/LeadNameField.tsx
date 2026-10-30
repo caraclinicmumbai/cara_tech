@@ -9,9 +9,11 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { editLead } from "@/app/(dashboard)/leads/actions";
 
-/// A placeholder name the clinic line gave an unknown caller (lib/inboundRouting.ts).
+/// A placeholder rather than a name: what the clinic line gives an unknown caller
+/// (lib/inboundRouting.ts), or the "Unknown" the previous CRM filed its unnamed callers under
+/// (the legacy import brought in thousands of those).
 export function isPlaceholderName(name: string): boolean {
-  return /^Caller (\d{4}|unknown)$/.test(name);
+  return /^Caller (\d{4}|unknown)$/.test(name) || /^unknown$/i.test(name.trim());
 }
 
 export function LeadNameField({

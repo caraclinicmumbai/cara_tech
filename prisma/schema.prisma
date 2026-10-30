@@ -219,6 +219,10 @@ model SalesRep {
   // True while auto-set to in_consultation by a live click-to-call, so the call-end
   // webhook reverts to available (and a manual Break isn't clobbered by a stray revert).
   onCall         Boolean  @default(false)
+  // Set while the clinic line is ringing this rep's phone (lib/inboundRouting.ts), so a
+  // second patient calling at the same moment rings someone else instead of a handset that
+  // is about to be busy. Expires by itself — a lost callback never parks a rep for long.
+  ringingUntil   DateTime?
   // Skill/speciality (§presence) — an offline counsellor's leads prefer a colleague
   // with the SAME speciality; null = generalist (eligible only as a fallback match).
   speciality     String?

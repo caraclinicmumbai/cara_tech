@@ -41,13 +41,37 @@ const ROTA_ORDER = [
   { createdAt: "asc" as const },
 ];
 
-/// The next telecaller to ring for a first-time caller: available, not already on a call,
-/// and not one of `exclude` (already rung on this call). Advances the round-robin cursor, so
-/// the next new caller starts with the next person.
-/// `includeOffline` widens it to Offline telecallers, and to anyone whose In-Consultation is
-/// stale (see isReachable in lib/inboundRouting.ts for when that's allowed). Break never
-/// qualifies. `anyRole` widens the pool from telecallers to the whole assignable rota — the
-/// fallback when no telecaller can take the call.
+/// A rep whose phone the clinic line isn't ringing right now (see `ringingUntil`).
+export function notRinging(now = new Date()): Prisma.SalesRepWhereInput {
+  return { OR: [{ ringingUntil: null }, { ringingUntil: { lt: now } }] };
+}
+
+/// Claim `repId`'s phone for one inbound ring. One conditional update, so when two patients
+/// call at the same moment only one of them gets this rep — the other is routed to the next
+/// person instead of dialling a handset that's about to be busy. False when it's taken.
+export async function reserveForRinging(repId: string, seconds: number): Promise<boolean> {
+  const now = new Date();
+  const { count } = await prisma.salesRep.updateMany({
+    where: { id: repId, ...notRinging(now) },
+    data: { ringingUntil: new Date(now.getTime() + seconds * 1000) },
+  });
+  return count > 0;
+}
+
+/// The ring is over — answered, declined, or rang out.
+export async function releaseRinging(repId: string): Promise<void> {
+  await prisma.salesRep
+    .updateMany({ where: { id: repId }, data: { ringingUntil: null } })
+    .catch((err) => logger.error(`Could not release the ring on rep ${repId}: ${String(err)}`));
+}
+
+/// The next telecaller to ring for a first-time caller: free (not on a call, not already
+/// ringing for another caller) and not one of `exclude` (already rung on this call). Advances
+/// the round-robin cursor, so the next new caller starts with the next person.
+/// `includeOffline` treats Offline telecallers — and anyone whose In-Consultation is stale —
+/// the same as Available ones (see isReachable in lib/inboundRouting.ts for when that's
+/// allowed). Break never qualifies. `anyRole` widens the pool from telecallers to the whole
+/// assignable rota — the fallback when no telecaller can take the call.
 export async function pickNextTelecaller(
   exclude: string[] = [],
   opts: { includeOffline?: boolean; anyRole?: boolean } = {},
@@ -63,7 +87,7 @@ export async function pickNextTelecaller(
   const rep = await prisma.salesRep.findFirst({
     where: {
       ...(opts.anyRole ? ASSIGNABLE_REP : TELECALLER_REP),
-      ...status,
+      AND: [status, notRinging()],
       ...(exclude.length ? { id: { notIn: exclude } } : {}),
     },
     orderBy: ROTA_ORDER,
