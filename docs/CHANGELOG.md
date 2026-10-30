@@ -7,6 +7,21 @@ Format: newest first.
 
 ---
 
+## 2026-10-30 — Inbound calls can't ring out on a setting nobody can see
+
+Merge `443ef37` (commit `c86da4c`). No migration, no new settings. Flow doc updated:
+**[11-inbound-call-routing.md](flows/11-inbound-call-routing.md)**.
+
+The second live test failed for a reason outside the code — the Plivo balance hit zero and
+Plivo refused every call as "busy" before reaching the CRM (topped up; auto-recharge left
+off). This release hardens three things that can't be verified from outside production:
+the counsellor-leg caller ID falls back to the clinic number when unset; a first-time call
+falls back to the rest of the sales rota when no Telecaller-role rep can take it; and an
+In-Consultation older than 2 hours (a lost end-of-call callback) no longer keeps a
+counsellor off the phones.
+
+---
+
 ## 2026-10-29 — Inbound calls ring the team, and first-time callers belong to whoever answers
 
 Merge `689f798` (commits `6d83d03`, `a3a0b44`). No migration, no new settings. Flow doc updated:
