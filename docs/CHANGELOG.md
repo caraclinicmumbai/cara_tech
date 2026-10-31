@@ -7,6 +7,25 @@ Format: newest first.
 
 ---
 
+## 2026-10-31 — A brief pick-up no longer parks a telecaller "In consultation"
+
+Merge `950b619` (commit `1697c48`). No migration, no new settings. Flow doc updated:
+**[11-inbound-call-routing.md](flows/11-inbound-call-routing.md)**.
+
+Production (read for the first time via the Railway CLI) showed only two telecallers on the
+roster, one of them stuck In-Consultation since the first test call on 30 Oct: her phone
+"answered" for a moment, the whisper flagged her on a call and claimed the lead, the leg
+ended without a conversation, and nothing released her — so every caller went to the other
+telecaller. Now a leg that ends with any status but `completed` ends that counsellor's
+consultation and undoes the whisper's bookkeeping for this call (`undoInboundAnswer()`), and
+the presence sweep clears any automatic In-Consultation older than 2 hours
+(`releaseStuckCalls()`).
+
+The 30 Oct failed deploy (`db42643`) was a build flake fetching a Google font, not the
+migration; an empty commit (`8cb82a1`) redeployed it.
+
+---
+
 ## 2026-10-30 — Leads table pages on the server; inbound calls spread across the team
 
 Merge `20ccb42` (commit `3d2e574`). **Migration:** `rep_ringing_until` (one nullable column on
