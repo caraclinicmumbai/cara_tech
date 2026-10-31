@@ -48,6 +48,15 @@ plus 10 s). Two patients calling at the same moment therefore ring two different
 Before this, the second call went to the same handset a few seconds after the first, hit
 "busy", and the first live test with two callers lost one of them.
 
+**A pick-up that isn't a conversation is undone.** The whisper runs when a counsellor's leg
+answers, and marks them In-Consultation, the call handled by them, and a first-time caller's
+lead as theirs. A voicemail or carrier announcement can "answer" too. So when that leg then
+ends without a conversation (any Dial status but `completed`), the next hop ends their
+consultation and `undoInboundAnswer()` drops the handler and any claim made during this call.
+On 30 Oct this was missing: one of the two telecallers sat "In consultation" for a day and
+every caller went to the other. As a backstop, the presence sweep (`releaseStuckCalls()` in
+`lib/presence.ts`) clears any automatic In-Consultation older than 2 hours.
+
 An existing record wins over a new one: a number the old CRM already knew (the legacy import
 brought in ~2,000 leads literally named "Unknown") is that lead, not a new `Caller 1234`.
 Imported leads have no owner, so they ring the telecaller rota like a first-time caller, and

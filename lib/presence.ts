@@ -16,6 +16,7 @@ import { writeAudit } from "@/lib/audit";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
 import { counsellorChannel } from "@/lib/counsellor";
 import { isWithinDnd } from "@/lib/callWindow";
+import { staleConsultationCutoff } from "@/lib/salesReps";
 import { logger } from "@/lib/logger";
 import { availabilityLabel, type Availability } from "@/lib/presenceStatus";
 
@@ -154,11 +155,30 @@ export async function managerSlackTarget(rep: { branchId: string | null }): Prom
   return counsellorChannel();
 }
 
+/// Clear an automatic In-Consultation that has outlived any real call. The idle sweep
+/// skips anyone on a call, so a call whose end never reached us used to leave the rep
+/// "In consultation" indefinitely — on 30 Oct a telecaller sat there for a day, and the
+/// clinic line routed every caller past her. Runs at any hour: it only undoes our own flag.
+async function releaseStuckCalls(): Promise<void> {
+  const stuck = await prisma.salesRep
+    .findMany({
+      where: { onCall: true, availabilityAt: { lt: staleConsultationCutoff() } },
+      select: { id: true, name: true },
+    })
+    .catch(() => []);
+  for (const rep of stuck) {
+    await endConsultation(rep.id);
+    logger.warn(`Presence sweep: released ${rep.name} from a call that never reported its end`);
+  }
+}
+
 /// Auto-offline sweep (§presence): during working hours, any active rep who hasn't
 /// sent a heartbeat in IDLE_MINUTES and isn't on a call is set Offline and their
 /// manager is told. Run on a short timer by the worker. Idempotent per pass —
 /// already-offline reps are excluded, so it won't re-alert.
 export async function sweepIdle(): Promise<{ swept: number }> {
+  await releaseStuckCalls();
+
   // "during working hours" — skip the do-not-call night window entirely.
   if (isWithinDnd()) return { swept: 0 };
 
