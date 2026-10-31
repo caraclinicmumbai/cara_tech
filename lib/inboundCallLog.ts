@@ -21,6 +21,7 @@ import { pickOwnerRep, claimUnownedLead, TELECALLER_REP } from "@/lib/salesReps"
 import type { CallProvider } from "@/lib/providers/recordings";
 import { findPlivoRecordingForCall } from "@/lib/providers/plivo";
 import { transcribeAndScoreCall } from "@/lib/callTranscription";
+import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 
 /// Shorter than this is a caller hanging up at the tone, not a message.
@@ -80,6 +81,42 @@ export async function markInboundConnected(
       },
     })
     .catch((err) => logger.error(`Inbound call ${callId}: could not mark connected: ${String(err)}`));
+}
+
+/// A counsellor's leg "answered" — the whisper ran — but ended without a conversation:
+/// their voicemail or a carrier announcement picked up, or they cut it straight away. Undo
+/// what the whisper recorded on the strength of that answer, so the call doesn't read as
+/// handled by them, and a first-time caller's lead isn't left with someone who never spoke
+/// to the patient. Only state THIS call wrote is touched: the row's handler, and a claim
+/// made since the call began (the lead was unowned before it, so every pending step it
+/// holds for this rep came with that claim).
+export async function undoInboundAnswer(callId: string, repId: string): Promise<void> {
+  try {
+    const call = await prisma.call.findUnique({ where: { id: callId }, select: { leadId: true, createdAt: true } });
+    if (!call) return;
+    await prisma.call.updateMany({
+      where: { id: callId, handledById: repId, outcome: "connected" },
+      data: { outcome: "ringing", handledById: null },
+    });
+    const released = await prisma.lead.updateMany({
+      where: { id: call.leadId, assignedRepId: repId, assignedAt: { gte: call.createdAt } },
+      data: { assignedRepId: null, assignedAt: null },
+    });
+    if (released.count === 0) return;
+    await prisma.leadFollowUpStep.updateMany({
+      where: { leadId: call.leadId, ownerKind: "rep", ownerRepId: repId, status: "pending" },
+      data: { ownerRepId: null },
+    });
+    const rep = await prisma.salesRep.findUnique({ where: { id: repId }, select: { name: true } });
+    await writeAudit({
+      action: "lead.assign", entityType: "lead", entityId: call.leadId,
+      oldValue: rep?.name ?? repId, newValue: "Unassigned",
+      reason: "Their phone picked up for a moment but the call never connected",
+      meta: { repId, system: true },
+    });
+  } catch (err) {
+    logger.error(`Inbound call ${callId}: could not undo the brief answer by ${repId}: ${String(err)}`);
+  }
 }
 
 /// Nobody picked up. Settles the row as missed — or as voicemail when the caller left a

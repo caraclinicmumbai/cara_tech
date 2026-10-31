@@ -17,7 +17,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { routeInboundCall } from "@/lib/inboundRouting";
-import { startInboundCall, markInboundConnected } from "@/lib/inboundCallLog";
+import { startInboundCall, markInboundConnected, undoInboundAnswer } from "@/lib/inboundCallLog";
 import {
   readSignedPlivoRequest,
   publicBase,
@@ -87,6 +87,13 @@ export async function POST(req: Request) {
   }
   if (dialStatus) {
     logger.info(`Plivo inbound ${from} (call ${callUuid}): counsellor ${lastRep ?? "?"} leg ended ${dialStatus}`);
+    // No conversation on that leg. If the whisper ran anyway (voicemail or an announcement
+    // picked up), it put them In-Consultation — and nothing else would ever take them out,
+    // so every later caller was routed past them.
+    if (lastRep) {
+      await endConsultation(lastRep);
+      if (logged) await undoInboundAnswer(logged.id, lastRep);
+    }
   }
   // The caller hung up while a counsellor's phone rang — the hang-up callback logs the miss.
   if (params.CallStatus && CALLER_GONE.has(params.CallStatus)) return xml(hangupPlivoXML());
