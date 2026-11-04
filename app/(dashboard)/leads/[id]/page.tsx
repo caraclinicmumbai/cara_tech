@@ -223,7 +223,7 @@ export default async function LeadDetailPage({
     canHandover
       ? prisma.salesRep.findMany({
           where: ASSIGNABLE_REP,
-          select: { id: true, name: true, branchId: true, branch: { select: { name: true } } },
+          select: { id: true, name: true, team: true, branchId: true, branch: { select: { name: true } } },
           orderBy: { name: "asc" },
         })
       : Promise.resolve([]),
@@ -268,7 +268,7 @@ export default async function LeadDetailPage({
   // What's queued behind the next one, so the editor can explain itself when moving a
   // date makes a different step become "next".
   const followUpAhead = await followUpQueue(lead.id);
-  const ownershipReps = handoverReps.map((r) => ({ id: r.id, name: r.name, branchId: r.branchId, branchName: r.branch?.name ?? null }));
+  const ownershipReps = handoverReps.map((r) => ({ id: r.id, name: r.name, team: r.team, branchId: r.branchId, branchName: r.branch?.name ?? null }));
   const granteeOptions = granteeUsers
     .filter((u) => u.id !== viewer.id)
     .map((u) => ({ id: u.id, label: u.name ? `${u.name} (${u.email})` : u.email }));

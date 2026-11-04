@@ -23,8 +23,8 @@ patient dials the clinic number
         └─ 5. voicemail → "Return missed call" on the owner's roadmap + Slack
 ```
 
-**A first-time caller** (no owner yet) skips rungs 1–3: the **telecallers** ring one by
-one, round-robin, and **whoever answers becomes the lead's owner** — every later call from
+**A first-time caller** (no owner yet) skips rungs 1–3: the **telecallers** of the
+**pre-consultation team** (flow 1) ring one by one, round-robin, and **whoever answers becomes the lead's owner** — every later call from
 that number is sticky to them. If nobody answers, the next telecaller in the rota gets the
 lead and the "Return missed call" step.
 

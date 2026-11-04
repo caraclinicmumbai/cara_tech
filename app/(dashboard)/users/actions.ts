@@ -10,6 +10,8 @@ import { requireCapability } from "@/lib/authz";
 import { hashPassword } from "@/lib/password";
 import { isRole } from "@/lib/rbac";
 import { SPECIALITIES, isSpeciality } from "@/lib/specialities";
+import { SALES_TEAMS, SALES_TEAM_LABELS, DEFAULT_SALES_TEAM, isSalesTeam } from "@/lib/salesTeams";
+import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { removeRep as removeRepFromRoster } from "@/lib/salesReps";
 
@@ -141,6 +143,7 @@ export async function createRep(input: {
   slackUserId?: string;
   salesHead?: boolean;
   speciality?: string;
+  team?: string;
 }): Promise<Result> {
   await requireCapability("reps.manage");
   const name = input.name?.trim();
@@ -151,6 +154,8 @@ export async function createRep(input: {
   if (speciality && !isSpeciality(speciality)) {
     return { ok: false, error: `Speciality must be one of: ${SPECIALITIES.join(", ")}` };
   }
+  const team = input.team?.trim() || DEFAULT_SALES_TEAM;
+  if (!isSalesTeam(team)) return { ok: false, error: teamError };
   await prisma.salesRep.create({
     data: {
       name,
@@ -158,6 +163,7 @@ export async function createRep(input: {
       slackUserId: input.slackUserId?.trim() || null,
       salesHead: !!input.salesHead,
       speciality: speciality || null,
+      team,
       active: true,
     },
   });
@@ -193,6 +199,34 @@ export async function setRepSpeciality(repId: string, speciality: string): Promi
     where: { id: repId },
     data: { speciality: value || null },
   });
+  revalidatePath("/users");
+  return { ok: true };
+}
+
+const teamError = `Team must be one of: ${SALES_TEAMS.map((t) => SALES_TEAM_LABELS[t]).join(", ")}`;
+
+/// Put a rep on the pre- or post-consultation team (lib/salesTeams.ts). Only the
+/// pre-consultation team is in the automatic rota; the post-consultation team gets leads
+/// by handover. Moving a rep doesn't move the leads they already own. Audited, since it
+/// decides who new patients go to.
+export async function setRepTeam(repId: string, team: string): Promise<Result> {
+  const me = await requireCapability("reps.manage");
+  if (!isSalesTeam(team)) return { ok: false, error: teamError };
+  const before = await prisma.salesRep.findUnique({ where: { id: repId }, select: { team: true, name: true } });
+  if (!before) return { ok: false, error: "Rep not found" };
+  if (before.team === team) return { ok: true };
+  await prisma.salesRep.update({ where: { id: repId }, data: { team } });
+  await writeAudit({
+    actorId: me.id,
+    actorEmail: me.email,
+    action: "rep.team",
+    entityType: "rep",
+    entityId: repId,
+    field: "team",
+    oldValue: SALES_TEAM_LABELS[isSalesTeam(before.team) ? before.team : DEFAULT_SALES_TEAM],
+    newValue: SALES_TEAM_LABELS[team],
+  });
+  logger.info(`Sales rep ${before.name} moved to the ${team} team by ${me.email ?? "?"}`);
   revalidatePath("/users");
   return { ok: true };
 }

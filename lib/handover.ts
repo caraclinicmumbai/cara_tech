@@ -220,7 +220,7 @@ export async function notifyHandover(
     if (rep.availability === "in_consultation" && hot) {
       managerTarget = await managerSlackTarget(rep);
     }
-    const replacement = await pickReplacementFor({ id: rep.id, speciality: rep.speciality });
+    const replacement = await pickReplacementFor({ id: rep.id, speciality: rep.speciality, team: rep.team });
     if (replacement) {
       cover = replacement;
       await grantCoverAccess({

@@ -121,6 +121,14 @@ access** panel on the lead page.
 - **Who may.** The current owner or a manager/admin. Cross-branch (both branches known
   and different) additionally requires a manager **and** a written reason.
 - **The receiver must be assignable** — active, with a login (`ASSIGNABLE_REP`).
+- **This is how the post-consultation team gets leads.** The automatic rota only picks the
+  pre-consultation team (flow 1), so a patient reaches a post-consultation rep only when
+  someone hands them over here. The picker groups reps by team ("Pre-consultation team" /
+  "Post-consultation team").
+- **Cover stays on the owner's team first.** When an owner is unavailable, the colleague
+  who covers (an AI handover's temporary grant, or a call on the clinic line) is picked
+  from their own team, and same speciality first (`pickReplacementFor`). Only if nobody
+  there is free does it widen to anyone available. Cover never moves ownership.
 - **Pending follow-ups move with the lead** (rep-owned steps of the old owner), in the
   same transaction as the owner change. Left behind, they reminded the previous owner
   about a patient they no longer had.

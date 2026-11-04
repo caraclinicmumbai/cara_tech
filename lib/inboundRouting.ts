@@ -137,6 +137,7 @@ const REP_FIELDS = {
   name: true,
   phone: true,
   speciality: true,
+  team: true,
   active: true,
   availability: true,
   onCall: true,
@@ -265,7 +266,7 @@ export async function routeInboundCall(
     return `${lead.ownerRepName ?? "Owner"} unavailable - covered by ${rep.name}${sameSkill ? " (same speciality)" : ""}`;
   };
   for (let i = 0; i < 5; i++) {
-    const candidate = await pickReplacementFor({ id: lead.ownerRepId, speciality: ownerSpeciality });
+    const candidate = await pickReplacementFor({ id: lead.ownerRepId, speciality: ownerSpeciality, team: owner?.team });
     if (!candidate) break;
     if (tried.has(candidate.id)) continue; // already rang this one on this call — the cursor moved on
     tried.add(candidate.id);

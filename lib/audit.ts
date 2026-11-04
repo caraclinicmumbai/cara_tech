@@ -317,6 +317,7 @@ export function actionLabel(action: string): string {
     "presence.change": "Status changed",
     "presence.auto": "Status auto-changed",
     "rep.remove": "Rep removed",
+    "rep.team": "Rep team changed",
     "appointment.book": "Appointment booked",
     "appointment.book.override": "Appointment booked (room override)",
     "appointment.reschedule": "Appointment moved",

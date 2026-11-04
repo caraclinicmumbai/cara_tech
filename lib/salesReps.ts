@@ -1,10 +1,12 @@
 // Sales rep roster + round-robin assignment (§3.1). Handovers are distributed
 // to the least-recently-assigned active rep, so load spreads evenly across the
-// team. Assignment is recorded on both the rep (cursor) and the lead.
+// team. Assignment is recorded on both the rep (cursor) and the lead. The automatic
+// rota is the pre-consultation team only (ROTA_REP, lib/salesTeams.ts).
 import type { Prisma, SalesRep } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { OPEN_QUOTE_STATUSES } from "@/lib/quoteStages";
+import { DEFAULT_SALES_TEAM } from "@/lib/salesTeams";
 import { logger } from "@/lib/logger";
 
 /// Who can be GIVEN a lead — by the rota, a handover, or a quote-owner pick: an active,
@@ -19,11 +21,20 @@ export const ASSIGNABLE_REP: Prisma.SalesRepWhereInput = {
   user: { isNot: null },
 };
 
-/// The telecallers' rota: assignable reps whose login is a Telecaller / Counsellor. A
-/// first-time caller to the clinic line rings only these — branch managers and other roles
-/// that happen to carry a rep record are in the general rota, but not on the phones.
-export const TELECALLER_REP: Prisma.SalesRepWhereInput = {
+/// Who the AUTOMATIC rota may give a lead to: assignable reps on the pre-consultation team
+/// (lib/salesTeams.ts). The post-consultation team takes a patient on only when someone
+/// hands the lead over, so intake, ads, WhatsApp, the clinic line and missed-call
+/// follow-ups never pick them. A handover can still go to anyone ASSIGNABLE_REP allows.
+export const ROTA_REP: Prisma.SalesRepWhereInput = {
   ...ASSIGNABLE_REP,
+  team: "pre_consultation",
+};
+
+/// The telecallers' rota: rota reps whose login is a Telecaller / Counsellor. A first-time
+/// caller to the clinic line rings only these — branch managers and other roles that happen
+/// to carry a rep record are in the general rota, but not on the phones.
+export const TELECALLER_REP: Prisma.SalesRepWhereInput = {
+  ...ROTA_REP,
   user: { is: { role: "telecaller" } },
 };
 
@@ -71,7 +82,7 @@ export async function releaseRinging(repId: string): Promise<void> {
 /// `includeOffline` treats Offline telecallers — and anyone whose In-Consultation is stale —
 /// the same as Available ones (see isReachable in lib/inboundRouting.ts for when that's
 /// allowed). Break never qualifies. `anyRole` widens the pool from telecallers to the whole
-/// assignable rota — the fallback when no telecaller can take the call.
+/// pre-consultation rota — the fallback when no telecaller can take the call.
 export async function pickNextTelecaller(
   exclude: string[] = [],
   opts: { includeOffline?: boolean; anyRole?: boolean } = {},
@@ -86,7 +97,7 @@ export async function pickNextTelecaller(
     : { availability: "available", onCall: false };
   const rep = await prisma.salesRep.findFirst({
     where: {
-      ...(opts.anyRole ? ASSIGNABLE_REP : TELECALLER_REP),
+      ...(opts.anyRole ? ROTA_REP : TELECALLER_REP),
       AND: [status, notRinging()],
       ...(exclude.length ? { id: { notIn: exclude } } : {}),
     },
@@ -129,7 +140,7 @@ export async function claimUnownedLead(leadId: string, repId: string, reason: st
 /// who's stepped away. Returns null when no eligible reps are free.
 export async function pickNextRep(): Promise<SalesRep | null> {
   const rep = await prisma.salesRep.findFirst({
-    where: { ...ASSIGNABLE_REP, availability: "available" },
+    where: { ...ROTA_REP, availability: "available" },
     orderBy: [{ lastAssignedAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }],
   });
   if (!rep) return null;
@@ -147,10 +158,11 @@ export async function pickNextRep(): Promise<SalesRep | null> {
 /// `preferAvailable: false` ignores presence entirely and spreads strictly by the
 /// rota — for backfilling historical leads, where "who is at their desk right now"
 /// is meaningless and piling every old lead on the one available rep is worse.
+/// The pool is the pre-consultation rota (ROTA_REP) unless `pool` narrows it further.
 export async function pickOwnerRep(
   opts: { preferAvailable?: boolean; pool?: Prisma.SalesRepWhereInput } = {},
 ): Promise<SalesRep | null> {
-  const base = opts.pool ?? ASSIGNABLE_REP;
+  const base = opts.pool ?? ROTA_REP;
   const order = [
     { lastAssignedAt: { sort: "asc" as const, nulls: "first" as const } },
     { createdAt: "asc" as const },
@@ -170,26 +182,35 @@ export async function pickOwnerRep(
 /// an offline counsellor's leads go to a colleague with the same skill — then falls
 /// back to any available rep. Excludes the owner and advances the round-robin
 /// cursor. Returns null when nobody else is free.
+///
+/// Cover stays on the owner's TEAM first (lib/salesTeams.ts): a post-consultation patient
+/// is best covered by a post-consultation colleague. Cover never moves ownership, so when
+/// nobody on that team is free, anyone available still beats nobody.
 export async function pickReplacementFor(
-  unavailable: { id: string; speciality: string | null },
+  unavailable: { id: string; speciality: string | null; team?: string | null },
 ): Promise<SalesRep | null> {
   const base: Prisma.SalesRepWhereInput = {
     ...ASSIGNABLE_REP,
     availability: "available",
     NOT: { id: unavailable.id },
   };
+  const sameTeam: Prisma.SalesRepWhereInput = { ...base, team: unavailable.team ?? DEFAULT_SALES_TEAM };
+  const sameSkill = unavailable.speciality
+    ? { speciality: { equals: unavailable.speciality, mode: "insensitive" as const } }
+    : null;
+  const tries: Prisma.SalesRepWhereInput[] = [
+    ...(sameSkill ? [{ ...sameTeam, ...sameSkill }] : []),
+    sameTeam,
+    ...(sameSkill ? [{ ...base, ...sameSkill }] : []),
+    base,
+  ];
   let rep: SalesRep | null = null;
-  if (unavailable.speciality) {
+  for (const where of tries) {
     rep = await prisma.salesRep.findFirst({
-      where: { ...base, speciality: { equals: unavailable.speciality, mode: "insensitive" } },
+      where,
       orderBy: [{ lastAssignedAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }],
     });
-  }
-  if (!rep) {
-    rep = await prisma.salesRep.findFirst({
-      where: base,
-      orderBy: [{ lastAssignedAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }],
-    });
+    if (rep) break;
   }
   if (!rep) return null;
   await prisma.salesRep.update({ where: { id: rep.id }, data: { lastAssignedAt: new Date() } });
