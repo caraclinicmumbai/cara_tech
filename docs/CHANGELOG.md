@@ -7,6 +7,23 @@ Format: newest first.
 
 ---
 
+## 2026-11-04 — Pre- and post-consultation sales teams
+
+Merge `178bc54` (commit `eb8d184`). **Migration:** `rep_sales_team` (`SalesRep.team`, default
+`pre_consultation`, so every existing rep stays in the rota). No new settings. Flow docs
+updated: **[01-lead-intake.md](flows/01-lead-intake.md)**,
+**[04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**,
+**[11-inbound-call-routing.md](flows/11-inbound-call-routing.md)**.
+
+The sales team is split into Pre-consultation (works new leads up to the consultation) and
+Post-consultation (takes the patient on afterwards). A **Team** drop-down on Users → Sales
+reps sets it (audited `rep.team`). Every automatic pick (intake, ads, website, WhatsApp,
+first-time callers, missed-call follow-ups) now uses `ROTA_REP` (pre-consultation only);
+the post-consultation team gets a lead only by handover, and the hand-over picker groups
+reps by team. Cover for an unavailable owner prefers the owner's own team.
+
+---
+
 ## 2026-10-31 — A brief pick-up no longer parks a telecaller "In consultation"
 
 Merge `950b619` (commit `1697c48`). No migration, no new settings. Flow doc updated:
