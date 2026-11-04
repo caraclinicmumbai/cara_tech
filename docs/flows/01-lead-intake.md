@@ -58,6 +58,15 @@ handover. `pickOwnerRep` (`lib/salesReps.ts`) takes the least-recently-assigned 
 counsellor (sales heads excluded, `SalesRep.lastAssignedAt` is the rota cursor) and
 `assignLeadToRep` records it on the lead + the audit trail as a system assignment.
 
+- **Only the pre-consultation team is in the rota.** Each rep is on a team
+  (`SalesRep.team`, set in Users → Sales reps → Team; `lib/salesTeams.ts`):
+  **Pre-consultation** works new leads up to the consultation, **Post-consultation** takes
+  the patient on afterwards. Every automatic pick (`ROTA_REP` in `lib/salesReps.ts`): intake,
+  ads, website, WhatsApp, first-time callers on the clinic line and missed-call follow-ups,
+  draws on the pre-consultation team only. The post-consultation team gets a lead only by
+  handover (flow 4). Existing reps defaulted to Pre-consultation, so nothing changed until
+  someone is moved.
+
 - **A lead a counsellor creates is theirs.** When the creator (`createdById`) is an
   assignable rep, they become the owner directly (audited `lead.assign`, reason "Created
   the lead", actor = them) and the rota is skipped. The rota decides only for leads that

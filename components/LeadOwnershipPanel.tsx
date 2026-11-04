@@ -12,8 +12,9 @@ import {
   grantLeadAccessAction,
   revokeLeadAccessAction,
 } from "@/app/(dashboard)/leads/ownershipActions";
+import { SALES_TEAMS, SALES_TEAM_LABELS, DEFAULT_SALES_TEAM, isSalesTeam } from "@/lib/salesTeams";
 
-type Rep = { id: string; name: string; branchId: string | null; branchName: string | null };
+type Rep = { id: string; name: string; team: string; branchId: string | null; branchName: string | null };
 type UserOpt = { id: string; label: string };
 type ActiveGrant = {
   id: string;
@@ -142,9 +143,18 @@ export function LeadOwnershipPanel({
           <div className="flex flex-wrap items-center gap-2">
             <select className={inputCls} value={toRep} onChange={(e) => setToRep(e.target.value)}>
               <option value="">Hand to counsellor…</option>
-              {reps.filter((r) => r.id !== ownerRepId).map((r) => (
-                <option key={r.id} value={r.id}>{r.name}{r.branchName ? ` · ${r.branchName}` : ""}</option>
-              ))}
+              {/* Grouped by team (lib/salesTeams.ts): handing a patient on to the
+                  post-consultation team is the usual handover after a consultation. */}
+              {SALES_TEAMS.map((team) => {
+                const inTeam = reps.filter((r) => r.id !== ownerRepId && (isSalesTeam(r.team) ? r.team : DEFAULT_SALES_TEAM) === team);
+                return inTeam.length ? (
+                  <optgroup key={team} label={`${SALES_TEAM_LABELS[team]} team`}>
+                    {inTeam.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}{r.branchName ? ` · ${r.branchName}` : ""}</option>
+                    ))}
+                  </optgroup>
+                ) : null;
+              })}
             </select>
             <input className={`${inputCls} min-w-[14rem] flex-1`} placeholder={crossBranch ? "Reason (required — cross-branch)" : "Reason (optional)"}
               value={hReason} onChange={(e) => setHReason(e.target.value)} />

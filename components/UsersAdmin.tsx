@@ -14,10 +14,12 @@ import {
   setRepActive,
   setRepSalesHead,
   setRepSpeciality,
+  setRepTeam,
   removeRep,
 } from "@/app/(dashboard)/users/actions";
 import { availabilityMeta } from "@/lib/presenceStatus";
 import { SPECIALITIES, isSpeciality, specialityLabel } from "@/lib/specialities";
+import { SALES_TEAMS, SALES_TEAM_LABELS, DEFAULT_SALES_TEAM } from "@/lib/salesTeams";
 
 type UserRow = {
   id: string;
@@ -36,6 +38,7 @@ type RepRow = {
   salesHead: boolean;
   branchId: string | null;
   speciality: string | null;
+  team: string;
   availability: string;
   userEmail: string | null;
   leadCount: number;
@@ -77,7 +80,8 @@ export function UsersAdmin({
   const receivers = (excludeId: string) =>
     reps.filter((r) => r.id !== excludeId && r.active && !r.salesHead && r.userEmail);
   // New-rep form state
-  const [nr, setNr] = useState({ name: "", phone: "", slackUserId: "", speciality: "", salesHead: false });
+  const emptyRep = { name: "", phone: "", slackUserId: "", speciality: "", team: DEFAULT_SALES_TEAM as string, salesHead: false };
+  const [nr, setNr] = useState(emptyRep);
 
   const repLabel = (r: RepRow) =>
     `${r.name}${r.salesHead ? " · head" : ""}${!r.active ? " · inactive" : ""}${r.userEmail ? " · linked" : ""}`;
@@ -184,6 +188,12 @@ export function UsersAdmin({
           Status is live presence (counsellors set it themselves); speciality steers an
           offline counsellor&apos;s leads to a colleague with the same skill.
         </p>
+        <p className="text-sm text-black/60 dark:text-white/60">
+          <strong>Team:</strong> new leads, website and ad enquiries, WhatsApp and first-time
+          callers go round-robin to the <em>Pre-consultation</em> team only. The{" "}
+          <em>Post-consultation</em> team gets a lead only when it&apos;s handed over to them
+          from the lead page. Changing a rep&apos;s team doesn&apos;t move the leads they already own.
+        </p>
 
         <div className="flex flex-wrap items-end gap-2 rounded border border-black/10 p-3 dark:border-white/15">
           <input className={inputCls} placeholder="Name" value={nr.name}
@@ -197,13 +207,17 @@ export function UsersAdmin({
             <option value="">Speciality — Generalist</option>
             {SPECIALITIES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
+          <select className={inputCls} value={nr.team} aria-label="Team"
+            onChange={(e) => setNr({ ...nr, team: e.target.value })}>
+            {SALES_TEAMS.map((t) => <option key={t} value={t}>{SALES_TEAM_LABELS[t]}</option>)}
+          </select>
           <label className="flex items-center gap-1 text-sm">
             <input type="checkbox" checked={nr.salesHead}
               onChange={(e) => setNr({ ...nr, salesHead: e.target.checked })} />
             Sales head
           </label>
           <button disabled={pending}
-            onClick={() => run(() => createRep(nr).then((r) => { if (r.ok) setNr({ name: "", phone: "", slackUserId: "", speciality: "", salesHead: false }); return r; }))}
+            onClick={() => run(() => createRep(nr).then((r) => { if (r.ok) setNr(emptyRep); return r; }))}
             className="rounded bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50">
             Add rep
           </button>
@@ -217,6 +231,7 @@ export function UsersAdmin({
                 <th className="px-3 py-2">Phone</th>
                 <th className="px-3 py-2">Slack</th>
                 <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Team</th>
                 <th className="px-3 py-2">Speciality</th>
                 <th className="px-3 py-2">Linked login</th>
                 <th className="px-3 py-2">Branch</th>
@@ -237,6 +252,17 @@ export function UsersAdmin({
                       <span className={`h-2 w-2 rounded-full ${availabilityMeta(r.availability).dot}`} aria-hidden />
                       {availabilityMeta(r.availability).label}
                     </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <select
+                      className={inputCls}
+                      aria-label={`Team for ${r.name}`}
+                      defaultValue={r.team}
+                      disabled={pending}
+                      onChange={(e) => run(() => setRepTeam(r.id, e.target.value))}
+                    >
+                      {SALES_TEAMS.map((t) => <option key={t} value={t}>{SALES_TEAM_LABELS[t]}</option>)}
+                    </select>
                   </td>
                   <td className="px-3 py-2">
                     <select

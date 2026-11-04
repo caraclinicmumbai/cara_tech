@@ -227,6 +227,11 @@ model SalesRep {
   // with the SAME speciality; null = generalist (eligible only as a fallback match).
   speciality     String?
 
+  // Which half of the sales team (lib/salesTeams.ts): pre_consultation | post_consultation.
+  // Only the pre-consultation team is in the automatic rota; the post-consultation team gets
+  // a lead only when it's handed over to them.
+  team           String   @default("pre_consultation")
+
   // Branch (Phase 2) — nullable scaffold; the rep's home branch for routing/scoping.
   branchId String?
   branch   Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
