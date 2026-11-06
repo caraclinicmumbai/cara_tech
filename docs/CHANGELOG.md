@@ -7,6 +7,30 @@ Format: newest first.
 
 ---
 
+## 2026-11-06 — Telecalling reports and Slack delivery
+
+Merge `7ce6df8` (commit `b3a6601`). **Migration:** `rep_activity_sessions` (new table
+`RepActivitySession`, no change to existing data). **New optional setting:**
+`TELECALLING_REPORT_CHANNEL` (worker), falling back to `BRANCH_MANAGER_CHANNEL`. Flow docs updated:
+**[12-reports.md](flows/12-reports.md)**,
+**[05-counsellor-and-manager-alerts.md](flows/05-counsellor-and-manager-alerts.md)**.
+
+- **Reports:** four new tabs. Telecalling (calls, talk time, connected or not, appointments, by day,
+  week or month and by person), Speed to Call (wait for a first call, lead by lead against the
+  5-minute target), Telecaller Activity (active and inactive time and exact inactive periods) and
+  Follow-Ups (missed today, overdue).
+- **My numbers** (`/my-numbers`): anyone linked to a sales rep sees their own calls, speed to call
+  and follow-ups, without needing `reports.view`.
+- **Activity recording:** the header heartbeat now also writes `RepActivitySession`, so activity
+  history starts with this release. The status pill wasn't usable: someone auto-set Offline stays
+  Offline until they tap it.
+- **Slack:** the worker sends a team summary with a rule-based analysis and each telecaller's own
+  numbers by DM: daily 20:00, weekly Monday 09:00, monthly on the 1st at 09:00 IST.
+
+Self-check: `scripts/checkTelecallingReports.ts`.
+
+---
+
 ## 2026-11-06 — Call log history and filters, patient flags on leads, "/" templates, bulk access
 
 Merge `f304079` (commit `d6ff08f`). **Migration:** `call_log_indexes` (three indexes, no data
