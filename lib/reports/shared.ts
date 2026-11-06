@@ -174,6 +174,15 @@ export function duration(ms: number | null | undefined): string {
   return `${days.toFixed(days < 10 ? 1 : 0)} days`;
 }
 
+/// Time on the phone or at the desk, from seconds: "45s", "3m 20s", "1h 04m".
+export function talkTime(seconds: number | null | undefined): string {
+  if (seconds == null) return "—";
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+  return `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}m`;
+}
+
 /// Days, for "how long until they came back".
 export function days(ms: number | null | undefined): string {
   if (ms == null) return "—";

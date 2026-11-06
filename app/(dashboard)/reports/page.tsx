@@ -8,10 +8,13 @@ import { CounsellorSection, AttributionSection } from "./sections/people";
 import { LostLeadSection, LostQuoteSection } from "./sections/lost";
 import { TreatmentMixSection, MultiQuoteSection, RepeatSection } from "./sections/money";
 import { AppointmentsSection } from "./sections/appointments";
+import { ActivitySection, FollowUpSection, SpeedSection, TelecallingSection } from "./sections/telecalling";
+import { isBucket } from "@/lib/reports/telecalling";
+import { isSpeedResult } from "@/lib/reports/speedToCall";
 
 export const dynamic = "force-dynamic";
 
-// The report set (§reports). Eleven read-outs over one shared date range, each on its own
+// The report set (§reports). Fifteen read-outs over one shared date range, each on its own
 // tab so a page load computes one report rather than ten.
 //
 // Two capabilities gate this. `reports.view` decides who reaches the page at all (the
@@ -25,6 +28,10 @@ type ReportKey =
   | "ai-contact"
   | "handoff"
   | "counsellors"
+  | "telecalling"
+  | "speed-to-call"
+  | "activity"
+  | "follow-ups"
   | "attribution"
   | "lost-leads"
   | "treatment-mix"
@@ -38,6 +45,10 @@ const TABS: { key: ReportKey; label: string; blurb: string; money: boolean }[] =
   { key: "ai-contact", label: "AI Contact Rate", blurb: "How many of them the AI actually reached.", money: false },
   { key: "handoff", label: "Handoff Speed", blurb: "How fast a counsellor picked up what the AI handed over.", money: false },
   { key: "counsellors", label: "Counsellor Performance", blurb: "Leads handled, consultations booked, what converted.", money: false },
+  { key: "telecalling", label: "Telecalling", blurb: "Calls, talk time, connected or not, and the appointments they led to.", money: false },
+  { key: "speed-to-call", label: "Speed to Call", blurb: "How long new leads waited for a first call, and which were called within 5 minutes.", money: false },
+  { key: "activity", label: "Telecaller Activity", blurb: "When each telecaller was active, when they weren't, and the ratio.", money: false },
+  { key: "follow-ups", label: "Follow-Ups", blurb: "Follow-ups each telecaller missed today, and how many are overdue.", money: false },
   { key: "attribution", label: "Source Attribution", blurb: "Cost per lead, per consultation, per surgery.", money: false },
   { key: "appointments", label: "Appointments", blurb: "No-shows, waits, room and doctor use, recall, and which sources actually turn up.", money: false },
   { key: "lost-leads", label: "Lost Leads", blurb: "Why we lose people before they're ever quoted.", money: false },
@@ -75,6 +86,16 @@ export default async function ReportsPage({
     return `/reports?${q.toString()}`;
   };
 
+  // A link back to this report with some of its own filters changed.
+  const hrefWith = (extra: Record<string, string>) => {
+    const q = new URLSearchParams(tabHref(tab.key).split("?")[1]);
+    for (const [k, v] of Object.entries(extra)) if (v) q.set(k, v);
+    return `/reports?${q.toString()}`;
+  };
+  const by = str("by");
+  const result = str("result");
+  const pageNo = Number(str("page")) || 1;
+
   return (
     <div className="space-y-6">
       <header className="cara-sec-hd">
@@ -106,6 +127,20 @@ export default async function ReportsPage({
       {tab.key === "ai-contact" && <AiContactSection range={range} />}
       {tab.key === "handoff" && <HandoffSection range={range} />}
       {tab.key === "counsellors" && <CounsellorSection range={range} showMoney={showMoney} />}
+      {tab.key === "telecalling" && (
+        <TelecallingSection range={range} by={isBucket(by) ? by : "day"} href={hrefWith} />
+      )}
+      {tab.key === "speed-to-call" && (
+        <SpeedSection
+          range={range}
+          repFilter={str("rep")}
+          result={isSpeedResult(result) ? result : undefined}
+          page={pageNo}
+          href={hrefWith}
+        />
+      )}
+      {tab.key === "activity" && <ActivitySection range={range} repFilter={str("rep")} href={hrefWith} />}
+      {tab.key === "follow-ups" && <FollowUpSection />}
       {tab.key === "attribution" && <AttributionSection range={range} showMoney={showMoney} />}
       {tab.key === "lost-leads" && <LostLeadSection range={range} />}
       {tab.key === "treatment-mix" && <TreatmentMixSection range={range} />}

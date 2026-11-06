@@ -21,6 +21,12 @@ import {
 } from "@/lib/handoverSla";
 import { runStageSlaScan } from "@/lib/stageSla";
 import { DIGEST_QUEUE, scheduleDailyDigest, sendDailyDigest } from "@/lib/digest";
+import {
+  TELECALLING_REPORT_QUEUE,
+  scheduleTelecallingReports,
+  sendTelecallingReport,
+  type ReportPeriod,
+} from "@/lib/reports/telecallingSlack";
 import { BACKUP_QUEUE, scheduleBackup, runBackup } from "@/lib/backup";
 import { isBackupConfigured } from "@/lib/backup/storage";
 import { monitorSystemHealth } from "@/lib/healthMonitor";
@@ -290,6 +296,15 @@ const digestWorker = new Worker(
 );
 digestWorker.on("failed", (job, err) => logger.error(`Digest job ${job?.id} failed: ${err.message}`));
 scheduleDailyDigest().catch((err) => logger.error(`Failed to schedule daily digest: ${String(err)}`));
+
+// Telecalling reports on Slack: daily, weekly and monthly (lib/reports/telecallingSlack.ts).
+const telecallingReportWorker = new Worker(
+  TELECALLING_REPORT_QUEUE,
+  async (job) => sendTelecallingReport((job.data as { period: ReportPeriod }).period),
+  { connection: bullConnection, concurrency: 1 },
+);
+telecallingReportWorker.on("failed", (job, err) => logger.error(`Telecalling report job ${job?.id} failed: ${err.message}`));
+scheduleTelecallingReports().catch((err) => logger.error(`Failed to schedule telecalling reports: ${String(err)}`));
 
 // Database backup (§backups) — one dump a day at BACKUP_HOUR_IST, copied into the
 // weekly and monthly tiers on Sunday and the 1st. Registered and processed here.

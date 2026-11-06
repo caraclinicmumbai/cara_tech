@@ -5,7 +5,7 @@
 // sales-rep identity only — a login with no rep (pure admin) simply has no status.
 import { currentUser } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
-import { setAvailability } from "@/lib/presence";
+import { recordActivitySession, setAvailability } from "@/lib/presence";
 import { isAvailability } from "@/lib/presenceStatus";
 
 /// Heartbeat + reconcile. Records that the caller is active right now and returns
@@ -16,6 +16,7 @@ export async function pingPresence(): Promise<{ availability: string } | null> {
   const repId = user?.salesRepId;
   if (!repId) return null;
   await prisma.salesRep.update({ where: { id: repId }, data: { lastActivityAt: new Date() } }).catch(() => {});
+  await recordActivitySession(repId);
   const rep = await prisma.salesRep.findUnique({ where: { id: repId }, select: { availability: true } });
   return rep ? { availability: rep.availability } : null;
 }

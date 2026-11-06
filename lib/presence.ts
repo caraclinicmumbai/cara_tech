@@ -76,6 +76,30 @@ export async function recordActivity(repId: string): Promise<void> {
     .catch(() => {});
 }
 
+/// A heartbeat this close to the last one continues the same stretch of CRM time. Two beats
+/// (90s apart) can go missing to a slow network or a throttled background tab.
+const ACTIVITY_SESSION_GAP_MS = 4 * 60_000;
+
+/// Extend the rep's current activity session, or start one. Feeds the Telecaller Activity
+/// report (lib/reports/telecallerActivity.ts), which merges overlaps, so two tabs racing to
+/// start a session do no harm. Best-effort: a heartbeat must never fail on this.
+export async function recordActivitySession(repId: string, now: Date = new Date()): Promise<void> {
+  try {
+    const open = await prisma.repActivitySession.findFirst({
+      where: { repId, lastSeenAt: { gte: new Date(now.getTime() - ACTIVITY_SESSION_GAP_MS) } },
+      orderBy: { lastSeenAt: "desc" },
+      select: { id: true },
+    });
+    if (open) {
+      await prisma.repActivitySession.update({ where: { id: open.id }, data: { lastSeenAt: now } });
+    } else {
+      await prisma.repActivitySession.create({ data: { repId, startedAt: now, lastSeenAt: now } });
+    }
+  } catch (err) {
+    logger.error(`recordActivitySession failed for rep ${repId}: ${String(err)}`);
+  }
+}
+
 /// Auto-detect: a click-to-call just started for this rep — mark In-Consultation
 /// "without asking" and flag onCall so the call-end webhook can revert it. Does not
 /// clobber someone who was already In-Consultation. (§presence auto-detect)

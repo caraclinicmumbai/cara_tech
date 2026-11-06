@@ -245,6 +245,7 @@ model SalesRep {
   handledCalls  Call[]             @relation("CallHandler")
   ownedQuotes   Quote[]            @relation("QuoteOwner")
   followUpSteps LeadFollowUpStep[] @relation("FollowUpOwner")
+  activity      RepActivitySession[]
   user          User? // the login account linked to this rep (§3.1 RBAC)
 
   @@index([active, lastAssignedAt])
@@ -258,6 +259,20 @@ model SalesRep {
 /// standard template at intake (lib/followups.ts) and hand-editable thereafter.
 /// "Missed" (overdue) is DERIVED at read time from dueAt vs now — never stored —
 /// so only pending | done | skipped are persisted.
+/// A stretch of time a counsellor had the CRM open, built from the header's heartbeat
+/// (lib/presence.ts). The Telecaller Activity report reads these rather than the status pill:
+/// someone auto-set Offline stays Offline until they tap it, however hard they're working.
+model RepActivitySession {
+  id         String   @id @default(cuid())
+  repId      String
+  rep        SalesRep @relation(fields: [repId], references: [id], onDelete: Cascade)
+  startedAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([repId, lastSeenAt])
+  @@index([startedAt])
+}
+
 model LeadFollowUpStep {
   id            String    @id @default(cuid())
   leadId        String
