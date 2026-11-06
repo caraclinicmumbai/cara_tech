@@ -21,7 +21,7 @@ import { sourceLabel } from "@/lib/reports/shared";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
-const CAME = ["checked_in", "in_progress", "completed"];
+export const CAME = ["checked_in", "in_progress", "completed"];
 
 export type AppointmentsReport = {
   totals: { booked: number; attended: number; noShows: number; cancelled: number; lateCancels: number; noShowPct: number | null };

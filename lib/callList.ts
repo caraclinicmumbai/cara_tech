@@ -19,6 +19,13 @@ export const CALL_STATUS_LABELS: Record<(typeof CALL_STATUSES)[number], string> 
 };
 const CONNECTED_OUTCOMES = ["connected", "confirmed", "rescheduled", "not_interested"];
 
+/// The Status filter's definition for a row already in hand (statusWhere below is the same
+/// rule as a query), so the reports and the call log can't disagree on what connected.
+export function isConnectedCall(call: { outcome: string | null; duration: number | null }): boolean {
+  if (call.outcome) return CONNECTED_OUTCOMES.includes(call.outcome);
+  return (call.duration ?? 0) > 0;
+}
+
 export const CALL_KINDS = ["ai", "counsellor", "ivr_incoming", "ivr_missed"] as const;
 export const CALL_KIND_LABELS: Record<(typeof CALL_KINDS)[number], string> = {
   ai: "AI call",

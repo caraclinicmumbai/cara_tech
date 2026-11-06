@@ -56,6 +56,7 @@ export default async function DashboardLayout({
         can(role, "calls.view") && { href: "/calls", label: "Calls" },
         can(role, "analytics.view") && { href: "/cqs", label: "Call quality" },
         can(role, "reports.view") && { href: "/reports", label: "Reports" },
+        !!viewer?.salesRepId && { href: "/my-numbers", label: "My numbers" },
       ].filter(Boolean) as NavItem[],
     },
     {

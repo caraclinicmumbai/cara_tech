@@ -28,6 +28,13 @@ function istParts(d: Date) {
   return { year: v("year"), month: v("month"), day: v("day"), hour: v("hour") };
 }
 
+/// The permitted hours of an IST calendar day ("YYYY-MM-DD") as UTC instants.
+export function permittedWindow(day: string): { start: Date; end: Date } {
+  const [y, m, d] = day.split("-").map(Number);
+  const at = (hour: number) => new Date(Date.UTC(y, m - 1, d, hour, 0) - IST_OFFSET_MIN * 60_000);
+  return { start: at(PERMITTED_START_HOUR), end: at(PERMITTED_END_HOUR) };
+}
+
 /// True if `d` falls inside the do-not-call window (default 22:00–10:00 IST).
 export function isWithinDnd(d: Date = new Date()): boolean {
   const { hour } = istParts(d);

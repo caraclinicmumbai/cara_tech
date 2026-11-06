@@ -83,6 +83,7 @@ the previous IST calendar day to `BRANCH_MANAGER_CHANNEL`:
 | `STAGE_SLA_DAYS` | `7` | Days in a stage before "stuck" |
 | `STAGE_SLA_SCAN_HOURS` | `6` | How often the worker scans for stuck leads |
 | `DIGEST_HOUR_IST` | `9` | Hour (IST) the digest is sent |
+| `TELECALLING_REPORT_CHANNEL` | → `BRANCH_MANAGER_CHANNEL` | Telecalling reports ([12-reports.md](12-reports.md)) |
 
 ## Limitations
 

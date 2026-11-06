@@ -1,6 +1,6 @@
 # 12 — Reports (§reports)
 
-Eleven management read-outs at `/reports`, over one shared date range. The Dashboard
+Fifteen management read-outs at `/reports`, over one shared date range. The Dashboard
 answers *"what's happening right now"*; this answers *"what happened, and is it getting
 better."*
 
@@ -24,6 +24,10 @@ imported because nothing in the CRM knows what a click cost (see
 | 9 | 💰 Multi-Quote | How often one patient buys two treatments, and which pairs |
 | 10 | 💰 Repeat Treatment | Who comes back, how long they take, what it's worth |
 | 11 | Appointments | No-show rate, wait after check-in, room and doctor utilisation, recall compliance, booking lead time, and which sources / campaigns actually turn up — read from the calendar |
+| 12 | Telecalling | Calls, talk time, connected or not, appointments booked and show rate, by day, week or month and by person |
+| 13 | Speed to Call | How long new leads waited for a first call, and each lead's record against the 5-minute target |
+| 14 | Telecaller Activity | When each telecaller was active or inactive, the ratio, and the exact inactive periods |
+| 15 | Follow-Ups | Follow-ups each telecaller missed today, and how many are overdue |
 
 ## Who sees what
 
@@ -37,6 +41,10 @@ Two capabilities, because the reports answer to different people.
 A tab the viewer can't hold isn't rendered, and its URL falls back to the first tab
 they can see rather than erroring. Both are editable on `/hierarchy` like any other
 capability.
+
+Telecallers don't hold `reports.view`. **My numbers** (`/my-numbers`) gives anyone whose login
+is linked to a sales rep their own reports 12, 13 and 15, and needs no capability because it
+only ever shows that person's own figures. Report 14 stays with the managers.
 
 ## The date range
 
@@ -76,6 +84,43 @@ disagree with each other.
 - **Treatments are matched by name**, case- and space-insensitively (the same rule as the
   one-open-quote-per-treatment check). Two sizes of the same procedure count as two
   treatments, which is usually right — they're priced and sold separately.
+
+## The telecalling reports
+
+- **A telecalling call** is one a person handled: a click-to-call or an answered clinic-line
+  call. AI calls are excluded. "Connected" is the same rule as the Calls page
+  (`isConnectedCall`, `lib/callList.ts`). Average duration covers connected calls whose length
+  the provider reported. Each period and person links to those calls on `/calls`.
+- **Appointments** count only bookings made from a login linked to a sales rep. Booked is dated
+  when the booking was made, excluding reschedules and tentative holds; show-ups and no-shows
+  are dated by the appointment. Show rate is show-ups ÷ (show-ups + no-shows).
+- **Speed to Call** starts the clock when the lead arrives, or at 10:00 IST if it arrived
+  overnight, and stops at the first call by a person, connected or not. AI calls don't stop it.
+  Inbound callers, walk-ins, merged leads and previous-CRM leads are left out. The result is
+  credited to whoever called first, or to the owner until someone does. A lead still inside its
+  five minutes doesn't count against the rate.
+- **Telecaller Activity** counts the CRM being open (`RepActivitySession`, from the header's
+  90-second heartbeat) or a call in progress, less any Break they set. The status pill isn't
+  otherwise used, because someone auto-set Offline stays Offline until they tap it. With no shift
+  roster, a day runs from first to last activity within 10:00–22:00 IST, and inactive periods
+  are the gaps of 5 minutes or more in between. A day with no activity is counted apart.
+- **Follow-Ups** is live, not ranged. Overdue on previous-CRM leads shows as **carried over**,
+  apart from the real figure.
+
+### On Slack
+
+`lib/reports/telecallingSlack.ts`, run by the worker. A team summary with a short analysis goes
+to `TELECALLING_REPORT_CHANNEL` (falling back to `BRANCH_MANAGER_CHANNEL`, then
+`SLACK_DEFAULT_CHANNEL`), and each telecaller with a Slack member id gets their own numbers by DM.
+
+| Report | Sent (IST) | Covers | Compared with |
+|---|---|---|---|
+| Daily | 20:00 | Today so far | Yesterday up to the same time |
+| Weekly | Monday 09:00 | Last Monday to Sunday | The week before |
+| Monthly | 1st, 09:00 | Last calendar month | The month before |
+
+The analysis is rules over the numbers, not generated text, and at most four lines. Messages
+carry counts and staff names, never patient details.
 
 ## Ad spend — the cost side
 
@@ -125,6 +170,9 @@ blank rather than zero.
 | Reports 6 & 8 | `lib/reports/lost.ts` |
 | Reports 7, 9, 10 | `lib/reports/money.ts` |
 | Report 11 | `lib/reports/appointments.ts` |
+| Reports 12–15 | `lib/reports/telecalling.ts`, `speedToCall.ts`, `telecallerActivity.ts`, `followUpTracking.ts` |
+| Slack delivery | `lib/reports/telecallingSlack.ts` |
+| A telecaller's own view | `app/(dashboard)/my-numbers/page.tsx` |
 | Ad spend + coverage | `lib/adSpend.ts` |
 | Page, tabs, capability gate | `app/(dashboard)/reports/page.tsx` + `sections/` |
 | Presentational primitives | `components/ReportUI.tsx`, `components/ReportRangePicker.tsx` |
@@ -155,4 +203,11 @@ Stated here because a report that hides its limits is worse than one that has no
   how many converted since — a cohort still deciding, so a recent range always understates
   its eventual rate. "Revenue" counts what *converted* in the range, whenever it was
   raised. Both appear on report 7, deliberately labelled apart.
+- **An open tab counts as active.** The heartbeat proves the CRM is open, not that someone is at
+  the desk, so a tab left open over lunch reads as active. Activity also only exists from the day
+  this report was deployed.
+- **Calls dialled from a personal phone leave no trace** in the telecalling reports or Speed to
+  Call, the same blind spot as report 3.
+- **An appointment booked by the front desk isn't a telecaller's**, even on that telecaller's
+  lead, because credit follows who made the booking.
 - **No export.** The tables are read on screen; there's no CSV download yet.
