@@ -7,6 +7,30 @@ Format: newest first.
 
 ---
 
+## 2026-11-06 — Call log history and filters, patient flags on leads, "/" templates, bulk access
+
+Merge `f304079` (commit `d6ff08f`). **Migration:** `call_log_indexes` (three indexes, no data
+change). No new settings. Flow docs updated:
+**[04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**,
+**[06-whatsapp-messaging.md](flows/06-whatsapp-messaging.md)**,
+**[15-appointments-scheduling.md](flows/15-appointments-scheduling.md)**.
+
+- **Calls:** the whole history, 50 to a page, instead of the last 100. Search by patient name or
+  phone, multi-select Type, Status (connected / not connected) and Team member, and a From/To
+  date-and-time range with Today, Yesterday and Last 7 days (`lib/callList.ts`,
+  `components/CallFilters.tsx`).
+- **Patient flags:** set from the lead page (they could only be set on an appointment card) and
+  shown in the Leads table. The flag definitions moved from Scheduling setup to Leads → Patient
+  flags; the on/off switch stays in Scheduling setup → Switches.
+- **WhatsApp:** typing `/` in the reply box lists approved non-media templates and inserts the
+  text with patient details filled in; Send stays off until any `{{n}}` is replaced. Only inside
+  the 24-hour window. Outside it, Send template stays.
+- **Bulk access:** on Leads, tick rows or select every lead matching the filters, then grant or
+  revoke with the same options as one lead. A grant covers the leads that exist at that moment.
+  Above 100 leads the audit trail gets one summary rather than one row per lead.
+
+---
+
 ## 2026-11-04 — Pre- and post-consultation sales teams
 
 Merge `178bc54` (commit `eb8d184`). **Migration:** `rep_sales_team` (`SalesRep.team`, default
