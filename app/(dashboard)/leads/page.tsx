@@ -1,4 +1,7 @@
+import Link from "next/link";
 import type { Prisma } from "@prisma/client";
+import { getBoolSetting } from "@/lib/settings";
+import { PATIENT_FLAGS_ENABLED } from "@/lib/scheduling/toggles";
 import { prisma } from "@/lib/prisma";
 import { LeadForm } from "@/components/LeadForm";
 import { LeadsTable, type LeadRow, type FilterOption } from "@/components/LeadsTable";
@@ -112,6 +115,10 @@ export default async function LeadsPage({
         select: { createdAt: true },
       },
       assignedRep: { select: { name: true } },
+      flags: {
+        where: { flag: { active: true } },
+        select: { flag: { select: { id: true, label: true, icon: true, tone: true } } },
+      },
       // Next follow-up = earliest pending roadmap step that has a due date.
       followUpSteps: {
         where: { status: "pending", dueAt: { not: null } },
@@ -123,7 +130,17 @@ export default async function LeadsPage({
     },
   });
 
-  const [scored, options] = await Promise.all([
+  // §handover bulk grants: only for those who may grant, same people as the lead page offers.
+  const canGrant = can(user!.role, "leads.grantAccess");
+  const grantees = canGrant
+    ? await prisma.user.findMany({
+        where: { role: { in: ["front_desk", "telecaller", "branch_manager", "sales_head"] }, id: { not: user!.id } },
+        select: { id: true, name: true, email: true },
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
+
+  const [scored, options, flagsOn] = await Promise.all([
     prisma.call.findMany({
       where: { leadId: { in: leads.map((l) => l.id) }, cqs: { not: null } },
       orderBy: { createdAt: "desc" },
@@ -131,6 +148,7 @@ export default async function LeadsPage({
       select: { leadId: true, cqs: true },
     }),
     filterOptions(scope),
+    getBoolSetting(PATIENT_FLAGS_ENABLED),
   ]);
   const cqsByLead = new Map(scored.map((c) => [c.leadId, c.cqs]));
 
@@ -151,6 +169,7 @@ export default async function LeadsPage({
     createdDate: istDateKey(l.createdAt),
     updatedDate: istDateKey(l.updatedAt),
     assignedRep: l.assignedRep?.name ?? null,
+    flags: flagsOn ? l.flags.map((f) => f.flag) : [],
     // A due DATE, not a timestamp — the hour a step happens to fall on is an
     // artefact of when the lead came in, and reads as noise in a column.
     nextFollowUp: l.followUpSteps[0]?.dueAt ? formatIstDate(l.followUpSteps[0].dueAt) : null,
@@ -188,14 +207,24 @@ export default async function LeadsPage({
       <section className="space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="cara-eyebrow">Leads ({total.toLocaleString("en-IN")})</h2>
-          {can(role, "leads.export") && (
-            <a
-              href="/api/leads/export"
-              className="rounded border border-black/15 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-            >
-              Export CSV
-            </a>
-          )}
+          <div className="flex items-center gap-2">
+            {can(role, "appointments.configure") && (
+              <Link
+                href="/leads/flags"
+                className="rounded border border-black/15 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+              >
+                Patient flags
+              </Link>
+            )}
+            {can(role, "leads.export") && (
+              <a
+                href="/api/leads/export"
+                className="rounded border border-black/15 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+              >
+                Export CSV
+              </a>
+            )}
+          </div>
         </div>
         <LeadsTable
           leads={rows}
@@ -206,6 +235,8 @@ export default async function LeadsPage({
           sourceLabels={SOURCE_LABELS}
           canDelete={can(role, "leads.softDelete")}
           canRemark={can(role, "leads.comment")}
+          grantees={grantees.map((u) => ({ id: u.id, label: u.name ? `${u.name} (${u.email})` : u.email }))}
+          canGrant={canGrant}
         />
       </section>
     </div>

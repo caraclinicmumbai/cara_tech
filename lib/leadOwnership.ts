@@ -168,6 +168,147 @@ export async function grantLeadAccess(input: {
   logger.info(`Access to lead ${lead.id} granted to user ${grantee.id} by ${input.actor.email ?? "?"}`);
 }
 
+/// Above this many leads a bulk change writes only its summary to the audit trail. The grant
+/// rows themselves still record who, when, why and who revoked; but the audit chain inserts
+/// one row at a time under a lock, and thousands of them would stall every other audited
+/// action in the system.
+const BULK_PER_LEAD_AUDIT_MAX = 100;
+const BULK_CHUNK = 1000;
+
+/// Grant one colleague access to many leads at once (no ownership change), with the same
+/// options as the single grant. Leads they already hold a live grant on are skipped. One bell
+/// and one Slack DM, not one per lead. Returns how many grants were added and skipped.
+export async function grantBulkLeadAccess(input: {
+  leadIds: string[];
+  granteeUserId: string;
+  reason?: string | null;
+  durationDays?: number | null;
+  /// In words, for the audit trail and the bell ("Source: Facebook" / "42 selected leads").
+  scopeLabel: string;
+  actor: { id?: string; email?: string | null };
+}): Promise<{ granted: number; skipped: number }> {
+  const grantee = await prisma.user.findUnique({
+    where: { id: input.granteeUserId },
+    select: { id: true, name: true, email: true, salesRep: { select: { slackUserId: true } } },
+  });
+  if (!grantee) throw new OwnershipError("User not found");
+
+  const days = input.durationDays ?? null;
+  const expiresAt = days && days > 0 ? new Date(Date.now() + days * 24 * 60 * 60 * 1000) : null;
+  const reason = (input.reason ?? "").trim() || null;
+
+  const live = await prisma.leadAccessGrant.findMany({
+    where: {
+      granteeId: grantee.id,
+      revokedAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+    },
+    select: { leadId: true },
+  });
+  const holding = new Set(live.map((g) => g.leadId));
+  const toGrant = input.leadIds.filter((id) => !holding.has(id));
+
+  for (let i = 0; i < toGrant.length; i += BULK_CHUNK) {
+    await prisma.leadAccessGrant.createMany({
+      data: toGrant.slice(i, i + BULK_CHUNK).map((leadId) => ({
+        leadId,
+        granteeId: grantee.id,
+        grantedById: input.actor.id ?? null,
+        reason,
+        expiresAt,
+      })),
+    });
+  }
+
+  const granteeName = grantee.name ?? grantee.email;
+  const meta = { granteeId: grantee.id, expiresAt: expiresAt?.toISOString() ?? null, bulk: true };
+  if (toGrant.length <= BULK_PER_LEAD_AUDIT_MAX) {
+    for (const leadId of toGrant) {
+      await writeAudit({
+        actorId: input.actor.id, actorEmail: input.actor.email,
+        action: "lead.access.grant", entityType: "lead", entityId: leadId,
+        newValue: granteeName, reason, meta,
+      });
+    }
+  }
+  await writeAudit({
+    actorId: input.actor.id, actorEmail: input.actor.email,
+    action: "lead.access.grant.bulk", entityType: "lead",
+    newValue: granteeName, reason,
+    meta: { ...meta, granted: toGrant.length, skipped: input.leadIds.length - toGrant.length, scope: input.scopeLabel },
+  });
+
+  if (toGrant.length > 0) {
+    await notifyUser({
+      userId: grantee.id,
+      kind: "access_grant",
+      title: `🔓 Access granted to ${toGrant.length} lead${toGrant.length === 1 ? "" : "s"}`,
+      body: [input.scopeLabel, expiresAt ? `Until ${expiresAt.toDateString()}` : "Until revoked", input.actor.email ? `by ${input.actor.email}` : null, reason]
+        .filter(Boolean)
+        .join(" · "),
+    });
+    await dm(
+      grantee.salesRep?.slackUserId,
+      `🔓 You've been granted access to ${toGrant.length} lead(s) (${input.scopeLabel})${expiresAt ? ` until ${expiresAt.toDateString()}` : ""}${reason ? ` — ${reason}` : ""}.`,
+    );
+  }
+  logger.info(`Bulk access: ${toGrant.length} lead(s) granted to user ${grantee.id} by ${input.actor.email ?? "?"} (${input.scopeLabel})`);
+  return { granted: toGrant.length, skipped: input.leadIds.length - toGrant.length };
+}
+
+/// Take one colleague's access away from many leads at once — the way back from a bulk
+/// grant, which nobody could otherwise undo one lead at a time.
+export async function revokeBulkLeadAccess(input: {
+  leadIds: string[];
+  granteeUserId: string;
+  scopeLabel: string;
+  actor: { id?: string; email?: string | null };
+}): Promise<{ revoked: number }> {
+  const grantee = await prisma.user.findUnique({
+    where: { id: input.granteeUserId },
+    select: { id: true, name: true, email: true },
+  });
+  if (!grantee) throw new OwnershipError("User not found");
+
+  let revoked = 0;
+  const auditLeads: string[] = [];
+  for (let i = 0; i < input.leadIds.length; i += BULK_CHUNK) {
+    const where = {
+      granteeId: grantee.id,
+      revokedAt: null,
+      leadId: { in: input.leadIds.slice(i, i + BULK_CHUNK) },
+    };
+    if (auditLeads.length <= BULK_PER_LEAD_AUDIT_MAX) {
+      const rows = await prisma.leadAccessGrant.findMany({ where, select: { leadId: true } });
+      auditLeads.push(...rows.map((r) => r.leadId));
+    }
+    const res = await prisma.leadAccessGrant.updateMany({
+      where,
+      data: { revokedAt: new Date(), revokedById: input.actor.id ?? null },
+    });
+    revoked += res.count;
+  }
+
+  const granteeName = grantee.name ?? grantee.email;
+  if (revoked <= BULK_PER_LEAD_AUDIT_MAX) {
+    for (const leadId of auditLeads) {
+      await writeAudit({
+        actorId: input.actor.id, actorEmail: input.actor.email,
+        action: "lead.access.revoke", entityType: "lead", entityId: leadId,
+        oldValue: granteeName, meta: { bulk: true },
+      });
+    }
+  }
+  await writeAudit({
+    actorId: input.actor.id, actorEmail: input.actor.email,
+    action: "lead.access.revoke.bulk", entityType: "lead",
+    oldValue: granteeName,
+    meta: { granteeId: grantee.id, revoked, scope: input.scopeLabel },
+  });
+  logger.info(`Bulk access: ${revoked} grant(s) revoked from user ${grantee.id} by ${input.actor.email ?? "?"} (${input.scopeLabel})`);
+  return { revoked };
+}
+
 /// How long a presence-driven cover grant lasts. Long enough to work the lead over a
 /// couple of shifts, short enough that access lapses on its own once the owner is back.
 export const COVER_GRANT_DAYS = 2;

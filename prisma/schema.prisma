@@ -365,6 +365,9 @@ model Call {
 
   @@index([leadId])
   @@index([callType])
+  // The call log pages newest-first and filters by who handled the call (lib/callList.ts).
+  @@index([createdAt])
+  @@index([handledById, createdAt])
 }
 
 /// A staff note / review on a lead (§notes). Free-text, human-authored context that
@@ -463,6 +466,8 @@ model LeadAccessGrant {
   @@index([leadId])
   @@index([granteeId])
   @@index([revokedAt])
+  // "Does this person hold a live grant on this lead?" — asked per lead when granting in bulk.
+  @@index([granteeId, leadId])
 }
 
 /// An in-app notification for one staff login — what the bell in the header shows

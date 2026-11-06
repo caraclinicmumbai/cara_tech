@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { saveLeadQueue } from "@/lib/leadQueue";
+import { BulkAccessBar } from "@/components/BulkAccessBar";
 import { leadListFiltered, leadListQuery, type LeadListFilters } from "@/lib/leadList";
 import { useCallback, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { StageSelect } from "@/components/StageSelect";
@@ -19,6 +20,7 @@ import {
   IconDown,
   IconFlat,
   IconSearch,
+  FlagGlyph,
 } from "@/components/Icon";
 
 export type LeadRow = {
@@ -39,6 +41,8 @@ export type LeadRow = {
   updatedDate: string;
   /// Name of the sales rep who owns the lead (null = unassigned).
   assignedRep: string | null;
+  /// Patient flags pinned to this lead (§3.2).
+  flags: { id: string; label: string; icon: string; tone: string }[];
   /// Earliest pending follow-up step: pre-formatted time + its title (tooltip).
   /// `nextFollowUpOverdue` is derived server-side (dueAt in the past).
   nextFollowUp: string | null;
@@ -180,6 +184,8 @@ export function LeadsTable({
   sourceLabels,
   canDelete = false,
   canRemark = false,
+  canGrant = false,
+  grantees = [],
 }: {
   leads: LeadRow[];
   /// The filters the server applied to produce `leads`.
@@ -192,6 +198,9 @@ export function LeadsTable({
   sourceLabels: Record<string, string>;
   canDelete?: boolean;
   canRemark?: boolean;
+  /// May grant colleagues access to many leads at once, and who to.
+  canGrant?: boolean;
+  grantees?: { id: string; label: string }[];
 }) {
   const router = useRouter();
   const [loading, startTransition] = useTransition();
@@ -226,6 +235,12 @@ export function LeadsTable({
     typingTimer.current = setTimeout(() => go(next), TYPING_DEBOUNCE_MS);
   }
 
+  // ── Bulk access (§handover) ─────────────────────────────────────────
+  // Ticked rows survive moving between pages. `allMatching` means every lead the filters
+  // match, on any page; the server works that set out for itself.
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [allMatching, setAllMatching] = useState(false);
+
   const columns: Col[] = useMemo(
     () => [
       {
@@ -237,6 +252,12 @@ export function LeadsTable({
             <Link href={`/leads/${l.id}`} className="font-medium hover:underline" onClick={ctx.onOpenLead}>
               {l.name}
             </Link>
+            {l.flags.map((f) => (
+              <span key={f.id} title={f.label} className={`ml-2 tag tag-${f.tone}`}>
+                <FlagGlyph icon={f.icon} size={11} className="tag-icon" />
+                {f.label}
+              </span>
+            ))}
             {l.duplicateOfId && <Badge tone="duplicate" title="Possible duplicate — no AI call">dup</Badge>}
             {l.optedOut && <Badge tone="stopped" title="Opted out — all outreach suppressed">opted out</Badge>}
             {l.heldForReview && <Badge tone="held" title="Held for review — no AI call">review</Badge>}
@@ -618,6 +639,33 @@ export function LeadsTable({
         </div>
       </div>
 
+      {canGrant && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <button
+            type="button"
+            className="tone-link hover:underline"
+            onClick={() => setAllMatching(!allMatching)}
+          >
+            {allMatching
+              ? "Back to ticked leads only"
+              : `Select all ${total.toLocaleString("en-IN")} leads${anyActive ? " matching these filters" : ""}`}
+          </button>
+          {(allMatching || ticked.size > 0) && (
+            <BulkAccessBar
+              count={allMatching ? total : ticked.size}
+              grantees={grantees}
+              scopeLabel={allMatching ? (filterLabel.replace(/(^| · )page \d+ of \d+$/, "") || "All leads") : `${ticked.size} selected lead${ticked.size === 1 ? "" : "s"}`}
+              target={allMatching ? { query: leadListQuery({ ...filters, page: 1 }) } : { leadIds: Array.from(ticked) }}
+              onDone={() => {
+                setTicked(new Set());
+                setAllMatching(false);
+                router.refresh();
+              }}
+            />
+          )}
+        </div>
+      )}
+
       {/* cara-scroll-x forces a visible scrollbar — see app/globals.css. With overlay
           scrollbars and a mouse, eighteen columns read as "the table ends here". */}
       <div
@@ -641,6 +689,23 @@ export function LeadsTable({
                   }`}
                 >
                   <div className="flex items-center gap-1">
+                    {canGrant && i === 0 && (
+                      <input
+                        type="checkbox"
+                        aria-label="Select every lead on this page"
+                        className="mr-1"
+                        checked={rows.length > 0 && rows.every((r) => ticked.has(r.id))}
+                        onChange={(e) => {
+                          const next = new Set(ticked);
+                          for (const r of rows) {
+                            if (e.target.checked) next.add(r.id);
+                            else next.delete(r.id);
+                          }
+                          setTicked(next);
+                          setAllMatching(false);
+                        }}
+                      />
+                    )}
                     <span className="font-semibold">{c.label}</span>
                     {c.filter !== "none" && (
                       <button
@@ -678,6 +743,21 @@ export function LeadsTable({
                         : ""
                     }`}
                   >
+                    {canGrant && i === 0 && (
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${lead.name}`}
+                        className="mr-2 align-middle"
+                        checked={allMatching || ticked.has(lead.id)}
+                        onChange={(e) => {
+                          const next = new Set(ticked);
+                          if (e.target.checked) next.add(lead.id);
+                          else next.delete(lead.id);
+                          setTicked(next);
+                          setAllMatching(false);
+                        }}
+                      />
+                    )}
                     {c.cell(lead, cellContext)}
                   </td>
                 ))}

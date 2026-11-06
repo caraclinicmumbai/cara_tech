@@ -658,7 +658,7 @@ Gated to `appointments.configure`. Every change is audited.
 | Hours & holidays | Weekly hours per branch. A branch with no hours uses **09:00–20:00 every day**. Closures can be one branch or all, a date range, and whole-day or part-day |
 | Resources & rosters | Doctors, rooms, equipment, support staff. Rooms/equipment belong to one branch; people can work across branches. Weekly roster per person (branch + day + hours). Leave / downtime. Adding leave **doesn't cancel** existing bookings; it says how many need rebooking |
 | Appointment types | Duration, turnover buffer, catalog link, online-bookable, prep instructions, requirements (kind + optional type + quantity, or a specific resource). Edits apply to **new** bookings only |
-| Patient flags | Admin-defined flags (label, drawn icon, tag colour). ★ **Priority** is seeded |
+| Patient flags (moved to **Leads → Patient flags**, `/leads/flags`, 2026-11; the on/off switch stays here) | Admin-defined flags (label, drawn icon, tag colour). ★ **Priority** is seeded. Set on a patient from the top of their lead page or their appointment card; shown in the leads table too |
 
 ## Key files
 

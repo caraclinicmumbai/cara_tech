@@ -103,6 +103,16 @@ found by opening leads one at a time.
   badge without a reload. The sidebar tab carries the same unread total, server-rendered
   so it's right on first paint.
 
+## "/" quick replies in the composer
+
+Inside the 24-hour window, typing `/` at the start of a word lists the approved templates,
+narrowing by name or text as you type (arrows + Enter, or click;
+`components/TemplateSlashMenu.tsx`). Picking one puts its text in the reply box with the
+patient's details filled in, to read or edit first, and it goes out as an ordinary text
+reply. A variable we can't fill stays as `{{2}}`, and Send is disabled until it's replaced.
+File-header templates aren't listed. Outside the window there's no text box: WhatsApp accepts
+only the approved template itself, so **Send template** remains the way.
+
 ## Live thread (realtime)
 
 The chat updates itself — an agent never reloads to see a reply.

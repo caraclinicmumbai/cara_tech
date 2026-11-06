@@ -3,8 +3,12 @@
 // Server Actions for staff edits to a lead's pipeline stage and tag (§3.1).
 // Server Functions are reachable via direct POST, so EVERY action re-checks the
 // session (see Next.js data-security guide) before touching the database.
-import { requireCapability, userCanAccessLead } from "@/lib/authz";
-import { leadScope } from "@/lib/rbac";
+import { requireCapability, requireUser, userCanAccessLead } from "@/lib/authz";
+import { ensurePermissions } from "@/lib/permissions";
+import { getBoolSetting } from "@/lib/settings";
+import { PATIENT_FLAGS_ENABLED } from "@/lib/scheduling/toggles";
+import { applyPatientFlag } from "@/lib/patientFlags";
+import { can, leadScope } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isLeadStage, LOST_STAGE, isPreConsultation, stageLabel, isLostTag } from "@/lib/leadStages";
@@ -527,4 +531,24 @@ export async function deleteLeadComment(
   });
   revalidatePath(`/leads/${comment.leadId}`);
   return { ok: true };
+}
+
+/// Pin / unpin a patient flag from the lead page (§3.2). Anyone who can edit this lead's
+/// details or tag may, on a lead they can see — a telecaller flags their own patients.
+export async function setLeadFlag(leadId: string, flagId: string, on: boolean): Promise<{ ok: boolean; error?: string }> {
+  const user = await requireUser();
+  await ensurePermissions();
+  if (!can(user.role, "leads.edit") && !can(user.role, "leads.editTag")) {
+    return { ok: false, error: "You don't have permission for that" };
+  }
+  if (!(await userCanAccessLead(user, leadId))) return { ok: false, error: "You don't have access to this lead" };
+  if (!(await getBoolSetting(PATIENT_FLAGS_ENABLED))) return { ok: false, error: "Patient flags are switched off" };
+  try {
+    const res = await applyPatientFlag({ leadId, flagId, on, actor: { id: user.id, email: user.email } });
+    if (res.ok) revalidatePath(`/leads/${leadId}`);
+    return res;
+  } catch (err) {
+    logger.error(`setLeadFlag failed: ${String(err)}`);
+    return { ok: false, error: "Could not update the flag" };
+  }
 }
