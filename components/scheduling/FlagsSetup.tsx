@@ -1,8 +1,8 @@
 "use client";
 
-// Patient flags (§3.2 "Cards and Flags for a Patient") — the Scheduling setup "Patient
-// flags" tab. The kinds of flag staff can pin to a patient; each shows on their
-// appointment card as a drawn icon in its tag colour.
+// Patient flags (§3.2 "Cards and Flags for a Patient") — the /leads/flags page. The kinds
+// of flag staff can pin to a patient; each shows on their lead page, in the leads table and
+// on their appointment card as a drawn icon in its tag colour.
 import { useState } from "react";
 import { createFlag, updateFlag, setFlagActive, type FlagInput } from "@/app/(dashboard)/appointments/setup/actions";
 import { FLAG_ICONS, FLAG_ICON_LABELS, FLAG_TONES } from "@/lib/scheduling/flags";

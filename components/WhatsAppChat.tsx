@@ -8,6 +8,7 @@ import {
   sendLeadWhatsAppTemplate,
 } from "@/app/(dashboard)/leads/actions";
 import type { WhatsAppTemplate } from "@/lib/whatsappTemplates";
+import { TemplateSlashMenu, matchTemplates, slashTokenAt } from "@/components/TemplateSlashMenu";
 import {
   suggestTemplateParams,
   previewTemplate,
@@ -83,6 +84,50 @@ export function WhatsAppChat({
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // ── "/" quick replies ────────────────────────────────────────────
+  // Fetched the first time someone types a slash. File-header templates are left out,
+  // as in TemplatePicker: there's nothing to attach from here.
+  const boxRef = useRef<HTMLTextAreaElement>(null);
+  const [slashTemplates, setSlashTemplates] = useState<WhatsAppTemplate[] | null>(null);
+  const slashLoading = useRef(false);
+  const [slash, setSlash] = useState<{ start: number; query: string } | null>(null);
+  const [slashActive, setSlashActive] = useState(0);
+  const slashHits = slashTemplates ? matchTemplates(slashTemplates, slash?.query ?? "") : null;
+
+  function onComposerChange(value: string, caret: number) {
+    setText(value);
+    const token = slashTokenAt(value, caret);
+    setSlash(token);
+    setSlashActive(0);
+    if (token && !slashTemplates && !slashLoading.current) {
+      slashLoading.current = true;
+      listWhatsAppTemplates()
+        .then((all) => setSlashTemplates(all.filter((t) => !t.requiresMedia)))
+        .catch(() => setSlashTemplates([]))
+        .finally(() => {
+          slashLoading.current = false;
+        });
+    }
+  }
+
+  function insertTemplate(t: WhatsAppTemplate) {
+    if (!slash) return;
+    const filled = suggestTemplateParams(t.bodyText, leadContext, t.paramCount).map((f) => f.value);
+    const body = previewTemplate(t.bodyText, filled);
+    const caret = boxRef.current?.selectionStart ?? text.length;
+    const next = text.slice(0, slash.start) + body + text.slice(caret);
+    setText(next);
+    setSlash(null);
+    const at = slash.start + body.length;
+    requestAnimationFrame(() => {
+      boxRef.current?.focus();
+      boxRef.current?.setSelectionRange(at, at);
+    });
+  }
+
+  // A variable we couldn't fill stays as {{2}}; it must not reach the patient like that.
+  const unfilled = /\{\{\d+\}\}/.test(text);
   // Deltas the stream has pushed since the page rendered, laid over the
   // server-rendered thread — so a router.refresh() and the live stream can't
   // fight over the same bubble.
@@ -272,26 +317,49 @@ export function WhatsAppChat({
           <TemplatePicker leadId={leadId} leadContext={leadContext} />
         ) : (
           <div className="space-y-2">
-            <div className="flex gap-2">
+            <div className="relative flex gap-2">
+              {slash && <TemplateSlashMenu templates={slashHits} active={slashActive} onPick={insertTemplate} />}
               <textarea
+                ref={boxRef}
                 value={text}
                 disabled={pending}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => onComposerChange(e.target.value, e.target.selectionStart)}
+                onBlur={() => setSlash(null)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
+                  if (slash && slashHits?.length) {
+                    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                      e.preventDefault();
+                      const step = e.key === "ArrowDown" ? 1 : -1;
+                      setSlashActive((i) => (i + step + slashHits.length) % slashHits.length);
+                      return;
+                    }
+                    if (e.key === "Enter" || e.key === "Tab") {
+                      e.preventDefault();
+                      insertTemplate(slashHits[Math.min(slashActive, slashHits.length - 1)]);
+                      return;
+                    }
+                  }
+                  if (slash && e.key === "Escape") {
+                    setSlash(null);
+                    return;
+                  }
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !unfilled) send();
                 }}
-                placeholder="Type a reply…  (⌘/Ctrl+Enter to send)"
+                placeholder="Type a reply, or / for templates…  (⌘/Ctrl+Enter to send)"
                 rows={2}
                 className="flex-1 resize-none rounded border border-black/15 bg-transparent px-3 py-2 text-sm dark:border-white/20"
               />
               <button
                 onClick={send}
-                disabled={pending || !text.trim()}
+                disabled={pending || !text.trim() || unfilled}
                 className="self-end rounded bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
               >
                 {pending ? "Sending…" : "Send"}
               </button>
             </div>
+            {unfilled && (
+              <p className="txt-warn text-xs">Replace each {"{{…}}"} with the right detail before sending.</p>
+            )}
             {error && <p className="txt-bad text-sm">{error}</p>}
           </div>
         )}

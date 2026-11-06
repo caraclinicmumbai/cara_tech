@@ -10,7 +10,6 @@ import { SettingToggle } from "@/components/SettingToggle";
 import { BranchHoursEditor, ClosuresEditor, TravelSetup } from "@/components/scheduling/HoursSetup";
 import { ResourcesSetup } from "@/components/scheduling/ResourcesSetup";
 import { TypesSetup } from "@/components/scheduling/TypesSetup";
-import { FlagsSetup } from "@/components/scheduling/FlagsSetup";
 import { MessagesSetup } from "@/components/scheduling/MessagesSetup";
 import { IntakeFormsSetup } from "@/components/scheduling/IntakeFormsSetup";
 import { SeriesSetup } from "@/components/scheduling/SeriesSetup";
@@ -24,8 +23,8 @@ export const dynamic = "force-dynamic";
 
 // Scheduling setup (§3.2) — everything the calendar needs to know before it can tell
 // a free slot from a taken one: the module's switches, when each branch is open, who
-// and what can be booked, what each appointment type needs, and the flags a patient
-// can carry. Route-guarded to `appointments.configure`; re-checked here.
+// and what can be booked, and what each appointment type needs. (The flags a patient can
+// carry moved to /leads/flags.) Route-guarded to `appointments.configure`; re-checked here.
 
 const TABS = [
   { key: "switches", label: "Switches" },
@@ -35,7 +34,6 @@ const TABS = [
   { key: "messages", label: "Messages & reminders" },
   { key: "intake", label: "Intake forms" },
   { key: "series", label: "Treatment series" },
-  { key: "flags", label: "Patient flags" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -85,7 +83,6 @@ export default async function SchedulingSetupPage({
       {tab === "messages" && <MessagesTab />}
       {tab === "intake" && <IntakeTab />}
       {tab === "series" && <SeriesTab />}
-      {tab === "flags" && <FlagsTab />}
     </div>
   );
 }
@@ -277,26 +274,6 @@ async function TypesTab({ branches }: { branches: BranchOpt[] }) {
           resourceId: r.resourceId,
           quantity: r.quantity,
         })),
-      }))}
-    />
-  );
-}
-
-async function FlagsTab() {
-  const flags = await prisma.flagDefinition.findMany({
-    orderBy: [{ active: "desc" }, { sortOrder: "asc" }],
-    include: { _count: { select: { leadFlags: true } } },
-  });
-  return (
-    <FlagsSetup
-      flags={flags.map((f) => ({
-        id: f.id,
-        label: f.label,
-        description: f.description,
-        icon: f.icon,
-        tone: f.tone,
-        active: f.active,
-        patients: f._count.leadFlags,
       }))}
     />
   );

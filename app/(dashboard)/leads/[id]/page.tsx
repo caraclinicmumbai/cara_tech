@@ -35,6 +35,9 @@ import { LeadQueueNav } from "@/components/LeadQueueNav";
 import { getLeadCampaign } from "@/lib/campaigns/enrollments";
 import { LeadCampaignCard } from "@/components/LeadCampaignCard";
 import { LeadComments } from "@/components/LeadComments";
+import { LeadFlagsField } from "@/components/LeadFlagsField";
+import { getBoolSetting } from "@/lib/settings";
+import { PATIENT_FLAGS_ENABLED } from "@/lib/scheduling/toggles";
 import { listFollowUpSteps, followUpQueue } from "@/lib/followups";
 import { callOutcomeLabel } from "@/lib/clickToCallLog";
 import { callTypeLabel, isInboundCallType } from "@/lib/inboundCallLog";
@@ -238,6 +241,16 @@ export default async function LeadDetailPage({
     readLeadTimeline(lead.id),
   ]);
   const canEditLead = can(viewer.role, "leads.edit");
+  // §3.2 patient flags: every flag the clinic defined, with the ones this patient carries on.
+  const flagOptions = (await getBoolSetting(PATIENT_FLAGS_ENABLED))
+    ? await prisma.flagDefinition
+        .findMany({
+          where: { active: true },
+          orderBy: { sortOrder: "asc" },
+          select: { id: true, label: true, description: true, icon: true, tone: true, leadFlags: { where: { leadId: lead.id }, select: { flagId: true } } },
+        })
+        .then((defs) => defs.map(({ leadFlags, ...d }) => ({ ...d, on: leadFlags.length > 0 })))
+    : [];
   const canCall = can(viewer.role, "leads.call");
   // Follow-up campaign (§follow-up): the lead's active/most-recent enrollment + who may stop it.
   const leadCampaign = await getLeadCampaign(lead.id);
@@ -305,6 +318,11 @@ export default async function LeadDetailPage({
             </span>
           )}
         </div>
+        <LeadFlagsField
+          leadId={lead.id}
+          flags={flagOptions}
+          canEdit={can(viewer.role, "leads.edit") || can(viewer.role, "leads.editTag")}
+        />
 
         {lead.optedOut && (
           <div className="cara-notice is-bad">

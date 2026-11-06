@@ -16,6 +16,7 @@ import { advanceStage } from "@/lib/leadStages";
 import { findLeadByPhone, phoneKey } from "@/lib/messages";
 import { toDialable } from "@/lib/phone";
 import { PATIENT_FLAGS_ENABLED } from "@/lib/scheduling/toggles";
+import { applyPatientFlag } from "@/lib/patientFlags";
 import {
   bookAppointment,
   changeAppointmentStatus,
@@ -488,28 +489,9 @@ export async function setPatientFlag(leadId: string, flagId: string, on: boolean
   if (!can(user.role, "appointments.book") && !can(user.role, "appointments.checkin")) return { ok: false, error: "You don't have permission for that" };
   if (!(await getBoolSetting(PATIENT_FLAGS_ENABLED))) return { ok: false, error: "Patient flags are switched off" };
   try {
-    const flag = await prisma.flagDefinition.findUnique({ where: { id: flagId }, select: { label: true } });
-    if (!flag) return { ok: false, error: "Unknown flag" };
-    if (on) {
-      await prisma.leadFlag.upsert({
-        where: { leadId_flagId: { leadId, flagId } },
-        create: { leadId, flagId, setById: user.id ?? null },
-        update: {},
-      });
-    } else {
-      await prisma.leadFlag.deleteMany({ where: { leadId, flagId } });
-    }
-    await writeAudit({
-      actorId: user.id,
-      actorEmail: user.email,
-      action: on ? "lead.flag.set" : "lead.flag.clear",
-      entityType: "lead",
-      entityId: leadId,
-      field: "flag",
-      newValue: flag.label,
-    });
-    revalidatePath(PATH);
-    return { ok: true };
+    const res = await applyPatientFlag({ leadId, flagId, on, actor: { id: user.id, email: user.email } });
+    if (res.ok) revalidatePath(PATH);
+    return res;
   } catch (err) {
     logger.error(`setPatientFlag failed: ${String(err)}`);
     return { ok: false, error: "Could not update the flag" };

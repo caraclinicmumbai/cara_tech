@@ -134,6 +134,14 @@ access** panel on the lead page.
   about a patient they no longer had.
 - **The ownership history starts at the first owner** (`lead.assign` — "Assigned to X",
   rota or creator), not at the first handover.
+- **Access across many leads** (`leads.grantAccess`, leads table): tick rows, or "Select all
+  N leads" for everything the current filters match, then grant or revoke with the same
+  options as a single lead: who, how long, why (`bulkLeadAccessAction`). The set is re-read on
+  the server through the actor's own scope. Leads already granted are skipped; the grantee
+  gets one bell. Up to 100 leads audit per lead, and each change also writes one summary row
+  (`lead.access.grant.bulk` / `.revoke.bulk`). Above 100 only the summary is written, so the
+  lead's ownership history won't list that grant, though the panel's active grants will. A
+  grant covers the leads that exist at that moment, not future ones.
 - **Removing a rep** (Users → Sales reps → Remove, `removeRep` in `lib/salesReps.ts`):
   their leads, open quotes and pending follow-ups go to a colleague you pick (must be
   assignable), in one transaction; each lead gets a `lead.handover` audit entry

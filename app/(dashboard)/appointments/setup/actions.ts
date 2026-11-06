@@ -724,7 +724,7 @@ export async function createFlag(input: FlagInput): Promise<Result> {
       select: { id: true },
     });
     await audit(actor, "scheduling.flag.create", row.id, n.data.label);
-    revalidatePath(PATH);
+    revalidatePath("/leads/flags");
     return { ok: true, id: row.id };
   } catch (err) {
     if (String(err).includes("Unique constraint")) return { ok: false, error: "A flag with that name exists" };
@@ -739,7 +739,7 @@ export async function updateFlag(id: string, input: FlagInput): Promise<Result> 
   try {
     await prisma.flagDefinition.update({ where: { id }, data: n.data });
     await audit(actor, "scheduling.flag.update", id, n.data.label);
-    revalidatePath(PATH);
+    revalidatePath("/leads/flags");
     return { ok: true };
   } catch (err) {
     return fail("updateFlag", err, "Could not save the flag");
@@ -751,7 +751,7 @@ export async function setFlagActive(id: string, active: boolean): Promise<Result
   try {
     const f = await prisma.flagDefinition.update({ where: { id }, data: { active }, select: { label: true } });
     await audit(actor, active ? "scheduling.flag.activate" : "scheduling.flag.deactivate", id, f.label);
-    revalidatePath(PATH);
+    revalidatePath("/leads/flags");
     return { ok: true };
   } catch (err) {
     return fail("setFlagActive", err, "Could not update the flag");
