@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { saveLeadQueue } from "@/lib/leadQueue";
+import { saveLeadListHref, saveLeadQueue } from "@/lib/leadQueue";
 import { BulkAccessBar } from "@/components/BulkAccessBar";
 import { leadListFiltered, leadListQuery, type LeadListFilters } from "@/lib/leadList";
 import { useCallback, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
@@ -561,7 +561,10 @@ export function LeadsTable({
     () => ({
       sourceLabels,
       canRemark,
-      onOpenLead: () => saveLeadQueue({ ids: rows.map((r) => r.id), label: filterLabel }),
+      onOpenLead: () => {
+        saveLeadQueue({ ids: rows.map((r) => r.id), label: filterLabel });
+        saveLeadListHref();
+      },
     }),
     [sourceLabels, canRemark, rows, filterLabel],
   );

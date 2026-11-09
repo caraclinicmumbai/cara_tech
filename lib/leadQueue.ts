@@ -130,3 +130,38 @@ export function positionIn(
     nextId: index < queue.ids.length - 1 ? queue.ids[index + 1] : null,
   };
 }
+
+// ── The way back to the list ─────────────────────────────────────────────────
+// The table's filters, search, sort and page live in its URL (`/leads?…`). The lead
+// page's "← Leads" used to link to bare `/leads`, so going back dropped them and the
+// telecaller had to search or filter again. The list's URL is kept per tab, next to the
+// queue, whenever a lead is opened from it.
+
+const LIST_KEY = "cara:leadListHref";
+
+/// Remember the list's current address. Called as a lead is opened from the table.
+export function saveLeadListHref(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(LIST_KEY, `/leads${window.location.search}`);
+    emit();
+  } catch {
+    /* private mode / quota — the link just falls back to /leads */
+  }
+}
+
+/// Where "← Leads" should go: the list as it was left, or plain /leads. A string, so
+/// it's stable between reads for useSyncExternalStore.
+export function getLeadListHrefSnapshot(): string {
+  if (typeof window === "undefined") return "/leads";
+  try {
+    const href = window.sessionStorage.getItem(LIST_KEY);
+    return href && href.startsWith("/leads") ? href : "/leads";
+  } catch {
+    return "/leads";
+  }
+}
+
+export function getLeadListHrefServerSnapshot(): string {
+  return "/leads";
+}
