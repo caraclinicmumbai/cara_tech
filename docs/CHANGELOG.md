@@ -7,6 +7,18 @@ Format: newest first.
 
 ---
 
+## 2026-11-09 — "← Leads" keeps the list's search and filters
+
+Merge `b45fa11` (commit `c3e6acd`). No migration, no new settings. No flow doc change.
+
+- Opening a lead from the leads table now remembers the list's address (search, filters, sort,
+  page) for that browser tab, and the lead page's **← Leads** returns to it. It used to go to
+  plain `/leads`, so the search or filter had to be redone every time.
+- The sidebar's **Leads** link, and leads opened from the bell or a link, still go to the plain
+  list.
+
+---
+
 ## 2026-11-09 — One follow-up per lead, with the option to add more
 
 Merge `8cd39d6` (commit `4678e4d`). **Migration:** `single_follow_up` (data only, no schema
