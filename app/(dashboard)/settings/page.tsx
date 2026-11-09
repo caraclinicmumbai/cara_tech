@@ -1,6 +1,9 @@
+import Link from "next/link";
+import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/authz";
 import { getBoolSetting, ALLOW_UNINVOICED_CONVERSION } from "@/lib/settings";
 import { SettingToggle } from "@/components/SettingToggle";
+import { StagesSetup } from "@/components/StagesSetup";
 import { setAllowUninvoicedConversion } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +15,19 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   await requireCapability("settings.manage");
-  const allowUninvoiced = await getBoolSetting(ALLOW_UNINVOICED_CONVERSION);
+  const [allowUninvoiced, types] = await Promise.all([
+    getBoolSetting(ALLOW_UNINVOICED_CONVERSION),
+    prisma.appointmentType.findMany({
+      where: { active: true },
+      orderBy: [{ category: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        stages: { orderBy: [{ active: "desc" }, { order: "asc" }], select: { id: true, label: true, role: true, tone: true, active: true } },
+      },
+    }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -52,6 +67,17 @@ export default async function SettingsPage() {
             </>
           }
         />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="cara-eyebrow">Appointment stages</h2>
+        <p className="cara-note">
+          Break each consultation or treatment into the steps of the visit. Each step names the role
+          that does it and has its own colour. On the day, the step shows on the appointment card,
+          and anyone in that role ticks it off. To add a consultation or treatment, use{" "}
+          <Link href="/appointments/setup?tab=types" className="tone-link">Scheduling setup → Appointment types</Link>.
+        </p>
+        <StagesSetup types={types} />
       </section>
 
       <p className="cara-note text-[12px] text-cara-faint">

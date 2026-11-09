@@ -15,6 +15,7 @@ import {
   rescheduleFromDesk,
   setAppointmentStatus,
   setPatientFlag,
+  setStageDone,
   slotsForBooking,
   type AppointmentDetail,
   type DeskResult,
@@ -241,6 +242,37 @@ export function AppointmentCard({ id, onClose }: { id: string; onClose: () => vo
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-cara-muted">Notes</div>
                   <div className="text-[13px]">{d.notes}</div>
+                </div>
+              )}
+
+              {/* Visit stages (#7) — defined per type in Settings */}
+              {d.stages.length > 0 && (
+                <div className="space-y-1.5 border-t border-cara-rule pt-3 text-[12.5px]">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-cara-muted">Stages</div>
+                  {d.stages.map((s) => (
+                    <label key={s.id} className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={!!s.doneAt}
+                        disabled={pending || !s.canTick}
+                        onChange={(e) =>
+                          startTransition(async () => {
+                            const r = await setStageDone(d.id, s.id, e.target.checked);
+                            if (!r.ok) return setMsg({ ok: false, error: r.error ?? "Could not update the stage" });
+                            setD(await getAppointmentDetail(d.id));
+                          })
+                        }
+                        aria-label={`${s.label} done`}
+                      />
+                      <span className={`tag tag-${s.tone} ${s.doneAt ? "" : "opacity-70"}`}>{s.label}</span>
+                      <span className="text-cara-muted">{s.roleLabel}</span>
+                      {s.doneAt && (
+                        <span className="text-cara-faint">
+                          done {fmtTime(s.doneAt)}{s.doneBy ? ` by ${s.doneBy}` : ""}
+                        </span>
+                      )}
+                    </label>
+                  ))}
                 </div>
               )}
 

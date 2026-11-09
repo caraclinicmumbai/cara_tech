@@ -212,13 +212,13 @@ model SalesRep {
   // pickOwnerRep falls back to any active rep so a new lead is never left unowned, while
   // "act on it now" routing (handover cover, inbound calls) sticks to who's actually free.
   //   available | in_consultation | break | offline
-  availability   String   @default("available")
-  availabilityAt DateTime @default(now()) // when availability last changed
+  availability   String    @default("available")
+  availabilityAt DateTime  @default(now()) // when availability last changed
   // Heartbeat from the app — drives the 15-min auto-offline sweep (during work hours).
-  lastActivityAt DateTime @default(now())
+  lastActivityAt DateTime  @default(now())
   // True while auto-set to in_consultation by a live click-to-call, so the call-end
   // webhook reverts to available (and a manual Break isn't clobbered by a stray revert).
-  onCall         Boolean  @default(false)
+  onCall         Boolean   @default(false)
   // Set while the clinic line is ringing this rep's phone (lib/inboundRouting.ts), so a
   // second patient calling at the same moment rings someone else instead of a handset that
   // is about to be busy. Expires by itself — a lost callback never parks a rep for long.
@@ -230,7 +230,7 @@ model SalesRep {
   // Which half of the sales team (lib/salesTeams.ts): pre_consultation | post_consultation.
   // Only the pre-consultation team is in the automatic rota; the post-consultation team gets
   // a lead only when it's handed over to them.
-  team           String   @default("pre_consultation")
+  team String @default("pre_consultation")
 
   // Branch (Phase 2) — nullable scaffold; the rep's home branch for routing/scoping.
   branchId String?
@@ -241,10 +241,10 @@ model SalesRep {
   // leads, open quotes and pending follow-ups were handed to a colleague first.
   deletedAt DateTime?
 
-  leads         Lead[]             @relation("LeadAssignee")
-  handledCalls  Call[]             @relation("CallHandler")
-  ownedQuotes   Quote[]            @relation("QuoteOwner")
-  followUpSteps LeadFollowUpStep[] @relation("FollowUpOwner")
+  leads         Lead[]               @relation("LeadAssignee")
+  handledCalls  Call[]               @relation("CallHandler")
+  ownedQuotes   Quote[]              @relation("QuoteOwner")
+  followUpSteps LeadFollowUpStep[]   @relation("FollowUpOwner")
   activity      RepActivitySession[]
   user          User? // the login account linked to this rep (§3.1 RBAC)
 
@@ -703,7 +703,7 @@ model CatalogItem {
 
   appointmentTypes AppointmentType[]
 
-  quotes           Quote[]
+  quotes Quote[]
 
   @@unique([type, name])
   @@index([active])
@@ -982,10 +982,10 @@ model CampaignSetting {
 /// never "converts" — it summarises its quotes. A repeat request for the same
 /// treatment is a NEW quote (new `cycle`), never a reopened old one.
 model Quote {
-  id        String @id @default(cuid())
-  leadId    String
-  lead      Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  treatment String // e.g. "Hair transplant (FUE)", "PRP"
+  id            String       @id @default(cuid())
+  leadId        String
+  lead          Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  treatment     String // e.g. "Hair transplant (FUE)", "PRP"
   /// The catalogue item it was picked from, when it was (free text has none). Lets an
   /// appointment type or a treatment series match the quote by item, not by name.
   catalogItemId String?
@@ -1553,8 +1553,46 @@ model AppointmentType {
   appointments  Appointment[]
   reminderRules ReminderRule[]
   consumables   AppointmentTypeConsumable[]
+  stages        AppointmentStage[]
 
   @@index([active])
+}
+
+/// One stage of a visit of this type ("Scalp analysis — doctor", "Billing — front
+/// desk"), in order. Each stage belongs to a role, which is who ticks it off, and has a
+/// colour (a tag tone). The clinic defines these from Settings; Cara ships none.
+/// Retired (active=false) rather than deleted once any appointment has ticked it, so the
+/// record of who did what on a past visit keeps its label.
+model AppointmentStage {
+  id        String          @id @default(cuid())
+  typeId    String
+  type      AppointmentType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  order     Int
+  label     String
+  /// A User.role key (lib/rbac.ts ROLES).
+  role      String
+  tone      String          @default("ink")
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  done AppointmentStageDone[]
+
+  @@index([typeId, order])
+}
+
+/// A stage ticked off on one appointment, and by whom. Unticking deletes the row (the
+/// audit log keeps both moves).
+model AppointmentStageDone {
+  id            String           @id @default(cuid())
+  appointmentId String
+  appointment   Appointment      @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  stageId       String
+  stage         AppointmentStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  doneById      String? // User.id (no FK, like AuditLog.actorId)
+  doneAt        DateTime         @default(now())
+
+  @@unique([appointmentId, stageId])
 }
 
 /// One resource need of an appointment type: "1 doctor", "1 room of subtype ot",
@@ -1645,7 +1683,8 @@ model Appointment {
   plannedStep     PlannedStep?
   encounter       Encounter?
   consumables     ConsumableReservation[]
-  anchoredPlans   TreatmentPlan[]       @relation("PlanAnchor")
+  anchoredPlans   TreatmentPlan[]         @relation("PlanAnchor")
+  stagesDone      AppointmentStageDone[]
 
   @@index([branchId, startAt])
   @@index([leadId])
@@ -1909,29 +1948,29 @@ model BookingPayment {
 /// the money was taken — is KEPT AS CREDIT for the next booking, never forfeited by the
 /// system. Applying it, or refunding it, is a person's decision and is recorded here.
 model PatientCredit {
-  id              String          @id @default(cuid())
-  leadId          String
-  lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  amountPaise     Int
-  currency        String          @default("INR")
+  id            String          @id @default(cuid())
+  leadId        String
+  lead          Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  amountPaise   Int
+  currency      String          @default("INR")
   /// The payment it came from — one credit per payment.
-  paymentId       String?         @unique
-  payment         BookingPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  paymentId     String?         @unique
+  payment       BookingPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   /// The appointment that didn't happen.
-  appointmentId   String?
+  appointmentId String?
   /// no_show | late_cancel | cancelled | clinic_cancelled | hold_lapsed — for the desk, not a rule.
-  reason          String
+  reason        String
   /// available | applied | refunded
-  status          String          @default("available")
-  appliedToId     String? // the appointment it was used for
-  appliedAt       DateTime?
-  appliedById     String?
-  refundedAt      DateTime?
-  refundedById    String?
-  refundReason    String?
+  status        String          @default("available")
+  appliedToId   String? // the appointment it was used for
+  appliedAt     DateTime?
+  appliedById   String?
+  refundedAt    DateTime?
+  refundedById  String?
+  refundReason  String?
   /// Razorpay refund id, or "recorded" when the refund was made outside the CRM.
-  refundRef       String?
-  createdAt       DateTime        @default(now())
+  refundRef     String?
+  createdAt     DateTime        @default(now())
 
   @@index([leadId, status])
 }

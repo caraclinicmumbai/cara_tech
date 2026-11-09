@@ -13,6 +13,16 @@
 
 ## Open
 
+### #8 Personal calendar and tasks (clinic: "complete system, not a priority", 2026-11-09)
+The ask: a personal calendar per staff member with tasks, recurring tasks, day/week/month
+views, and blocking time by dragging. Answer to our question, from the business:
+**blocked time and patients conflict → patients win.** Blocking a slot that already has a
+patient booked is refused by default. If the person still wants it, the patient must first be
+either **reassigned to another person or moved to another time**, with **Sales and Front Desk
+notified**. When picked up: blocked time should become a `ResourceTimeOff`-like row so the
+existing slot engine already stops new bookings in it; the conflict path can reuse
+`lib/scheduling/conflicts.ts` (rebooking cases plus suggestions) rather than building a new one.
+
 ### Appointments 2.5: walk-in queue / token management
 Module 3.2 Feature 2.5 (tokens W-/A-/P-, priority rules, waiting-room display, "you're next"
 messages, wait-time reporting). **Deferred by the clinic in the spec** (2026-10-08): hair
