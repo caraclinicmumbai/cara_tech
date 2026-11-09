@@ -10,6 +10,7 @@ import { QuotesPanel } from "@/components/QuotesPanel";
 import { isServiceWindowOpen, leadIdsSharingPhone } from "@/lib/messages";
 import { formatIst, formatIstDate, istDateTimeLocal } from "@/lib/datetime";
 import { FollowUpField } from "@/components/FollowUpField";
+import { FollowUpList } from "@/components/FollowUpList";
 import { currentUser, canSeeLead } from "@/lib/authz";
 import { can, leadScope } from "@/lib/rbac";
 import { summariseQuotes } from "@/lib/quotes";
@@ -38,7 +39,7 @@ import { LeadComments } from "@/components/LeadComments";
 import { LeadFlagsField } from "@/components/LeadFlagsField";
 import { getBoolSetting } from "@/lib/settings";
 import { PATIENT_FLAGS_ENABLED } from "@/lib/scheduling/toggles";
-import { listFollowUpSteps, followUpQueue } from "@/lib/followups";
+import { pendingFollowUps } from "@/lib/followups";
 import { callOutcomeLabel } from "@/lib/clickToCallLog";
 import { callTypeLabel, isInboundCallType } from "@/lib/inboundCallLog";
 import { ASSIGNABLE_REP } from "@/lib/salesReps";
@@ -276,11 +277,10 @@ export default async function LeadDetailPage({
   // lead page shows only WHEN the next one is due — the interactive panel was more
   // machinery than the desk wanted. The steps remain the source of that date (and of
   // the leads table's Follow up column).
-  const followUpSteps = await listFollowUpSteps(lead.id);
-  const nextFollowUp = followUpSteps.find((s) => s.visual === "todo" || s.visual === "missed");
-  // What's queued behind the next one, so the editor can explain itself when moving a
-  // date makes a different step become "next".
-  const followUpAhead = await followUpQueue(lead.id);
+  const followUps = await pendingFollowUps(lead.id);
+  // The soonest is the lead's next follow-up (the leads table's date); any others are
+  // extra ones staff added, listed under it.
+  const nextFollowUp = followUps[0] ?? null;
   const ownershipReps = handoverReps.map((r) => ({ id: r.id, name: r.name, team: r.team, branchId: r.branchId, branchName: r.branch?.name ?? null }));
   const granteeOptions = granteeUsers
     .filter((u) => u.id !== viewer.id)
@@ -429,29 +429,23 @@ export default async function LeadDetailPage({
             inline
             className="col-span-2 sm:col-span-3"
             value={
+              <span className="flex flex-col gap-1.5">
               <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                {/* Editable for anyone who works this lead (§follow-up). The roadmap
-                    panel is gone, but the DATE still has to be settable. */}
+                {/* Editable for anyone who works this lead (§follow-up). Keyed on the step
+                    and its date so the field reloads when a different follow-up becomes
+                    the next one. */}
                 {canEditLead ? (
                   <FollowUpField
+                    key={nextFollowUp ? `${nextFollowUp.id}:${nextFollowUp.dueAt.getTime()}` : "none"}
                     leadId={lead.id}
-                    dueAtLocal={nextFollowUp?.dueAt ? istDateTimeLocal(nextFollowUp.dueAt) : ""}
+                    dueAtLocal={nextFollowUp ? istDateTimeLocal(nextFollowUp.dueAt) : ""}
                     title={nextFollowUp?.title ?? null}
-                    overdue={nextFollowUp?.visual === "missed"}
-                    laterCount={followUpAhead.laterCount}
-                    laterFirst={
-                      followUpAhead.laterFirstAt ? formatIstDate(followUpAhead.laterFirstAt) : null
-                    }
+                    overdue={!!nextFollowUp?.overdue}
                   />
-                ) : nextFollowUp?.dueAt ? (
-                  <span
-                    className={
-                      nextFollowUp.visual === "missed" ? "txt-bad" : ""
-                    }
-                    title={nextFollowUp.title}
-                  >
+                ) : nextFollowUp ? (
+                  <span className={nextFollowUp.overdue ? "txt-bad" : ""} title={nextFollowUp.title}>
                     {formatIstDate(nextFollowUp.dueAt)} · {nextFollowUp.title}
-                    {nextFollowUp.visual === "missed" ? " (overdue)" : ""}
+                    {nextFollowUp.overdue ? " (overdue)" : ""}
                   </span>
                 ) : null}
                 {/* What the patient themselves asked for, when they named a time. */}
@@ -460,6 +454,20 @@ export default async function LeadDetailPage({
                     Callback requested {formatIst(lead.callbackAt)}
                   </span>
                 ) : null}
+              </span>
+              {canEditLead ? (
+                <FollowUpList
+                  leadId={lead.id}
+                  next={nextFollowUp ? { id: nextFollowUp.id, when: formatIst(nextFollowUp.dueAt), title: nextFollowUp.title, overdue: nextFollowUp.overdue } : null}
+                  later={followUps.slice(1).map((f) => ({ id: f.id, when: formatIst(f.dueAt), title: f.title, overdue: f.overdue }))}
+                />
+              ) : (
+                followUps.slice(1).map((f) => (
+                  <span key={f.id} className={`text-xs ${f.overdue ? "txt-bad" : "text-cara-muted"}`}>
+                    Then {formatIst(f.dueAt)} · {f.title}
+                  </span>
+                ))
+              )}
               </span>
             }
           />

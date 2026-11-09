@@ -5,9 +5,9 @@
 // created before the roadmap existed, and the duplicates / held-for-review / walk-in
 // leads that intake used to skip, are all in that state.
 //
-// Seeds the human-only ladder (no AI steps — their calling phase is over or never
-// happened), anchored at TODAY rather than the lead's creation date: back-dating
-// would paint months of invented "missed" steps instead of a plan someone can work.
+// Seeds the single follow-up new leads get (seedFollowUpSteps), anchored at the next
+// 10:00 IST rather than the lead's creation date: back-dating would paint months of
+// invented "missed" dates instead of a plan someone can work.
 //
 // Skips leads that are finished — converted or lost — because a next follow-up date
 // on a closed lead is noise, not a prompt.
@@ -50,7 +50,7 @@ async function main() {
         leadId: lead.id,
         ownerRepId: lead.assignedRepId,
         startAt: anchor,
-        aiCalling: false,
+        callNow: false,
       });
       seeded += n > 0 ? 1 : 0;
     }

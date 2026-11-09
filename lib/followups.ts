@@ -1,103 +1,52 @@
-// Per-lead follow-up roadmap (§follow-up roadmap). A lead carries an ordered list
-// of follow-up steps — the "sales roadmap" — each with its own status and an
-// accountable actor (a telecaller/counsellor rep, the sales head, or the AI).
+// Per-lead follow-ups (§follow-up). A lead carries a list of follow-up steps, each with
+// a due date, a status and an accountable person (its telecaller, or the sales head).
+// Older leads may still hold AI-owned steps from before AI calling stopped.
 //
-// Steps are SEEDED from a standard template at intake and are hand-editable
-// thereafter (add / complete / skip / reassign). Only pending | done | skipped
+// Each new lead is seeded with ONE step at intake (seedFollowUpSteps); staff can add
+// more, mark them done or remove them from the lead page. Only pending | done | skipped
 // are persisted; "missed" is DERIVED at read time (a pending step past its due
 // date), so no background sweep is needed to turn a step red.
 import { prisma } from "@/lib/prisma";
-import { getSalesHead } from "@/lib/salesReps";
 import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type FollowUpChannel = "ai_call" | "call" | "whatsapp" | "quote" | "custom";
-export type FollowUpOwnerKind = "ai" | "rep" | "sales_head";
 /// The visual state a step renders as. `missed` is derived, never stored.
 export type FollowUpVisualStatus = "done" | "missed" | "todo" | "skipped";
 
-type TemplateStep = {
-  title: string;
-  channel: FollowUpChannel;
-  dayOffset: number; // days after lead creation the step is due
-  ownerKind: FollowUpOwnerKind;
-};
-
-/// The default follow-up roadmap seeded on every actively-pursued new lead. Owners
-/// resolve at seed time: `rep` → the lead's assigned counsellor, `sales_head` →
-/// the sales head, `ai` → the automated caller. Staff can edit any of it after.
-export const FOLLOWUP_TEMPLATE: TemplateStep[] = [
-  { title: "AI first call", channel: "ai_call", dayOffset: 0, ownerKind: "ai" },
-  { title: "AI reconfirmation call", channel: "ai_call", dayOffset: 1, ownerKind: "ai" },
-  { title: "Counsellor follow-up call", channel: "call", dayOffset: 3, ownerKind: "rep" },
-  { title: "WhatsApp follow-up", channel: "whatsapp", dayOffset: 5, ownerKind: "rep" },
-  { title: "Counsellor callback", channel: "call", dayOffset: 7, ownerKind: "rep" },
-  { title: "Sales-head review", channel: "custom", dayOffset: 14, ownerKind: "sales_head" },
-];
-
-/// The same ladder for a lead the AI will never call — walk-ins, duplicates,
-/// held-for-review, inbound callers. The AI steps are dropped and the human ones
-/// re-based so the first touch lands the day after intake instead of on day 3.
-function humanOnlyTemplate(): TemplateStep[] {
-  const steps = FOLLOWUP_TEMPLATE.filter((t) => t.channel !== "ai_call");
-  const shift = (steps[0]?.dayOffset ?? 1) - 1;
-  return steps.map((t) => ({ ...t, dayOffset: t.dayOffset - shift }));
-}
-
-/// Seed the standard roadmap onto a lead. Idempotent — a no-op if the lead already
-/// has any steps. Best-effort by design (never throws into the intake flow).
+/// Every new lead gets ONE follow-up (clinic decision, 2026-11-09): the six-step ladder
+/// it replaced kept two AI-call steps nobody does since AI calling stopped, and showed
+/// dates nobody had chosen. More can be added by hand from the lead page.
+///
+/// A lead that came in on its own (form, ad, WhatsApp) is due a call straight away: the
+/// reminder sweep then pings its telecaller within minutes, which is the speed-to-call
+/// target. A lead someone is already dealing with (walk-in, inbound caller, duplicate,
+/// held for review) is due the next day.
 export async function seedFollowUpSteps(input: {
   leadId: string;
   ownerRepId: string | null;
   startAt: Date;
-  /// false when this lead will never be auto-called, so the AI steps are pointless.
-  /// Every lead gets a ladder either way — an empty Follow up column reads as "no
-  /// plan", and that's exactly the lead that gets forgotten.
-  aiCalling?: boolean;
+  /// true when nobody has spoken to this lead yet, so the first call is due now.
+  callNow: boolean;
 }): Promise<number> {
   const existing = await prisma.leadFollowUpStep.count({ where: { leadId: input.leadId } });
   if (existing > 0) return 0;
 
-  // Resolve the sales head once (may be null if none configured).
-  const salesHead = await getSalesHead();
-
-  const template = input.aiCalling === false ? humanOnlyTemplate() : FOLLOWUP_TEMPLATE;
-  const rows = template.map((t, i) => {
-    const ownerRepId =
-      t.ownerKind === "rep" ? input.ownerRepId : t.ownerKind === "sales_head" ? (salesHead?.id ?? null) : null;
-    return {
+  await prisma.leadFollowUpStep.create({
+    data: {
       leadId: input.leadId,
-      order: i,
-      title: t.title,
-      channel: t.channel,
-      dueAt: new Date(input.startAt.getTime() + t.dayOffset * DAY_MS),
-      ownerKind: t.ownerKind,
-      ownerRepId,
+      order: 0,
+      title: input.callNow ? "First call" : "Follow up",
+      channel: "call",
+      dueAt: input.callNow ? input.startAt : new Date(input.startAt.getTime() + DAY_MS),
+      ownerKind: "rep",
+      ownerRepId: input.ownerRepId,
       source: "template",
-    };
+    },
   });
-
-  await prisma.leadFollowUpStep.createMany({ data: rows });
-  return rows.length;
+  return 1;
 }
-
-export type FollowUpStepView = {
-  id: string;
-  order: number;
-  title: string;
-  channel: string;
-  dueAt: string | null; // ISO
-  status: string; // stored: pending | done | skipped
-  visual: FollowUpVisualStatus; // derived (adds "missed")
-  completedAt: string | null; // ISO
-  ownerKind: string;
-  ownerRepId: string | null;
-  ownerName: string; // resolved label: rep name, "AI", or "Unassigned"
-  source: string;
-  note: string | null;
-};
 
 /// The visual status a step renders as: done/skipped are stored outright; a
 /// pending step with a past due date is `missed` (red); everything else is `todo`.
@@ -109,54 +58,6 @@ export function visualStatus(
   if (step.status === "skipped") return "skipped";
   if (step.dueAt && step.dueAt.getTime() < now) return "missed";
   return "todo";
-}
-
-/// The accountable actor's display label for a step.
-function ownerLabel(step: { ownerKind: string; ownerRep: { name: string } | null }): string {
-  if (step.ownerKind === "ai") return "AI";
-  return step.ownerRep?.name ?? "Unassigned";
-}
-
-/// The lead's follow-up roadmap, ordered, with owners resolved + visual status.
-export async function listFollowUpSteps(
-  leadId: string,
-  now: number = Date.now(),
-): Promise<FollowUpStepView[]> {
-  const steps = await prisma.leadFollowUpStep.findMany({
-    where: { leadId },
-    orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-    include: { ownerRep: { select: { name: true } } },
-  });
-  return steps.map((s) => ({
-    id: s.id,
-    order: s.order,
-    title: s.title,
-    channel: s.channel,
-    dueAt: s.dueAt ? s.dueAt.toISOString() : null,
-    status: s.status,
-    visual: visualStatus(s, now),
-    completedAt: s.completedAt ? s.completedAt.toISOString() : null,
-    ownerKind: s.ownerKind,
-    ownerRepId: s.ownerRepId,
-    ownerName: ownerLabel(s),
-    source: s.source,
-    note: s.note,
-  }));
-}
-
-/// A compact roll-up for the section header, e.g. "2 done · 1 missed · 3 to do".
-export function summariseRoadmap(steps: FollowUpStepView[]): string {
-  if (steps.length === 0) return "No follow-up steps yet";
-  const done = steps.filter((s) => s.visual === "done").length;
-  const missed = steps.filter((s) => s.visual === "missed").length;
-  const todo = steps.filter((s) => s.visual === "todo").length;
-  const skipped = steps.filter((s) => s.visual === "skipped").length;
-  const parts: string[] = [];
-  if (done) parts.push(`${done} done`);
-  if (missed) parts.push(`${missed} missed`);
-  if (todo) parts.push(`${todo} to do`);
-  if (skipped) parts.push(`${skipped} skipped`);
-  return parts.join(" · ");
 }
 
 /// React to a call outcome so the roadmap tracks reality (§follow-up roadmap,
@@ -286,32 +187,63 @@ export async function nextFollowUpStep(leadId: string) {
   return prisma.leadFollowUpStep.findFirst({
     where: { leadId, status: "pending", dueAt: { not: null } },
     orderBy: { dueAt: "asc" },
-    select: { id: true, title: true, dueAt: true, channel: true },
+    select: { id: true, title: true, dueAt: true, channel: true, ownerKind: true },
   });
 }
 
-/// The next follow-up plus the ones queued behind it.
-///
-/// Leads are seeded with a small ladder of steps at intake, and only the earliest shows
-/// in the column. That matters when someone edits the date: push the next step into
-/// October and the step behind it becomes "next", so the screen would show a date the
-/// counsellor didn't type and looks like the save failed. Handing the queue to the UI
-/// lets it say what's actually there instead.
-export async function followUpQueue(leadId: string): Promise<{
-  next: { id: string; title: string; dueAt: Date | null } | null;
-  laterCount: number;
-  laterFirstAt: Date | null;
-}> {
-  const pending = await prisma.leadFollowUpStep.findMany({
+/// Every pending follow-up with a date, soonest first. The first is the lead's "next"
+/// follow-up (the one the leads table shows); the rest are the extra ones staff added.
+export async function pendingFollowUps(leadId: string, now: number = Date.now()) {
+  const steps = await prisma.leadFollowUpStep.findMany({
     where: { leadId, status: "pending", dueAt: { not: null } },
-    orderBy: { dueAt: "asc" },
+    orderBy: [{ dueAt: "asc" }, { order: "asc" }],
     select: { id: true, title: true, dueAt: true },
   });
-  return {
-    next: pending[0] ?? null,
-    laterCount: Math.max(0, pending.length - 1),
-    laterFirstAt: pending[1]?.dueAt ?? null,
-  };
+  return steps.map((s) => ({ id: s.id, title: s.title, dueAt: s.dueAt!, overdue: s.dueAt!.getTime() < now }));
+}
+
+/// Add another follow-up to a lead, owned by its telecaller.
+export async function addFollowUp(input: { leadId: string; dueAt: Date; title?: string | null }): Promise<string> {
+  const [lead, max] = await Promise.all([
+    prisma.lead.findUnique({ where: { id: input.leadId }, select: { assignedRepId: true } }),
+    prisma.leadFollowUpStep.aggregate({ where: { leadId: input.leadId }, _max: { order: true } }),
+  ]);
+  const step = await prisma.leadFollowUpStep.create({
+    data: {
+      leadId: input.leadId,
+      order: (max._max.order ?? -1) + 1,
+      title: input.title?.trim().slice(0, 120) || "Follow up",
+      channel: "call",
+      dueAt: input.dueAt,
+      status: "pending",
+      ownerKind: "rep",
+      ownerRepId: lead?.assignedRepId ?? null,
+      source: "manual",
+    },
+    select: { id: true },
+  });
+  return step.id;
+}
+
+/// Close one pending follow-up: `done` when it happened, `skipped` when it's removed.
+/// The row stays (with who and when) so the history isn't lost. Returns its title, or
+/// null when it isn't a pending step of this lead.
+export async function closeFollowUp(input: {
+  leadId: string;
+  stepId: string;
+  status: "done" | "skipped";
+  userId: string | null;
+}): Promise<string | null> {
+  const step = await prisma.leadFollowUpStep.findFirst({
+    where: { id: input.stepId, leadId: input.leadId, status: "pending" },
+    select: { title: true },
+  });
+  if (!step) return null;
+  await prisma.leadFollowUpStep.update({
+    where: { id: input.stepId },
+    data: { status: input.status, completedAt: new Date(), completedById: input.userId },
+  });
+  return step.title;
 }
 
 /// Set (or clear) when this lead is next followed up.
@@ -333,10 +265,17 @@ export async function setNextFollowUp(input: {
   const existing = await nextFollowUpStep(input.leadId);
 
   if (existing) {
+    // An AI step left over from before AI calling stopped becomes the telecaller's when
+    // someone moves it, or it would never remind anybody.
+    const fromAi = existing.ownerKind === "ai";
+    const owner = fromAi
+      ? await prisma.lead.findUnique({ where: { id: input.leadId }, select: { assignedRepId: true } })
+      : null;
     await prisma.leadFollowUpStep.update({
       where: { id: existing.id },
       data: {
         dueAt: input.dueAt,
+        ...(fromAi ? { ownerKind: "rep", ownerRepId: owner?.assignedRepId ?? null, channel: "call" } : {}),
         // Moving the date arms a fresh reminder (§follow-up reminders). Without this,
         // a step reminded once would never remind again however often it was
         // rescheduled — the reschedule is exactly when a reminder matters most.
@@ -382,11 +321,10 @@ export async function seedFollowUpStepsSafe(input: {
   leadId: string;
   ownerRepId: string | null;
   startAt: Date;
-  aiCalling?: boolean;
+  callNow: boolean;
 }): Promise<void> {
   try {
-    const n = await seedFollowUpSteps(input);
-    if (n) logger.info(`Seeded ${n} follow-up steps for lead ${input.leadId}`);
+    if (await seedFollowUpSteps(input)) logger.info(`Seeded the follow-up for lead ${input.leadId}`);
   } catch (err) {
     logger.error(`Follow-up seed failed for lead ${input.leadId}: ${String(err)}`);
   }
