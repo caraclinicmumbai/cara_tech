@@ -27,7 +27,7 @@ imported because nothing in the CRM knows what a click cost (see
 | 12 | Telecalling | Calls, talk time, connected or not, appointments booked and show rate, by day, week or month and by person |
 | 13 | Speed to Call | How long new leads waited for a first call, and each lead's record against the 5-minute target |
 | 14 | Telecaller Activity | When each telecaller was active or inactive, the ratio, and the exact inactive periods |
-| 15 | Follow-Ups | Follow-ups each telecaller missed today, and how many are overdue |
+| 15 | Follow-Ups | The leads each telecaller has to follow up: overdue, missed today and due later today |
 
 ## Who sees what
 
@@ -104,8 +104,14 @@ disagree with each other.
   otherwise used, because someone auto-set Offline stays Offline until they tap it. With no shift
   roster, a day runs from first to last activity within 10:00–22:00 IST, and inactive periods
   are the gaps of 5 minutes or more in between. A day with no activity is counted apart.
-- **Follow-Ups** is live, not ranged. Overdue on previous-CRM leads shows as **carried over**,
-  apart from the real figure.
+- **Follow-Ups** is live, not ranged, and counts **leads, not follow-up steps** (changed
+  2026-11-09 after the clinic saw the same lead listed three times). A lead's status comes from
+  its soonest pending follow-up: missed today, overdue, due later today, or **carried over**
+  (overdue on a previous-CRM lead, kept apart from the real figure). Leads marked lost aren't
+  counted, matching the follow-up reminders. The page shows the totals; a per-telecaller table
+  where clicking a name narrows the list (`?rep=`); and one row per lead with its status, next
+  follow-up, any other follow-ups and its last call (connected or not). Up to 150 rows are
+  listed; the rest are still counted. Slack uses the same per-lead counts.
 
 ### On Slack
 
