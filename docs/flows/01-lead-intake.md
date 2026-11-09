@@ -92,24 +92,28 @@ counsellor (sales heads excluded, `SalesRep.lastAssignedAt` is the rota cursor) 
 
 ## Follow-up dates
 
-**Every** lead is seeded a dated follow-up ladder at intake (`seedFollowUpSteps` — AI
-first call, reconfirmation, counsellor call, WhatsApp, callback, sales-head review), and
-call outcomes and stage moves keep it current.
+**Every** lead gets **one** follow-up at intake (`seedFollowUpSteps`, clinic decision
+2026-11-09), owned by its telecaller:
 
-- A lead the AI will never call — **walk-in, inbound caller, duplicate, held-for-review**
-  — gets the same ladder minus the AI steps, re-based so the first human touch is the day
-  after intake (`aiCalling: false`). These used to be skipped entirely and left with a
-  blank Follow up column, which reads as "no plan" — and that's the lead that gets
-  forgotten. There's no longer a panel for staff to add steps by hand, so seeding them
-  automatically is the only thing that keeps the date there.
-- `scripts/backfillFollowUpDates.ts` does the same for leads that predate this, anchored
-  at 10:00 IST rather than back-dated (inventing months of "missed" steps helps nobody).
-  It leaves **converted and lost** leads alone: a next-follow-up date on a closed lead is
-  noise, so those cells stay empty on purpose.
+- A lead that came in on its own (form, ad, WhatsApp) gets **"First call", due now**. The
+  reminder sweep pings the telecaller within 5 minutes, which is the speed-to-call target.
+- A lead someone is already dealing with (**walk-in, inbound caller, duplicate,
+  held-for-review**) gets **"Follow up", due tomorrow** (`callNow: false`).
+- More follow-ups are added by hand on the lead page (below). Call outcomes and stage moves
+  still keep the dates current.
+- This replaced a six-step ladder (AI first call, AI reconfirmation, counsellor call,
+  WhatsApp, callback, sales-head review). Its AI steps were never done once AI calling
+  stopped: new leads showed overdue at once and nobody was reminded until day 3. Migration
+  `20261109140632_single_follow_up` cleaned up existing leads. Each keeps one follow-up: its
+  soonest step owned by a person. Other pending ladder or AI steps were marked `skipped`
+  with a note, and a remaining AI step was handed to the telecaller. Follow-ups added by
+  hand, including the dates imported from the old CRM, were not touched. Nothing was deleted.
+- `scripts/backfillFollowUpDates.ts` gives the same single follow-up to leads that have
+  none, anchored at 10:00 IST rather than back-dated. It leaves **converted and lost**
+  leads alone: a next-follow-up date on a closed lead is noise.
 
-**The steps are scheduling machinery, not a screen.** The interactive roadmap panel
-that used to sit on the lead page was removed on request: the desk wanted the dates,
-not a checklist to maintain. What's left visible is the **next due step**:
+What's visible is the **next follow-up**, the soonest pending step with a date, plus the
+list of later ones on the lead page:
 
 - **Lead page** — a `Follow Up` field: **editable** (date *and* time) by anyone with
   `leads.edit` who can see the lead, plus the step title, an overdue marker, and the
@@ -129,15 +133,18 @@ not a checklist to maintain. What's left visible is the **next due step**:
     12-hour clock everywhere, and a `<select>` is a native scrollable list on every
     platform. Minutes are offered in fives; picking a date with no time yet defaults to
     **10:00 AM**, when the clinic is open, rather than midnight.
-  - When other steps are queued behind this one, the field **says so and names the next
-    date**. Push this step past them and one of those becomes the lead's next follow-up;
-    without the warning that reads as a failed save.
+  - **Multiple follow-ups** (`components/FollowUpList.tsx`): under the field, **Mark done**
+    closes the next follow-up, and the following one becomes the date. Later follow-ups are
+    listed with **Done** and **Remove**, and **+ Add follow-up** schedules another (date,
+    time, optional "what for"). Removing keeps the row as `skipped`; nothing is deleted.
+    Audited as `lead.followup.add` / `.done` / `.skip`. Moving the next date past a later
+    one makes that one the next, and the field reloads to show it.
   - **One line, its own row** at the top of the details grid. The controls are full-width
     by default (`.cara-input`), so in a third-of-a-width grid cell each one landed on its
     own line and three paragraphs of explanation sat under them — the most-used field on
     the page was also the tallest. The controls now size to their content
     (`.cara-control-compact`) and the prose is a word or two on the same row
-    — *step title*, `Overdue`, `+2 later` — with the full sentence on hover.
+    — *step title* or `Overdue` — with the full sentence on hover.
   - Audited as `lead.followup.due` with the old and new timestamps.
 
 ### The reminder (§follow-up reminders)
@@ -163,8 +170,9 @@ Rules worth knowing:
 - **Nothing older than 24h is reminded.** Past that it's archaeology, not a reminder, and
   a worker outage shouldn't produce a burst of week-old bells. The overdue marker in the
   leads table covers those.
-- **AI-owned steps and lost leads are skipped** (marked reminded so they aren't re-read
-  every sweep). A step with no owner at all is logged and skipped rather than retried
+- **AI-owned steps and lost leads are skipped**, marked reminded so they aren't re-read
+  every sweep. AI steps only exist on old leads; moving one's date hands it to the
+  telecaller. A step with no owner at all is logged and skipped rather than retried
   forever.
 - No enabling flag: a reminder for a date a human typed is never unwanted.
 - **Leads table** — the `Follow up` column, same source (earliest pending step),
@@ -177,11 +185,6 @@ Rules worth knowing:
   day. That trap is easy to hit from SQL too: these columns are naive `timestamp`s holding
   UTC, so the correct conversion is `("col" AT TIME ZONE 'UTC') AT TIME ZONE
   'Asia/Kolkata'` — the single-cast form silently shifts everything by 5:30.
-
-Nothing else changed: seeding, `applyCallOutcomeToRoadmap`, `applyStageChangeToRoadmap`
-and the voicemail "return missed call" step all still run, so the dates stay accurate.
-Bringing the panel back is a revert of one commit (`components/FollowUpRoadmap.tsx` +
-`app/(dashboard)/leads/followUpActions.ts`).
 
 ## Key files
 

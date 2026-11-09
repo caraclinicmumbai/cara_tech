@@ -25,10 +25,10 @@ const HOURS12 = ["12", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10
 /// and lands the reminder while everyone is asleep.
 const DEFAULT_HOUR_24 = 10;
 
-type Parts = { date: string; hour12: string; minute: string; meridiem: "AM" | "PM" };
+export type Parts = { date: string; hour12: string; minute: string; meridiem: "AM" | "PM" };
 
 /// "YYYY-MM-DDTHH:mm" (24h, IST) → the four pieces the controls show.
-function toParts(value: string): Parts {
+export function toParts(value: string): Parts {
   const m = value.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/);
   if (!m) return { date: "", hour12: "10", minute: "00", meridiem: "AM" };
   const [, date, hh, mm] = m;
@@ -43,7 +43,7 @@ function toParts(value: string): Parts {
 }
 
 /// The four pieces → "YYYY-MM-DDTHH:mm" (24h, IST), or "" when there's no date.
-function fromParts(p: Parts): string {
+export function fromParts(p: Parts): string {
   if (!p.date) return "";
   let h = Number(p.hour12) % 12;
   if (p.meridiem === "PM") h += 12;
@@ -55,8 +55,6 @@ export function FollowUpField({
   dueAtLocal,
   title,
   overdue,
-  laterCount,
-  laterFirst,
 }: {
   leadId: string;
   /// "YYYY-MM-DDTHH:mm" in IST, or "" when nothing is scheduled.
@@ -64,11 +62,6 @@ export function FollowUpField({
   /// What the step is called, shown so it's clear WHICH follow-up is being moved.
   title: string | null;
   overdue: boolean;
-  /// How many further follow-ups are queued behind this one, and when the soonest of
-  /// them falls. Without this, pushing the next date past a queued step makes the
-  /// field come back showing that step's date — which reads as "my change didn't save".
-  laterCount: number;
-  laterFirst: string | null;
 }) {
   const [parts, setParts] = useState<Parts>(() => toParts(dueAtLocal));
   const [saved, setSaved] = useState(dueAtLocal);
@@ -109,21 +102,12 @@ export function FollowUpField({
     commit(next);
   }
 
-  const sel = "cara-select cara-control-compact";
-
-  /// The step being moved, and what else is queued — said in a few words on the row,
-  /// with the full sentence on hover. This used to be three paragraphs under the
-  /// controls, which cost more vertical space than the control itself.
+  /// The step being moved, said in a few words on the row with the full sentence on
+  /// hover. Any later follow-ups are listed under this field (FollowUpList), so pushing
+  /// this date past one of them visibly makes that one the next.
   const scheduleHint = title
     ? `Moves “${title}” — the date the leads table shows.`
     : "Nothing scheduled. Setting a date adds a follow-up owned by this lead's counsellor.";
-
-  const laterHint =
-    laterCount > 0
-      ? `${laterCount} more follow-up${laterCount === 1 ? "" : "s"} scheduled after this` +
-        (laterFirst ? ` — next on ${laterFirst}.` : ".") +
-        ` Push this one past ${laterFirst ?? "them"} and that one becomes the lead's next follow-up.`
-      : "";
 
   return (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -141,43 +125,7 @@ export function FollowUpField({
         {/* Only ask for a time once there's a day to put it on. */}
         {parts.date && (
           <>
-            <select
-              aria-label="Hour"
-              value={parts.hour12}
-              disabled={pending}
-              onChange={(e) => update({ hour12: e.target.value })}
-              className={sel}
-            >
-              {HOURS12.map((h) => (
-                <option key={h} value={h}>
-                  {h}
-                </option>
-              ))}
-            </select>
-            <span className="text-cara-muted">:</span>
-            <select
-              aria-label="Minute"
-              value={parts.minute}
-              disabled={pending}
-              onChange={(e) => update({ minute: e.target.value })}
-              className={sel}
-            >
-              {MINUTES.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="AM or PM"
-              value={parts.meridiem}
-              disabled={pending}
-              onChange={(e) => update({ meridiem: e.target.value as "AM" | "PM" })}
-              className={sel}
-            >
-              <option value="AM">AM</option>
-              <option value="PM">PM</option>
-            </select>
+            <TimeSelects parts={parts} disabled={pending} onChange={update} />
             <span className="text-[11px] text-cara-faint" title="Times are IST.">
               IST
             </span>
@@ -193,10 +141,6 @@ export function FollowUpField({
         )}
       </span>
 
-      {/* Everything that used to be prose under the controls, said in a word or two on
-          the same row. The long version is on hover, so nothing is lost — including the
-          warning about pushing this date past a queued step, which otherwise makes the
-          field reload showing that step and reads as a failed save. */}
       <span className="flex items-center gap-2 text-[11px] text-cara-faint">
         {pending && <span>Saving…</span>}
 
@@ -215,13 +159,49 @@ export function FollowUpField({
             {title ?? "Nothing scheduled"}
           </span>
         )}
-
-        {laterCount > 0 && (
-          <span title={laterHint}>
-            +{laterCount} later
-          </span>
-        )}
       </span>
     </span>
+  );
+}
+
+/// Hour, minute and AM/PM as plain selects (see the note at the top of this file).
+export function TimeSelects({
+  parts,
+  disabled,
+  onChange,
+}: {
+  parts: Parts;
+  disabled?: boolean;
+  onChange: (patch: Partial<Parts>) => void;
+}) {
+  const sel = "cara-select cara-control-compact";
+  return (
+    <>
+      <select aria-label="Hour" value={parts.hour12} disabled={disabled} onChange={(e) => onChange({ hour12: e.target.value })} className={sel}>
+        {HOURS12.map((h) => (
+          <option key={h} value={h}>
+            {h}
+          </option>
+        ))}
+      </select>
+      <span className="text-cara-muted">:</span>
+      <select aria-label="Minute" value={parts.minute} disabled={disabled} onChange={(e) => onChange({ minute: e.target.value })} className={sel}>
+        {MINUTES.map((m) => (
+          <option key={m} value={m}>
+            {m}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label="AM or PM"
+        value={parts.meridiem}
+        disabled={disabled}
+        onChange={(e) => onChange({ meridiem: e.target.value as "AM" | "PM" })}
+        className={sel}
+      >
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+    </>
   );
 }
