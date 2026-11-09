@@ -7,6 +7,26 @@ Format: newest first.
 
 ---
 
+## 2026-11-09 — One follow-up per lead, with the option to add more
+
+Merge `8cd39d6` (commit `4678e4d`). **Migration:** `single_follow_up` (data only, no schema
+change). No new settings. Flow doc updated: **[01-lead-intake.md](flows/01-lead-intake.md)**.
+
+- **New leads** get one follow-up instead of the six-step ladder: "First call" due now for
+  web, ad and WhatsApp leads (the reminder pings the telecaller within 5 minutes), and "Follow
+  up" due tomorrow for walk-ins, inbound callers, duplicates and held leads.
+- **Lead page:** Mark done on the next follow-up, + Add follow-up for more, and Done / Remove on
+  the later ones. Removed ones are kept as skipped. The lead page and the leads table now both
+  show the soonest pending follow-up.
+- **Existing leads:** each keeps one follow-up, its soonest one owned by a person. The other
+  pending ladder steps and AI steps are marked skipped with a note, and an AI step left as a
+  lead's only follow-up goes to its telecaller. Follow-ups added by hand, including the dates
+  imported from the old CRM, are untouched. Nothing is deleted.
+- Moving the date of an old AI step now hands it to the telecaller, so it reminds someone.
+- Removed `scripts/backfillFollowUps.ts` (a one-off for the old ladder).
+
+---
+
 ## 2026-11-09 — Appointment stages (placeholder)
 
 Merge `f09f67c` (commit `60e6b2c`). **Migration:** `appointment_stages` (new tables
