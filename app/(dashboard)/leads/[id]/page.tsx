@@ -11,6 +11,7 @@ import { isServiceWindowOpen, leadIdsSharingPhone } from "@/lib/messages";
 import { formatIst, formatIstDate, istDateTimeLocal } from "@/lib/datetime";
 import { FollowUpField } from "@/components/FollowUpField";
 import { FollowUpList } from "@/components/FollowUpList";
+import { BackToLeads } from "@/components/BackToLeads";
 import { currentUser, canSeeLead } from "@/lib/authz";
 import { can, leadScope } from "@/lib/rbac";
 import { summariseQuotes } from "@/lib/quotes";
@@ -290,9 +291,9 @@ export default async function LeadDetailPage({
     <div className="space-y-8">
       <RecordViewLogger entityType="lead" entityId={lead.id} />
       <div className="flex flex-wrap items-center gap-3">
-        <Link href="/leads" className="text-sm text-black/50 hover:underline dark:text-white/50">
+        <BackToLeads className="text-sm text-black/50 hover:underline dark:text-white/50">
           ← Leads
-        </Link>
+        </BackToLeads>
         {/* §leads table — step to the next lead in the filtered list without going back
             to re-apply the filter. Renders nothing unless this lead came from one. */}
         <div className="min-w-0 flex-1">
