@@ -7,6 +7,23 @@ Format: newest first.
 
 ---
 
+## 2026-11-09 — Appointment stages (placeholder)
+
+Merge `f09f67c` (commit `60e6b2c`). **Migration:** `appointment_stages` (new tables
+`AppointmentStage` and `AppointmentStageDone`, no change to existing data). No new settings.
+Flow doc updated: **[15-appointments-scheduling.md](flows/15-appointments-scheduling.md)**;
+#8 rules recorded in **[deferred-todo.md](deferred-todo.md)**.
+
+- **Settings → Appointment stages** (admin only): for each consultation or treatment type, add,
+  edit, reorder or remove the stages of the visit. Each stage has a role that does it and a
+  colour. None ship: the clinic defines them with Dr. Asif.
+- **Appointment card:** lists the stages in colour. Once the patient is checked in, someone in
+  the stage's role (or an admin) ticks each off. The card shows the time and who ticked it, and
+  each tick is audited.
+- A stage already used on a visit is retired instead of deleted, so past visits keep the record.
+
+---
+
 ## 2026-11-06 — Telecalling reports and Slack delivery
 
 Merge `7ce6df8` (commit `b3a6601`). **Migration:** `rep_activity_sessions` (new table
