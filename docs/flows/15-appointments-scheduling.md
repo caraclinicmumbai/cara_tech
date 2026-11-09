@@ -648,6 +648,29 @@ patient a tablet: the card's **Open form for patient**.
 - **Tentative holds** (`holdMinutes`) lapse via `expireHolds()`, which the worker runs
   every minute. It cancels the hold with reason "Hold expired".
 
+## Appointment stages (#7, placeholder)
+
+The business asked to break a visit into stages, each done by a role and shown in a colour.
+Cara provides only the mechanism. **The stages themselves are for the clinic to define with
+Dr. Asif, so none ship.**
+
+- **Where:** Settings (`/settings`, admin only: `settings.manage`) → *Appointment stages*. There
+  is one row per active appointment type, and consultations and treatments are both
+  appointment types. For each type, add a stage (name, role, colour), edit it, move it up or
+  down, or remove it. New consultations or treatments are added as appointment types under
+  Scheduling setup, which the Settings section links to.
+- **Remove:** a stage no visit has ticked yet is deleted. A stage some visit has ticked is
+  *retired* instead (hidden from new visits, still shown on the past visits that ticked it)
+  and can be restored.
+- **On the day:** the appointment card lists the type's stages in order with their colours.
+  Once the appointment is checked in, in progress or completed, someone **in the stage's role**
+  (or a CRM admin) ticks it off. The card then shows the time and who ticked it. Unticking is
+  allowed. Both actions are audited (`appointment.stage.done` / `.undone`), and the branch
+  rule applies as it does for other actions on the card.
+- **Not built yet (waiting on the clinic):** stage-based reports, a stage shown on the calendar
+  block itself, alerts when a stage is late, and assigning a stage to a named person rather
+  than a role.
+
 ## Setup screen: `/appointments/setup`
 
 Gated to `appointments.configure`. Every change is audited.
@@ -701,6 +724,8 @@ Gated to `appointments.configure`. Every change is audited.
 | `lib/scheduling/calendar.ts` | Viewer + privacy, appointments for a range, day columns, week roster, summary |
 | `components/scheduling/desk/*` | The desk: shell/toolbar, views, booking drawer, appointment card |
 | `components/scheduling/*` | Setup tab components |
+| `lib/scheduling/stages.ts`, `components/StagesSetup.tsx`, `app/(dashboard)/settings/actions.ts` | Appointment stages: tick rule, Settings editor, its actions; ticking is `setStageDone` in `app/(dashboard)/appointments/actions.ts` |
+| migration `20261109081828_appointment_stages` | `AppointmentStage`, `AppointmentStageDone` |
 | `scripts/checkScheduling.ts` | `npm run check:scheduling`: 39 checks: engine, spec 2.1 incl. the worked example, database concurrency / reschedule / override |
 
 ## Configuration

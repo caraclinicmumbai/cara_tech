@@ -35,6 +35,7 @@ import type { Issue } from "@/lib/scheduling/engine";
 import { appointmentLink } from "@/lib/scheduling/links";
 import { intakeLinkFor, intakeStatus } from "@/lib/scheduling/intake/service";
 import { applyCredit, availableCredits, CREDIT_REASON_LABELS, refundCredit } from "@/lib/scheduling/billing";
+import { STAGE_TICK_STATUSES, mayTickStage, stageRoleLabel } from "@/lib/scheduling/stages";
 
 const PATH = "/appointments";
 
@@ -365,6 +366,8 @@ export type AppointmentDetail = {
   plan: { planId: string; name: string; step: string; position: string } | null;
   otherPlans: { id: string; name: string; progress: string }[];
   seriesOptions: { id: string; name: string }[];
+  /// #7 — the visit's stages (set per type in Settings), in order, with who ticked each.
+  stages: { id: string; label: string; role: string; roleLabel: string; tone: string; doneAt: string | null; doneBy: string | null; canTick: boolean }[];
 };
 
 export async function getAppointmentDetail(id: string): Promise<AppointmentDetail | null> {
@@ -440,7 +443,79 @@ export async function getAppointmentDetail(id: string): Promise<AppointmentDetai
     })(),
     payment: visible && a.payments[0] ? { status: a.payments[0].status, amount: a.payments[0].amountPaise / 100, discountPct: a.payments[0].discountPct } : null,
     ...(await creditInfo(a.id, a.leadId, visible, can(user.role, "appointments.refund"))),
+    stages: visible ? await stageInfo(a.id, a.typeId, a.status, user.role) : [],
   };
+}
+
+async function stageInfo(appointmentId: string, typeId: string, status: string, role: string | null | undefined) {
+  const [stages, done] = await Promise.all([
+    prisma.appointmentStage.findMany({ where: { typeId }, orderBy: { order: "asc" } }),
+    prisma.appointmentStageDone.findMany({ where: { appointmentId } }),
+  ]);
+  const byStage = new Map(done.map((x) => [x.stageId, x]));
+  const users = await prisma.user.findMany({
+    where: { id: { in: done.map((x) => x.doneById).filter((x): x is string => !!x) } },
+    select: { id: true, name: true, email: true },
+  });
+  const who = new Map(users.map((u) => [u.id, u.name ?? u.email]));
+  const onTheDay = (STAGE_TICK_STATUSES as readonly string[]).includes(status);
+  return stages
+    // A retired stage still shows on a visit that ticked it, so the record isn't lost.
+    .filter((s) => s.active || byStage.has(s.id))
+    .map((s) => {
+      const d = byStage.get(s.id);
+      return {
+        id: s.id,
+        label: s.label,
+        role: s.role,
+        roleLabel: stageRoleLabel(s.role),
+        tone: s.tone,
+        doneAt: d ? d.doneAt.toISOString() : null,
+        doneBy: d?.doneById ? (who.get(d.doneById) ?? null) : null,
+        canTick: onTheDay && s.active && mayTickStage(role, s.role),
+      };
+    });
+}
+
+/// Tick (or untick) one stage of a visit. Only someone in the stage's role (or a CRM
+/// admin), and only once the patient has checked in.
+export async function setStageDone(appointmentId: string, stageId: string, done: boolean): Promise<{ ok: boolean; error?: string }> {
+  const user = await requireCapability("appointments.view");
+  const [appt, stage] = await Promise.all([
+    prisma.appointment.findUnique({ where: { id: appointmentId }, select: { typeId: true, status: true, branchId: true, resources: { select: { resourceId: true } } } }),
+    prisma.appointmentStage.findUnique({ where: { id: stageId } }),
+  ]);
+  if (!appt || !stage || stage.typeId !== appt.typeId) return { ok: false, error: "Stage not found" };
+  if (!stage.active) return { ok: false, error: "That stage has been retired" };
+  if (!mayTickStage(user.role, stage.role)) return { ok: false, error: `Only ${stageRoleLabel(stage.role)} can tick this stage` };
+  if (!(STAGE_TICK_STATUSES as readonly string[]).includes(appt.status)) return { ok: false, error: "Stages are ticked once the patient has checked in" };
+  const viewer = await viewerFor(user);
+  const own = viewer.resourceId !== null && appt.resources.some((r) => r.resourceId === viewer.resourceId);
+  if (!own && !viewer.seesAllBranches && appt.branchId !== viewer.homeBranchId) return { ok: false, error: "That appointment is at another branch" };
+  try {
+    if (done) {
+      await prisma.appointmentStageDone.upsert({
+        where: { appointmentId_stageId: { appointmentId, stageId } },
+        create: { appointmentId, stageId, doneById: user.id ?? null },
+        update: {},
+      });
+    } else {
+      await prisma.appointmentStageDone.deleteMany({ where: { appointmentId, stageId } });
+    }
+    await writeAudit({
+      actorId: user.id,
+      actorEmail: user.email,
+      action: done ? "appointment.stage.done" : "appointment.stage.undone",
+      entityType: "appointment",
+      entityId: appointmentId,
+      newValue: stage.label,
+    });
+    revalidatePath(PATH);
+    return { ok: true };
+  } catch (err) {
+    logger.error(`setStageDone failed: ${String(err)}`);
+    return { ok: false, error: "Could not update the stage" };
+  }
 }
 
 async function creditInfo(appointmentId: string, leadId: string, visible: boolean, canRefund: boolean) {
