@@ -7,6 +7,25 @@ Format: newest first.
 
 ---
 
+## 2026-11-10 — Follow-Ups report counts unique leads
+
+Merge `1398755` (commit `dfed2c5`). No migration, no new settings. Flow doc updated:
+**[12-reports.md](flows/12-reports.md)**.
+
+- **Reports → Follow-Ups** now counts each lead once, by its soonest pending follow-up. It
+  used to list every follow-up step, so a lead on the old six-step ladder appeared up to three
+  times (Counsellor callback / Counsellor follow-up call / WhatsApp follow-up) and every count
+  was inflated. Lost leads are left out.
+- Headline tiles: **Leads to follow up now** (overdue + missed today), Overdue, Missed today,
+  Due later today, Carried over (old-CRM backlog, counted apart).
+- Per-telecaller table of lead counts; clicking a name filters the list to their leads.
+- **Leads to follow up** list, one row per lead: status, next follow-up, any other follow-ups,
+  and the last call (connected or not). Missed today first, then overdue, then due later today;
+  up to 150 rows, the rest still counted.
+- The daily Slack summary and **My numbers** use the same per-lead counts.
+
+---
+
 ## 2026-11-09 — "← Leads" keeps the list's search and filters
 
 Merge `b45fa11` (commit `c3e6acd`). No migration, no new settings. No flow doc change.
