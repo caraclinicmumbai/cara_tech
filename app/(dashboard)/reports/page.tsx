@@ -48,7 +48,7 @@ const TABS: { key: ReportKey; label: string; blurb: string; money: boolean }[] =
   { key: "telecalling", label: "Telecalling", blurb: "Calls, talk time, connected or not, and the appointments they led to.", money: false },
   { key: "speed-to-call", label: "Speed to Call", blurb: "How long new leads waited for a first call, and which were called within 5 minutes.", money: false },
   { key: "activity", label: "Telecaller Activity", blurb: "When each telecaller was active, when they weren't, and the ratio.", money: false },
-  { key: "follow-ups", label: "Follow-Ups", blurb: "Follow-ups each telecaller missed today, and how many are overdue.", money: false },
+  { key: "follow-ups", label: "Follow-Ups", blurb: "The leads each telecaller has to follow up: overdue, missed today and due later today.", money: false },
   { key: "attribution", label: "Source Attribution", blurb: "Cost per lead, per consultation, per surgery.", money: false },
   { key: "appointments", label: "Appointments", blurb: "No-shows, waits, room and doctor use, recall, and which sources actually turn up.", money: false },
   { key: "lost-leads", label: "Lost Leads", blurb: "Why we lose people before they're ever quoted.", money: false },
@@ -140,7 +140,7 @@ export default async function ReportsPage({
         />
       )}
       {tab.key === "activity" && <ActivitySection range={range} repFilter={str("rep")} href={hrefWith} />}
-      {tab.key === "follow-ups" && <FollowUpSection />}
+      {tab.key === "follow-ups" && <FollowUpSection repFilter={str("rep")} href={hrefWith} />}
       {tab.key === "attribution" && <AttributionSection range={range} showMoney={showMoney} />}
       {tab.key === "lost-leads" && <LostLeadSection range={range} />}
       {tab.key === "treatment-mix" && <TreatmentMixSection range={range} />}

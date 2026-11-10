@@ -213,12 +213,15 @@ async function seeded() {
   const step = (leadId: string, dueAt: Date, extra: Record<string, unknown> = {}) =>
     prisma.leadFollowUpStep.create({ data: { leadId, order: 0, title: `${TAG} step`, dueAt, ownerRepId: a.id, ...extra } });
   await step(quick.id, ist(D, "11:00")); // missed today
-  await step(quick.id, ist(D, "17:00")); // still due today
-  await step(quick.id, ist("2020-03-05", "11:00")); // overdue
-  await step(quick.id, ist(D, "10:00"), { status: "done" }); // done
-  await step(quick.id, ist("2020-03-05", "12:00"), { ownerKind: "ai", ownerRepId: null }); // AI's
+  await step(quick.id, ist(D, "17:00")); // a second one on the same lead: still one lead
+  await step(never.id, ist(D, "17:30")); // due later today
+  await step(slow.id, ist("2020-03-05", "11:00")); // overdue
+  await step(slow.id, ist(D, "10:00"), { status: "done" }); // done
+  await step(slow.id, ist("2020-03-05", "12:00"), { ownerKind: "ai", ownerRepId: null }); // AI's
   const legacy = await prisma.lead.findFirstOrThrow({ where: { name: `${TAG} legacy` } });
   await step(legacy.id, ist("2020-03-01", "11:00")); // carried over
+  const lost = await lead("lost", ist("2020-01-01", "12:00"), { source: "walk_in", stage: "lost" });
+  await step(lost.id, ist("2020-03-04", "11:00")); // on a lost lead: not counted
 
   // Activity for rep A: 11:00–12:00 and 13:00–14:00, then a call while the tab was closed.
   await prisma.repActivitySession.createMany({
@@ -337,15 +340,23 @@ async function seeded() {
   console.log("Follow-Ups");
   const f = await followUpTracking({ now });
   const fA = f.reps.find((r) => r.repId === a.id)!;
-  check("missed today, overdue, still due and carried over are told apart", () => {
+  check("leads are counted once each: missed today, overdue, due later today and carried over told apart", () => {
     assert.equal(fA.missedToday, 1);
     assert.equal(fA.overdue, 1);
     assert.equal(fA.dueLaterToday, 1);
     assert.equal(fA.carriedOver, 1);
   });
-  check("done steps and the AI's steps don't count", () => {
-    assert.equal(f.missedToday.filter((x) => x.repId === a.id).length, 1);
-    assert.equal(f.overdue.filter((x) => x.repId === a.id).length, 1);
+  const asha = f.leads.filter((x) => x.repId === a.id);
+  check("one row per lead, in working order; done, AI and lost-lead follow-ups don't count", () => {
+    assert.deepEqual(
+      asha.map((x) => [x.leadId, x.status]),
+      [[quick.id, "missed_today"], [slow.id, "overdue"], [never.id, "due_later_today"]],
+    );
+  });
+  check("a lead's other follow-ups and last call ride along", () => {
+    const q = asha.find((x) => x.leadId === quick.id)!;
+    assert.deepEqual(q.others.map((o) => o.dueAt.getTime()), [ist(D, "17:00").getTime()]);
+    assert.ok(q.lastCall);
   });
 
   console.log("Slack");

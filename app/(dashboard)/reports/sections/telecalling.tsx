@@ -18,7 +18,7 @@ import {
   type SpeedResult,
 } from "@/lib/reports/speedToCall";
 import { telecallerActivity, type ActivityDay } from "@/lib/reports/telecallerActivity";
-import { followUpTracking } from "@/lib/reports/followUpTracking";
+import { followUpTracking, type FollowUpStatus } from "@/lib/reports/followUpTracking";
 import type { DateRange } from "@/lib/reports/range";
 import { duration, pct, sourceLabel, talkTime } from "@/lib/reports/shared";
 import { salesTeamLabel } from "@/lib/salesTeams";
@@ -481,39 +481,35 @@ export async function ActivitySection({
 
 // ── 15. Follow-Ups ───────────────────────────────────────────────────
 
-export async function FollowUpSection({ repId }: { repId?: string }) {
+const FOLLOW_UP_STATUS: Record<FollowUpStatus, { label: string; tag: string }> = {
+  missed_today: { label: "Missed today", tag: "tag-fushia" },
+  overdue: { label: "Overdue", tag: "tag-tangerine" },
+  due_later_today: { label: "Due later today", tag: "tag-blue" },
+  carried_over: { label: "Carried over", tag: "tag-neutral" },
+};
+
+/// `repId` scopes everything to one person (My numbers). `repFilter` (Reports) keeps the
+/// team table whole and narrows the lead list to the telecaller picked in it.
+export async function FollowUpSection({ repId, repFilter, href }: { repId?: string; repFilter?: string; href?: Href }) {
   const r = await followUpTracking({ repId });
   const nameOf = new Map(r.reps.map((x) => [x.repId, x.repName]));
-
-  const list = (items: typeof r.missedToday) => (
-    <Table head={["Lead", "Follow-up", "Was due", ...(repId ? [] : ["Telecaller"])]}>
-      {items.map((s) => (
-        <tr key={s.id}>
-          <td className="whitespace-nowrap">
-            <LeadLink id={s.leadId} name={s.leadName} />
-          </td>
-          <td className="text-[12px] text-cara-muted">{s.title}</td>
-          <td className="whitespace-nowrap text-[12px]">{formatIst(s.dueAt)}</td>
-          {!repId && (
-            <td className="whitespace-nowrap text-[12px] text-cara-muted">{(s.repId && nameOf.get(s.repId)) ?? "—"}</td>
-          )}
-        </tr>
-      ))}
-    </Table>
-  );
+  const leads = repFilter ? r.leads.filter((l) => l.repId === repFilter) : r.leads;
+  const needsAction = r.totals.missedToday + r.totals.overdue;
 
   return (
     <div className="space-y-5">
       <Caveat>
-        A live picture of follow-ups still not done, whatever date range is chosen. Doing one late
-        takes it off the count. <strong className="font-medium">Carried over</strong> is overdue on
-        leads from the previous CRM, which arrived already late, so it&rsquo;s kept apart.
+        Counted per lead: a lead with several follow-ups counts once, by its soonest one. A live
+        picture, whatever date range is chosen. Doing a follow-up takes it off. Leads marked lost
+        aren&rsquo;t counted. <strong className="font-medium">Carried over</strong> is overdue on leads
+        from the previous CRM, which arrived already late, so it&rsquo;s kept apart.
       </Caveat>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Tile label="Missed today" value={r.totals.missedToday} tone={r.totals.missedToday > 0 ? "danger" : undefined} />
-        <Tile label="Overdue" value={r.totals.overdue} tone={r.totals.overdue > 0 ? "warning" : undefined} />
-        <Tile label="Still due today" value={r.totals.dueLaterToday} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <Tile label="Leads to follow up now" value={needsAction} tone={needsAction > 0 ? "danger" : "good"} hint="overdue + missed today" />
+        <Tile label="Overdue" value={r.totals.overdue} tone={r.totals.overdue > 0 ? "warning" : undefined} hint="due before today" />
+        <Tile label="Missed today" value={r.totals.missedToday} tone={r.totals.missedToday > 0 ? "danger" : undefined} hint="due earlier today" />
+        <Tile label="Due later today" value={r.totals.dueLaterToday} />
         <Tile label="Carried over" value={r.totals.carriedOver} hint="from the previous CRM" />
       </div>
 
@@ -521,17 +517,28 @@ export async function FollowUpSection({ repId }: { repId?: string }) {
         <Table
           head={[
             "Telecaller",
-            { label: "Missed today", align: "right" },
+            { label: "To follow up now", align: "right" },
             { label: "Overdue", align: "right" },
-            { label: "Still due today", align: "right" },
+            { label: "Missed today", align: "right" },
+            { label: "Due later today", align: "right" },
             { label: "Carried over", align: "right" },
           ]}
+          note="Leads, not follow-ups. Click a name to list only their leads."
         >
           {r.reps.map((row) => (
-            <tr key={row.repId}>
-              <td className="whitespace-nowrap text-cara-ink">{row.repName}</td>
-              <Num strong>{row.missedToday}</Num>
-              <Num strong>{row.overdue}</Num>
+            <tr key={row.repId} className={row.repId === repFilter ? "bg-cara-surface-2" : undefined}>
+              <td className="whitespace-nowrap text-cara-ink">
+                {href ? (
+                  <Link href={href({ rep: row.repId })} className="hover:underline">
+                    {row.repName}
+                  </Link>
+                ) : (
+                  row.repName
+                )}
+              </td>
+              <Num strong>{row.missedToday + row.overdue}</Num>
+              <Num>{row.overdue}</Num>
+              <Num>{row.missedToday}</Num>
               <Num>{row.dueLaterToday}</Num>
               <Num>{row.carriedOver}</Num>
             </tr>
@@ -539,14 +546,52 @@ export async function FollowUpSection({ repId }: { repId?: string }) {
         </Table>
       )}
 
-      <Panel title="Missed today">
-        {r.missedToday.length === 0 ? <Empty>Nothing missed today.</Empty> : list(r.missedToday)}
-      </Panel>
       <Panel
-        title="Overdue"
-        hint={r.overdueNotListed > 0 ? `Showing the latest 100. ${r.overdueNotListed} more are counted above.` : undefined}
+        title={repFilter ? `Leads to follow up · ${nameOf.get(repFilter) ?? "one telecaller"}` : "Leads to follow up"}
+        hint={
+          r.leadsNotListed > 0
+            ? `Showing ${r.leads.length} leads. ${r.leadsNotListed} more are counted above.`
+            : "Missed today first, then overdue (most recent first), then due later today."
+        }
       >
-        {r.overdue.length === 0 ? <Empty>Nothing overdue.</Empty> : list(r.overdue)}
+        {repFilter && href && (
+          <Link href={href({})} className="cara-pill">
+            Everyone
+          </Link>
+        )}
+        {leads.length === 0 ? (
+          <Empty>Nothing to follow up.</Empty>
+        ) : (
+          <Table head={["Lead", ...(repId ? [] : ["Telecaller"]), "Status", "Next follow-up", "Other follow-ups", "Last call"]}>
+            {leads.map((l) => (
+              <tr key={l.leadId}>
+                <td className="whitespace-nowrap">
+                  <LeadLink id={l.leadId} name={l.leadName} />
+                </td>
+                {!repId && <td className="whitespace-nowrap text-[12px] text-cara-muted">{nameOf.get(l.repId) ?? "—"}</td>}
+                <td className="whitespace-nowrap">
+                  <span className={`tag ${FOLLOW_UP_STATUS[l.status].tag}`}>{FOLLOW_UP_STATUS[l.status].label}</span>
+                </td>
+                <td className="text-[12px]">
+                  <span className="whitespace-nowrap">{formatIst(l.next.dueAt)}</span>
+                  <div className="text-cara-muted">{l.next.title}</div>
+                </td>
+                <td className="text-[12px] text-cara-muted">
+                  {l.others.length === 0
+                    ? "—"
+                    : l.others.map((o, i) => (
+                        <div key={i} className="whitespace-nowrap">
+                          {formatIst(o.dueAt)} · {o.title}
+                        </div>
+                      ))}
+                </td>
+                <td className="whitespace-nowrap text-[12px] text-cara-muted">
+                  {l.lastCall ? `${formatIst(l.lastCall.at)} · ${l.lastCall.connected ? "connected" : "not connected"}` : "No call yet"}
+                </td>
+              </tr>
+            ))}
+          </Table>
+        )}
       </Panel>
     </div>
   );
