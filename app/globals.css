@@ -418,6 +418,10 @@ h1, h2, h3 {
   box-shadow: 0 0 0 3px var(--cara-accent-bg);
 }
 .cara-textarea { min-height: 84px; resize: vertical; line-height: 1.5; }
+/* A dropdown's open list is drawn by the browser, and some (Chrome on Windows) paint it
+   white whatever the theme while the options inherit the page's light text in dark
+   mode, which reads white on white. Colour the options themselves. */
+select option { background-color: var(--cara-surface); color: var(--cara-ink); }
 .cara-label {
   display: block;
   font-size: 13px;
