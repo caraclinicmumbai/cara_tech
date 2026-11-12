@@ -7,6 +7,25 @@ Format: newest first.
 
 ---
 
+## 2026-11-12 — Settings → Pipeline: lead stages and quote statuses
+
+Merge `7178698` (commit `0f68657`). **Migration:** `pipeline_status` (new `PipelineStatus`
+table — renames and custom entries; empty until an admin uses it). No new settings keys.
+Doc updated: **[architecture.md](architecture.md)** (the clinic's own stages and statuses).
+
+- Settings has a **Pipeline** section: add custom lead stages and quote statuses, rename any
+  of them, delete the custom ones. Built-ins can be renamed but not deleted — the automation
+  moves leads and quotes into them.
+- A custom lead stage sits after a chosen built-in and ranks with it (auto-advance, reports,
+  premature-lost). A custom quote status is open or closed-not-won; no custom won statuses.
+- Deleting a custom entry moves its leads / quotes to a chosen target, audited per record;
+  refused while a chatbot flow is triggered by that stage.
+- Every screen shows the clinic's names: stage dropdowns and filters, the quote panel and
+  board, chatbot triggers, stuck-stage alerts, patient history. Open-quote queries (rep
+  handover, campaigns, scheduling, lost report) count custom open statuses.
+
+---
+
 ## 2026-11-12 — Remarks: one history for the dashboard and the lead page
 
 Merge `a2ff927` (commit `d6e9a0b`). **Migration:** `remarks_follow_comments` (data only —
