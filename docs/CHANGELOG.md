@@ -7,6 +7,22 @@ Format: newest first.
 
 ---
 
+## 2026-11-12 — Remarks: one history for the dashboard and the lead page
+
+Merge `a2ff927` (commit `d6e9a0b`). **Migration:** `remarks_follow_comments` (data only —
+copies dashboard-only remarks into the lead's comments, credited via the audit trail, then
+sets every `Lead.remark` to the newest comment). No new settings. Doc updated:
+**[architecture.md](architecture.md)** (LeadComment / `Lead.remark` in the data model).
+
+- The leads dashboard's Remark and the lead page's Notes & comments were separate stores;
+  neither showed the other's entries. The comment thread is now the one history, and the
+  dashboard shows its newest entry (`lib/leadRemarks.ts`).
+- A remark typed on the dashboard is added as a comment with its author and time. Clearing
+  the dashboard box deletes nothing.
+- Leads export: remarks with no author were dropped from the Remark columns; now included.
+
+---
+
 ## 2026-11-12 — WhatsApp chat: attachments
 
 Merge `83addbf` (commit `660b6cd`). No migration, no new settings. New route
