@@ -7,6 +7,23 @@ Format: newest first.
 
 ---
 
+## 2026-11-12 — Leads export: the previous CRM's working columns, alternate number
+
+Merge `39aa5fe` (commit `79fc237`). **Migration:** `lead_alternate_phone` (adds
+`Lead.alternatePhone`, fills it for old-CRM leads from the import's summary comment). No new
+settings. Flow doc updated: **[12-reports.md](flows/12-reports.md)** (new "Leads export"
+section).
+
+- **Leads → Export CSV** adds the old CRM sheet's columns: next follow-up date, last call
+  date / time / status (Connected / Not Connected) and not-connected reason, call attempt count,
+  closed by executive and reason, alternate number, quote generated / treatments / total,
+  comment count, and every remark (newest first) with who added it and when.
+- **Alternate number** is a new lead field, shown on the lead page and edited under Edit
+  details. Merging a duplicate carries it over when the original has none.
+- The export's cap rises from 5,000 to 20,000 leads; it was silently leaving out the oldest.
+
+---
+
 ## 2026-11-10 — Follow-Ups report counts unique leads
 
 Merge `1398755` (commit `dfed2c5`). No migration, no new settings. Flow doc updated:
