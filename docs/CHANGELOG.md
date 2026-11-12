@@ -7,6 +7,22 @@ Format: newest first.
 
 ---
 
+## 2026-11-12 — WhatsApp chat: attachments
+
+Merge `83addbf` (commit `660b6cd`). No migration, no new settings. New route
+`POST /api/leads/[id]/whatsapp/attachment`. Flow doc updated:
+**[06-whatsapp-messaging.md](flows/06-whatsapp-messaging.md)** (Outbound: attachments; new
+limitation; key files).
+
+- The chat composer has a 📎 button (pasting a screenshot works too): photos, videos, voice
+  notes and documents, up to 10 at a time, with the typed text as the caption.
+- Sent files are logged with their media id, so the thread shows them like received ones.
+- Types and sizes follow Meta's rules (JPG/PNG 5 MB, MP4 16 MB, audio 16 MB,
+  PDF/Office/TXT 100 MB), checked in the browser and on the server. HEIC and .mov are
+  refused. 24h window only, like free text.
+
+---
+
 ## 2026-11-12 — WhatsApp templates: disable and delete
 
 Merge `dac6692` (commit `ad4928e`). No migration. New setting key
