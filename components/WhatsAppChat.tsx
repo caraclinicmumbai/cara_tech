@@ -17,6 +17,7 @@ import {
   type ParamSource,
 } from "@/lib/templateFill";
 import { formatIst } from "@/lib/datetime";
+import { ATTACHMENT_ACCEPT, classifyAttachment, formatBytes } from "@/lib/whatsappMedia";
 
 export type ChatMessage = {
   id: string;
@@ -53,6 +54,38 @@ function mergeMessages(base: ChatMessage[], incoming: ChatMessage[]): ChatMessag
   return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
+/// One picked attachment in the composer: a thumbnail for a photo, a file chip otherwise.
+function AttachmentChip({ file, onRemove, disabled }: { file: File; onRemove: () => void; disabled: boolean }) {
+  const isImage = file.type === "image/jpeg" || file.type === "image/png";
+  const thumb = useMemo(() => (isImage ? URL.createObjectURL(file) : null), [file, isImage]);
+  useEffect(() => () => {
+    if (thumb) URL.revokeObjectURL(thumb);
+  }, [thumb]);
+  return (
+    <div className="flex items-center gap-2 rounded border border-black/10 bg-black/5 py-1 pl-1 pr-2 text-xs dark:border-white/15 dark:bg-white/10">
+      {thumb ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={thumb} alt="" className="h-10 w-10 rounded object-cover" />
+      ) : (
+        <span className="flex h-10 w-10 items-center justify-center rounded bg-black/5 text-lg dark:bg-white/10">📄</span>
+      )}
+      <span className="max-w-48 truncate" title={file.name}>
+        {file.name}
+        <span className="block text-[10px] text-black/45 dark:text-white/45">{formatBytes(file.size)}</span>
+      </span>
+      <button
+        type="button"
+        onClick={onRemove}
+        disabled={disabled}
+        aria-label={`Remove ${file.name}`}
+        className="ml-1 text-black/45 hover:text-black disabled:opacity-50 dark:text-white/45 dark:hover:text-white"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 function latestCursor(messages: ChatMessage[]): string | null {
   let max: string | null = null;
   for (const m of messages) if (!max || m.updatedAt > max) max = m.updatedAt;
@@ -84,6 +117,25 @@ export function WhatsAppChat({
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // ── Attachments ──────────────────────────────────────────────────
+  // Picked with the paperclip (or pasted), sent one by one through the attachment
+  // route; whatever is typed in the box goes as the first file's caption.
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [progress, setProgress] = useState<string | null>(null);
+
+  function addFiles(list: FileList | File[]) {
+    const accepted: File[] = [];
+    const refused: string[] = [];
+    for (const f of Array.from(list)) {
+      const v = classifyAttachment(f.name, f.type, f.size);
+      if (v.ok) accepted.push(f);
+      else refused.push(v.error);
+    }
+    setError(refused.length ? refused.join(" ") : null);
+    if (accepted.length) setFiles((prev) => [...prev, ...accepted].slice(0, 10));
+  }
 
   // ── "/" quick replies ────────────────────────────────────────────
   // Fetched the first time someone types a slash. File-header templates are left out,
@@ -207,6 +259,7 @@ export function WhatsAppChat({
 
   function send() {
     const body = text.trim();
+    if (files.length) return sendFiles(body);
     if (!body) return;
     setError(null);
     startTransition(async () => {
@@ -218,6 +271,40 @@ export function WhatsAppChat({
       } else {
         setError(res.error ?? "Failed to send");
       }
+    });
+  }
+
+  function sendFiles(caption: string) {
+    setError(null);
+    startTransition(async () => {
+      const queue = [...files];
+      for (let i = 0; i < queue.length; i++) {
+        const f = queue[i];
+        setProgress(queue.length > 1 ? `Sending ${i + 1} of ${queue.length}…` : "Sending…");
+        const form = new FormData();
+        form.append("file", f);
+        if (i === 0 && caption) form.append("caption", caption);
+        let err: string | null = null;
+        try {
+          const res = await fetch(`/api/leads/${leadId}/whatsapp/attachment`, { method: "POST", body: form });
+          if (!res.ok) err = ((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? `Failed to send "${f.name}"`;
+        } catch {
+          err = `Failed to send "${f.name}" — check your connection`;
+        }
+        if (i === 0 && !err) setText("");
+        if (err) {
+          // Keep what didn't go, so the agent can retry without re-picking.
+          setFiles(queue.slice(i));
+          setError(err);
+          setProgress(null);
+          router.refresh();
+          return;
+        }
+      }
+      setFiles([]);
+      setProgress(null);
+      pinnedRef.current = true;
+      router.refresh();
     });
   }
 
@@ -317,7 +404,40 @@ export function WhatsAppChat({
           <TemplatePicker leadId={leadId} leadContext={leadContext} />
         ) : (
           <div className="space-y-2">
+            {files.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {files.map((f, i) => (
+                  <AttachmentChip
+                    key={`${f.name}:${f.size}:${f.lastModified}:${i}`}
+                    file={f}
+                    disabled={pending}
+                    onRemove={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                  />
+                ))}
+              </div>
+            )}
             <div className="relative flex gap-2">
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                accept={ATTACHMENT_ACCEPT}
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) addFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={pending}
+                title="Attach a photo, video or document"
+                aria-label="Attach a file"
+                className="self-end rounded border border-black/15 px-2.5 py-2 text-base leading-none disabled:opacity-50 dark:border-white/20"
+              >
+                📎
+              </button>
               {slash && <TemplateSlashMenu templates={slashHits} active={slashActive} onPick={insertTemplate} />}
               <textarea
                 ref={boxRef}
@@ -325,6 +445,12 @@ export function WhatsAppChat({
                 disabled={pending}
                 onChange={(e) => onComposerChange(e.target.value, e.target.selectionStart)}
                 onBlur={() => setSlash(null)}
+                onPaste={(e) => {
+                  if (e.clipboardData.files.length) {
+                    e.preventDefault();
+                    addFiles(e.clipboardData.files);
+                  }
+                }}
                 onKeyDown={(e) => {
                   if (slash && slashHits?.length) {
                     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -345,16 +471,20 @@ export function WhatsAppChat({
                   }
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !unfilled) send();
                 }}
-                placeholder="Type a reply, or / for templates…  (⌘/Ctrl+Enter to send)"
+                placeholder={
+                  files.length
+                    ? "Add a caption (optional)…  (⌘/Ctrl+Enter to send)"
+                    : "Type a reply, or / for templates…  (⌘/Ctrl+Enter to send)"
+                }
                 rows={2}
                 className="flex-1 resize-none rounded border border-black/15 bg-transparent px-3 py-2 text-sm dark:border-white/20"
               />
               <button
                 onClick={send}
-                disabled={pending || !text.trim() || unfilled}
+                disabled={pending || (!text.trim() && !files.length) || unfilled}
                 className="self-end rounded bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
               >
-                {pending ? "Sending…" : "Send"}
+                {pending ? (progress ?? "Sending…") : "Send"}
               </button>
             </div>
             {unfilled && (

@@ -19,7 +19,9 @@ import {
   sendWhatsAppButtons,
   sendWhatsAppList,
   sendWhatsAppImageLink,
+  sendWhatsAppMedia,
 } from "@/lib/providers/whatsapp";
+import type { AttachmentKind } from "@/lib/whatsappMedia";
 import { logger } from "@/lib/logger";
 
 // Meta's customer-service window: once a lead messages us, we may send free-form
@@ -342,6 +344,49 @@ export async function sendLeadDocument(
     logger.error(`WhatsApp document to lead ${leadId} failed: ${res.error}`);
     return { ok: false, error: res.error };
   }
+  return { ok: true, message };
+}
+
+/// Send a chat attachment — a photo, video, voice note or document an agent picked
+/// in the composer — and log it with its media id, so the thread shows it the way it
+/// shows a patient's own photos. 24h window only, like free text. Audio can't carry a
+/// caption on WhatsApp, so a caption typed with one follows as a separate text.
+export async function sendLeadAttachment(
+  leadId: string,
+  file: { buffer: Buffer; filename: string; mime: string; kind: AttachmentKind },
+  caption: string | undefined,
+  opts: SendOpts = {},
+): Promise<{ ok: true; message: Message } | { ok: false; error: string }> {
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!lead) return { ok: false, error: "Lead not found" };
+  const blocked = await messageBlock(lead, opts);
+  if (blocked) return { ok: false, error: blocked };
+  const label = file.kind === "image" ? (caption ?? "[image]") : `[${file.kind}] ${file.filename}${caption ? ` — ${caption}` : ""}`;
+  if (!(await isServiceWindowOpen(leadId))) {
+    return logBlocked(leadId, file.kind, label, "Outside the 24h window — needs an approved template", opts);
+  }
+
+  const mediaId = await uploadWhatsAppMedia(file.buffer, file.mime, file.filename);
+  if (!mediaId) return { ok: false, error: `Could not upload "${file.filename}" to WhatsApp` };
+
+  const res = await sendWhatsAppMedia(lead.phone, file.kind, mediaId, { filename: file.filename, caption });
+  const message = await saveMessage({
+    leadId,
+    direction: "outbound",
+    waId: res.ok ? res.waId : undefined,
+    type: file.kind,
+    body: file.kind === "audio" ? `[audio] ${file.filename}` : label,
+    mediaId,
+    status: res.ok ? "sent" : "failed",
+    error: res.ok ? undefined : res.error,
+    automated: opts.automated ?? false,
+    sentBy: opts.sentBy,
+  });
+  if (!res.ok) {
+    logger.error(`WhatsApp ${file.kind} to lead ${leadId} failed: ${res.error}`);
+    return { ok: false, error: res.error };
+  }
+  if (file.kind === "audio" && caption) await sendLeadText(leadId, caption, opts);
   return { ok: true, message };
 }
 

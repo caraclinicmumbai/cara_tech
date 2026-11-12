@@ -23,13 +23,15 @@ export async function requireSession(): Promise<NextResponse | null> {
 /// (e.g. to stamp createdById on a new lead).
 export async function requireApiCapability(
   cap: Capability,
-): Promise<{ denied: NextResponse; userId?: undefined } | { denied: null; userId?: string }> {
+): Promise<
+  { denied: NextResponse; userId?: undefined; email?: undefined } | { denied: null; userId?: string; email?: string }
+> {
   const session = await auth();
-  const user = session?.user as { id?: string; role?: string } | undefined;
+  const user = session?.user as { id?: string; role?: string; email?: string | null } | undefined;
   if (!user) return { denied: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   await ensurePermissions(); // resolve admin overrides into the effective matrix
   if (!can(user.role, cap)) {
     return { denied: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
-  return { denied: null, userId: user.id };
+  return { denied: null, userId: user.id, email: user.email ?? undefined };
 }

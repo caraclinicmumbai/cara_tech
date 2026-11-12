@@ -54,6 +54,16 @@ does, rather than silently hiding replies.
 
 - **Inside the 24h customer-service window:** a free-form text from an agent
   (`sendLeadWhatsApp` server action) is sent and logged with the sending agent.
+- **Attachments (inside the window):** the composer's 📎 button (or pasting a screenshot)
+  picks photos, videos, voice notes and documents, up to 10 at a time. Each is posted to
+  `POST /api/leads/[id]/whatsapp/attachment` (a route, not a Server Action — those cap
+  bodies at 1 MB), uploaded to Meta (`uploadWhatsAppMedia`) and sent by media id
+  (`sendWhatsAppMedia`) via `sendLeadAttachment`. Text typed in the box goes as the first
+  file's caption (audio can't carry one, so it follows as a separate text). The row keeps
+  the `mediaId`, so the thread shows a sent photo/file exactly like a received one.
+  Allowed types and sizes are Meta's (`lib/whatsappMedia.ts`): JPG/PNG ≤ 5 MB, MP4/3GP
+  ≤ 16 MB, AAC/AMR/MP3/M4A/OGG ≤ 16 MB, PDF/Word/Excel/PowerPoint/TXT ≤ 100 MB — checked
+  in the browser before upload and again on the server.
 - **Outside the window:** only an **approved template** can re-open the chat. The lead
   page offers a template picker (`listApprovedTemplates`) that shows a **live preview of
   the message the patient will receive** and **pre-fills the body variables from the
@@ -183,7 +193,9 @@ Fired from `recordCall` (flow 3), each off unless its template env is set:
 - `lib/outreach.ts` — automated trigger templates
 - `app/api/webhooks/whatsapp/route.ts` — inbound webhook
 - `app/api/leads/[id]/messages/stream/route.ts` — SSE live thread
-- `components/WhatsAppChat.tsx` — thread + composer + template picker
+- `components/WhatsAppChat.tsx` — thread + composer (with attachments) + template picker
+- `lib/whatsappMedia.ts` — which files WhatsApp accepts, by kind and size
+- `app/api/leads/[id]/whatsapp/attachment/route.ts` — attachment upload + send
 - `app/(dashboard)/templates/page.tsx` — template builder + disable / delete (`components/TemplateRowActions.tsx`)
 - `scripts/backfillTemplateBodies.ts` — one-off repair of legacy `[template] <name>` rows
 
@@ -204,6 +216,9 @@ Fired from `recordCall` (flow 3), each off unless its template env is set:
   (This is set up in prod.)
 - **Outside the 24h window, only approved templates can be sent.** Free-form replies
   fail until the patient messages again or a template re-opens the window.
+- **Attachments only inside the 24h window**, like free text — outside it the composer is
+  replaced by the template picker. **iPhone HEIC photos and .mov videos are refused**
+  (WhatsApp doesn't accept them); export as JPG / MP4 or send as PDF.
 - **Media URLs expire (~30 days).** Old images are re-fetched on demand and will 404 if
   Meta has expired them.
 - **Automated triggers are off until each template is approved** and its name set in
