@@ -15,6 +15,9 @@ model Lead {
   id            String  @id @default(cuid())
   name          String
   phone         String // E.164 format for ElevenLabs to dial, e.g. +919876543210
+  /// A second number for the same person, kept as staff typed it. Never dialled by the
+  /// system; it's for staff to see and for the leads export.
+  alternatePhone String?
   email         String?
   interest      String? // free-text clinic interest, e.g. "Hair treatment"
   source        String? // web_form | referral | manual | walk_in | facebook | instagram | google

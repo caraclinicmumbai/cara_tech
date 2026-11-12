@@ -164,6 +164,30 @@ Paid sources are `facebook`, `instagram`, `google` (they must match `Lead.source
 Unpaid sources — referral, walk-in, website — have no ad cost, and their cost cells are
 blank rather than zero.
 
+## Leads export (CSV)
+
+**Leads → Export CSV** (`leads.export`, managers/admin; every export is audited as
+`lead.export`) downloads every lead the user can see, newest first, up to 20,000. After the
+lead's own fields come the columns the clinic's previous CRM exported, under that sheet's
+names. Dates and times are IST.
+
+| Column | What it holds |
+| --- | --- |
+| `next_followup_date` | The soonest pending follow-up, "YYYY-MM-DD HH:mm" |
+| `last_call_date`, `last_call_time` | The most recent call of any kind |
+| `last_call_status` | Connected / Not Connected (the same rule as the call log) |
+| `call_not_connected_reason` | The last call's outcome when it didn't connect |
+| `call_attempt_count` | Calls the clinic made; a patient calling in isn't an attempt |
+| `lead_closed_by_executive` | yes when a person marked the lead Lost, no when an automation did or it isn't lost, blank for leads that arrived lost from the previous CRM (who closed them wasn't kept) |
+| `lead_closed_reason` | The lost tag and review, on lost leads |
+| `alternate_number` | The lead's alternate number (Edit details on the lead page) |
+| `quote_generated`, `quote_treatment_recommended`, `quote_amount_total` | Quotes except replaced and withdrawn ones; treatments joined with "; ", the total of their final payable amounts (blank when none is priced) |
+| `total_comments` | Comments on the lead, not counting the previous-CRM import's summary |
+| `Remark 1 (latest)`, `Remark 1 Added By`, `Remark 1 Timestamp`, … | Every comment, newest first, as many sets of columns as the lead with the most comments needs |
+
+Leads brought over from the previous CRM have no calls in Cara, so their call columns are
+empty; what the old CRM knew about their calls is in their remarks.
+
 ## Where the code lives
 
 | Piece | File |
