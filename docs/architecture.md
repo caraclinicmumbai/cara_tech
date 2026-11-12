@@ -47,6 +47,13 @@ triggered automatically on push to `main` (both web and worker rebuild:
   consent, callbacks, handover, assignment, stage-age, and premature-lost.
 - **Call** — one voice call (AI or human). Type, transcript, outcome, sentiment,
   duration, recording URL, and `cqs` + `cqsBreakdown`.
+- **LeadComment** — one staff remark on a lead, with author and time: the lead page's
+  **Notes & comments**, and the only remark history. **`Lead.remark`** (the leads
+  dashboard's Remark column) is a copy of the newest one, kept in step by
+  `syncLeadRemark` (`lib/leadRemarks.ts`) whenever a comment is added or deleted.
+  Typing a remark on the dashboard adds a comment; clearing it there deletes nothing.
+  The previous-CRM import's summary comment (author `Legacy import`) is never a remark.
+  Until 2026-11-12 the two were separate stores and didn't show each other's entries.
 - **Message** — one WhatsApp message (inbound or outbound) — the unified thread.
 - **SalesRep** — a counsellor/telecaller who receives handovers (round-robin).
 - **Quote** — one *treatment* on a lead. The lead is the person; each quote converts on
