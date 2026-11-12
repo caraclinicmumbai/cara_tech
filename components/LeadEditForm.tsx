@@ -1,6 +1,6 @@
 "use client";
 
-// Edit a lead's core details (name / phone / email / interest). Collapsed by default;
+// Edit a lead's core details (name / phone / alternate number / email / interest). Collapsed by default;
 // changing the phone reveals a required reason field (compliance-sensitive). Each saved
 // change is audited server-side.
 import { useState, useTransition } from "react";
@@ -13,26 +13,29 @@ export function LeadEditForm({
   leadId,
   name,
   phone,
+  alternatePhone,
   email,
   interest,
 }: {
   leadId: string;
   name: string;
   phone: string;
+  alternatePhone: string | null;
   email: string | null;
   interest: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ name, phone, email: email ?? "", interest: interest ?? "", reason: "" });
+  const initial = { name, phone, alternatePhone: alternatePhone ?? "", email: email ?? "", interest: interest ?? "", reason: "" };
+  const [f, setF] = useState(initial);
 
   const phoneChanged = f.phone.trim() !== phone;
 
   const save = () =>
     startTransition(async () => {
       const res = await editLead(leadId, {
-        name: f.name, phone: f.phone, email: f.email, interest: f.interest, reason: f.reason || null,
+        name: f.name, phone: f.phone, alternatePhone: f.alternatePhone, email: f.email, interest: f.interest, reason: f.reason || null,
       });
       if (res.ok) { setOpen(false); router.refresh(); }
       else window.alert(res.error ?? "Could not save");
@@ -52,6 +55,7 @@ export function LeadEditForm({
       <div className="flex flex-wrap gap-2">
         <input className={inputCls} placeholder="Name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
         <input className={inputCls} placeholder="Phone" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
+        <input className={inputCls} placeholder="Alternate number" value={f.alternatePhone} onChange={(e) => setF({ ...f, alternatePhone: e.target.value })} />
         <input className={inputCls} placeholder="Email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
         <input className={`${inputCls} min-w-[16rem] flex-1`} placeholder="Treatment" value={f.interest} onChange={(e) => setF({ ...f, interest: e.target.value })} />
       </div>
@@ -66,7 +70,7 @@ export function LeadEditForm({
           Save
         </button>
         <button className="text-sm text-black/50 hover:underline dark:text-white/50"
-          onClick={() => { setF({ name, phone, email: email ?? "", interest: interest ?? "", reason: "" }); setOpen(false); }}>
+          onClick={() => { setF(initial); setOpen(false); }}>
           Cancel
         </button>
         {phoneChanged && <span className="txt-warn text-xs">Phone change requires a reason.</span>}

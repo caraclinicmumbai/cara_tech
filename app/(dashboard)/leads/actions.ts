@@ -260,20 +260,28 @@ export async function setLeadRemark(leadId: string, remark: string): Promise<voi
 /// (compliance-sensitive — consent is tied to the number).
 export async function editLead(
   leadId: string,
-  input: { name: string; phone: string; email?: string | null; interest?: string | null; reason?: string | null },
+  input: {
+    name: string;
+    phone: string;
+    alternatePhone?: string | null;
+    email?: string | null;
+    interest?: string | null;
+    reason?: string | null;
+  },
 ): Promise<{ ok: boolean; error?: string }> {
   const user = await requireCapability("leads.edit");
   if (!(await userCanAccessLead(user, leadId))) return { ok: false, error: "Not found" };
 
   const before = await prisma.lead.findUnique({
     where: { id: leadId },
-    select: { name: true, phone: true, email: true, interest: true },
+    select: { name: true, phone: true, alternatePhone: true, email: true, interest: true },
   });
   if (!before) return { ok: false, error: "Lead not found" };
 
   const name = input.name.trim();
   const email = (input.email ?? "").trim() || null;
   const interest = (input.interest ?? "").trim() || null;
+  const alternatePhone = (input.alternatePhone ?? "").trim().slice(0, 40) || null;
   if (!name) return { ok: false, error: "Name is required" };
   if (!input.phone.trim()) return { ok: false, error: "Phone is required" };
 
@@ -288,10 +296,10 @@ export async function editLead(
   const phoneChanged = phone !== before.phone;
   if (phoneChanged && !reason) return { ok: false, error: "A reason is required to change the phone number" };
 
-  await prisma.lead.update({ where: { id: leadId }, data: { name, phone, email, interest } });
+  await prisma.lead.update({ where: { id: leadId }, data: { name, phone, alternatePhone, email, interest } });
 
   // Audit each changed field; the phone change carries its mandatory reason.
-  await auditLeadFieldChanges(user, leadId, before, { name, email, interest }, ["name", "email", "interest"]);
+  await auditLeadFieldChanges(user, leadId, before, { name, alternatePhone, email, interest }, ["name", "alternatePhone", "email", "interest"]);
   await auditLeadFieldUpdate(user, leadId, "phone", before.phone, phone, reason);
 
   logger.info(`Lead ${leadId} details edited by ${user.email ?? "?"}${phoneChanged ? " (phone changed)" : ""}`);
@@ -341,6 +349,7 @@ export async function mergeDuplicateLead(
         where: { id: originalId },
         data: {
           email: original.email ?? dup.email,
+          alternatePhone: original.alternatePhone ?? dup.alternatePhone,
           interest: original.interest ?? dup.interest,
           tag: original.tag ?? dup.tag,
           campaign: original.campaign ?? dup.campaign,

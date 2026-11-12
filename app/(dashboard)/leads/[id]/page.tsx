@@ -473,6 +473,7 @@ export default async function LeadDetailPage({
             }
           />
           <Field label="Phone" value={lead.phone} />
+          {lead.alternatePhone && <Field label="Alternate number" value={lead.alternatePhone} />}
           <Field label="Email" value={lead.email} />
           <Field
             label="Source"
@@ -491,7 +492,14 @@ export default async function LeadDetailPage({
         </dl>
 
         {canEditLead && (
-          <LeadEditForm leadId={lead.id} name={lead.name} phone={lead.phone} email={lead.email} interest={lead.interest} />
+          <LeadEditForm
+            leadId={lead.id}
+            name={lead.name}
+            phone={lead.phone}
+            alternatePhone={lead.alternatePhone}
+            email={lead.email}
+            interest={lead.interest}
+          />
         )}
       </section>
 
