@@ -7,6 +7,17 @@ Format: newest first.
 
 ---
 
+## 2026-11-12 — Dark mode: WhatsApp template dropdown readable
+
+Merge `1f3486a` (commit `269f138`). No migration, no new settings. No flow doc change.
+
+- The WhatsApp template picker on the lead page showed white text on a white list in dark
+  mode. It now uses the themed dropdown style (`cara-select`).
+- Every dropdown's options now carry the theme's own background and text colours, so no
+  open list can turn white on white in either theme.
+
+---
+
 ## 2026-11-12 — Leads export: the previous CRM's working columns, alternate number
 
 Merge `39aa5fe` (commit `79fc237`). **Migration:** `lead_alternate_phone` (adds
