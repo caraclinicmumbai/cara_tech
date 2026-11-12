@@ -144,7 +144,8 @@ export async function uploadWhatsAppMedia(
     form.append("file", buffer, { filename, contentType: mime });
     const res = await axios.post(`${GRAPH}/${graphVersion()}/${phoneId}/media`, form, {
       headers: { Authorization: `Bearer ${token}`, ...form.getHeaders() },
-      timeout: 20_000,
+      // A chat attachment can be a 100 MB document; 20s was sized for a quote PDF.
+      timeout: 120_000,
       maxBodyLength: Infinity,
     });
     const id: string | undefined = res.data?.id;
@@ -173,6 +174,21 @@ export async function sendWhatsAppDocument(
     type: "document",
     document: { id: mediaId, filename, ...(caption ? { caption } : {}) },
   });
+}
+
+/// Send a previously-uploaded image / video / audio / document (by media id) — a
+/// chat attachment. Session message: 24h window only. Audio can't carry a caption
+/// (Meta rejects one); only a document carries a filename.
+export async function sendWhatsAppMedia(
+  to: string,
+  kind: "image" | "video" | "audio" | "document",
+  mediaId: string,
+  opts: { filename?: string; caption?: string } = {},
+): Promise<WhatsAppSendResult> {
+  const media: Record<string, string> = { id: mediaId };
+  if (kind !== "audio" && opts.caption) media.caption = opts.caption;
+  if (kind === "document" && opts.filename) media.filename = opts.filename;
+  return postMessage({ to: normalizeNumber(to), type: kind, [kind]: media });
 }
 
 /// Send an uploaded document via an APPROVED template that has a document header —
