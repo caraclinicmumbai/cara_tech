@@ -482,7 +482,7 @@ function TemplatePicker({
           <select
             value={selected}
             onChange={(e) => pick(e.target.value)}
-            className="w-full rounded border border-black/15 bg-transparent px-3 py-2 text-sm dark:border-white/20"
+            className="cara-select"
           >
             <option value="">Select a template…</option>
             {templates.map((t) => (
