@@ -6,7 +6,7 @@
 // nothing sends until you've configured (and approved) the template. Each send is
 // best-effort (never throws into the calling flow) and respects opt-out.
 import { isWhatsAppConfigured } from "@/lib/providers/whatsapp";
-import { listApprovedTemplates, buildTemplateComponents } from "@/lib/whatsappTemplates";
+import { listUsableTemplates, buildTemplateComponents } from "@/lib/whatsappTemplates";
 import { sendLeadTemplate } from "@/lib/messages";
 import { logger } from "@/lib/logger";
 
@@ -60,10 +60,10 @@ export async function sendAutomatedTemplate(
     if (!templateName) return { ok: false, sent: false, reason: "No template configured for this trigger" };
     if (!isWhatsAppConfigured()) return { ok: false, sent: false, reason: "WhatsApp is not configured" };
 
-    const tpl = (await listApprovedTemplates()).find((t) => t.name === templateName);
+    const tpl = (await listUsableTemplates()).find((t) => t.name === templateName);
     if (!tpl) {
-      logger.warn(`Automated WA template "${templateName}" not approved/found — skip lead ${leadId}`);
-      return { ok: false, sent: false, reason: `Template "${templateName}" is not approved` };
+      logger.warn(`Automated WA template "${templateName}" not approved/found or disabled — skip lead ${leadId}`);
+      return { ok: false, sent: false, reason: `Template "${templateName}" is not approved, or is disabled` };
     }
 
     const params = vars.slice(0, tpl.paramCount);

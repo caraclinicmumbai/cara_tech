@@ -101,6 +101,28 @@ export async function setBoolSetting(
   logger.info(`App setting ${key} set to ${value}`);
 }
 
+/// Read a list-of-strings setting (empty when unset or malformed).
+export async function getStringListSetting(key: string): Promise<string[]> {
+  const values = await load();
+  const raw = values.has(key) ? values.get(key) : DEFAULTS[key];
+  return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
+}
+
+/// Write a list-of-strings setting and drop the cache. As with booleans, the caller audits.
+export async function setStringListSetting(
+  key: string,
+  value: string[],
+  updatedById?: string | null,
+): Promise<void> {
+  await prisma.appSetting.upsert({
+    where: { key },
+    create: { key, value, updatedById: updatedById ?? null },
+    update: { value, updatedById: updatedById ?? null },
+  });
+  invalidateSettings();
+  logger.info(`App setting ${key} set to [${value.join(", ")}]`);
+}
+
 /// Convenience for the quote path, which asks this on every conversion attempt.
 export async function uninvoicedConversionAllowed(): Promise<boolean> {
   return getBoolSetting(ALLOW_UNINVOICED_CONVERSION);
