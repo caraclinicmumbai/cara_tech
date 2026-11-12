@@ -6,6 +6,7 @@
 // (follow-up, last call, closure, quote, remarks), named as that sheet named them so the
 // team's existing spreadsheets keep working. Dates and times are IST.
 import { NextResponse } from "next/server";
+import { IMPORT_SUMMARY_AUTHOR } from "@/lib/leadRemarks";
 import { prisma } from "@/lib/prisma";
 import { requireApiCapability } from "@/lib/apiAuth";
 import { currentUser, leadWhereForUser } from "@/lib/authz";
@@ -27,9 +28,6 @@ const yesNo = (b: boolean) => (b ? "yes" : "no");
 /// Quotes that don't count as quoted: one superseded by a newer version, and one the
 /// clinic withdrew. Counting a replaced quote would add its amount twice.
 const NOT_QUOTED = ["replaced", "withdrawn"];
-/// The summary comment the previous-CRM import wrote on each lead. It restates the old
-/// CRM's fields, not a remark anyone made, so it isn't counted as one.
-const IMPORT_SUMMARY_AUTHOR = "Legacy import";
 
 export async function GET(req: Request) {
   const { denied } = await requireApiCapability("leads.export");
@@ -81,7 +79,8 @@ export async function GET(req: Request) {
       select: { leadId: true, treatment: true, price: true, quantity: true, totalPayable: true },
     }),
     prisma.leadComment.findMany({
-      where: { leadId: { in: ids }, NOT: { authorName: IMPORT_SUMMARY_AUTHOR } },
+      // `NOT: { authorName }` would also drop remarks with no author (SQL NULL).
+      where: { leadId: { in: ids }, OR: [{ authorName: null }, { authorName: { not: IMPORT_SUMMARY_AUTHOR } }] },
       orderBy: { createdAt: "desc" },
       select: { leadId: true, body: true, authorName: true, createdAt: true },
     }),

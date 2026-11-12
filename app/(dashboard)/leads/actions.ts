@@ -25,6 +25,7 @@ import { beginConsultation } from "@/lib/presence";
 import { cancelScheduledCalls } from "@/lib/queue";
 import { writeAudit, auditLeadFieldUpdate, auditLeadFieldChanges } from "@/lib/audit";
 import { logger } from "@/lib/logger";
+import { syncLeadRemark } from "@/lib/leadRemarks";
 
 const TAG_MAX = 120;
 const REMARK_MAX = 500;
@@ -236,23 +237,18 @@ export async function setLeadTag(leadId: string, tag: string): Promise<void> {
   revalidatePath(`/leads/${leadId}`);
 }
 
-/// Edit the lead's one-line staff remark, inline from the leads dashboard.
-/// Audited like any other staff field edit (old → new).
-export async function setLeadRemark(leadId: string, remark: string): Promise<void> {
+/// Add a remark inline from the leads dashboard. It's a comment like any other — it
+/// lands in the lead's Notes & comments with its author and time — and becomes the
+/// dashboard's Remark (lib/leadRemarks.ts). A blank or unchanged remark does nothing:
+/// earlier remarks stay in the thread and are removed there, one by one.
+export async function setLeadRemark(leadId: string, remark: string): Promise<{ ok: boolean; error?: string }> {
   const user = await requireCapability("leads.comment");
-  if (!(await userCanAccessLead(user, leadId))) throw new Error("Lead not found");
-
-  const trimmed = remark.trim().slice(0, REMARK_MAX);
-  const before = await prisma.lead.findUnique({ where: { id: leadId }, select: { remark: true } });
-  if (!before) throw new Error("Lead not found");
-  await prisma.lead.update({
-    where: { id: leadId },
-    data: { remark: trimmed || null },
-  });
-  await auditLeadFieldUpdate(user, leadId, "remark", before.remark, trimmed || null);
-
-  revalidatePath("/leads");
-  revalidatePath(`/leads/${leadId}`);
+  if (!(await userCanAccessLead(user, leadId))) return { ok: false, error: "Not found" };
+  const text = remark.trim().slice(0, REMARK_MAX);
+  if (!text) return { ok: true };
+  const current = await prisma.lead.findUnique({ where: { id: leadId }, select: { remark: true } });
+  if (current?.remark?.trim() === text) return { ok: true };
+  return addLeadComment(leadId, text);
 }
 
 /// Edit a lead's core details (name / phone / email / interest). Each changed field is
@@ -506,11 +502,13 @@ export async function addLeadComment(
   await prisma.leadComment.create({
     data: { leadId, authorId: user.id, authorName: user.name ?? user.email ?? null, body: text },
   });
+  await syncLeadRemark(leadId);
   await writeAudit({
     actorId: user.id, actorEmail: user.email, action: "lead.comment.add",
     entityType: "lead", entityId: leadId,
   });
   logger.info(`Comment added to lead ${leadId} by ${user.email ?? "?"}`);
+  revalidatePath("/leads");
   revalidatePath(`/leads/${leadId}`);
   return { ok: true };
 }
@@ -534,10 +532,12 @@ export async function deleteLeadComment(
   if (!isAuthor && !isManager) return { ok: false, error: "You can only delete your own comments" };
 
   await prisma.leadComment.delete({ where: { id: commentId } });
+  await syncLeadRemark(comment.leadId);
   await writeAudit({
     actorId: user.id, actorEmail: user.email, action: "lead.comment.delete",
     entityType: "lead", entityId: comment.leadId, meta: { commentId },
   });
+  revalidatePath("/leads");
   revalidatePath(`/leads/${comment.leadId}`);
   return { ok: true };
 }
