@@ -15,8 +15,8 @@
 // each with its own quotation, sharing the person-level history.
 import { prisma } from "@/lib/prisma";
 import { callTypeLabel, isInboundCallType } from "@/lib/inboundCallLog";
-import { computeQuoteTotals, QUOTE_STATUS_LABELS, QUOTE_SOURCE_LABELS, type QuoteStatus, type QuoteSource } from "@/lib/quoteStages";
-import { stageLabel } from "@/lib/leadStages";
+import { computeQuoteTotals, QUOTE_SOURCE_LABELS, type QuoteSource } from "@/lib/quoteStages";
+import { getPipeline } from "@/lib/pipeline";
 
 /// One thing that happened with the patient, whatever the channel.
 export type ContactEvent = {
@@ -133,6 +133,7 @@ function oneLine(s: string | null, max = 140): string {
 /// Assemble the whole record for one converted quote. Returns null if the quote (or
 /// its lead) doesn't exist. Deliberately does NOT check permissions — the route does.
 export async function getPatientHistory(quoteId: string): Promise<PatientHistory | null> {
+  const pipeline = await getPipeline();
   const quote = await prisma.quote.findUnique({
     where: { id: quoteId },
     include: {
@@ -310,7 +311,7 @@ export async function getPatientHistory(quoteId: string): Promise<PatientHistory
     patientName: lead.name,
     patientPhone: lead.phone,
     patientEmail: lead.email,
-    leadStageLabel: stageLabel(lead.stage),
+    leadStageLabel: pipeline.stageLabel(lead.stage),
     leadCreatedAt: lead.createdAt,
     source: lead.source,
     campaign: lead.campaign,
@@ -323,7 +324,7 @@ export async function getPatientHistory(quoteId: string): Promise<PatientHistory
     quoteRef: refFor(quote.id, quote.cycle),
     treatment: quote.treatment,
     cycle: quote.cycle,
-    quoteStatusLabel: QUOTE_STATUS_LABELS[quote.status as QuoteStatus] ?? quote.status,
+    quoteStatusLabel: pipeline.quoteStatusLabel(quote.status),
     quoteSourceLabel: quote.source ? (QUOTE_SOURCE_LABELS[quote.source as QuoteSource] ?? quote.source) : null,
     unitPrice: totals.unitPrice,
     quantity: totals.quantity,
@@ -348,7 +349,7 @@ export async function getPatientHistory(quoteId: string): Promise<PatientHistory
       .map((q) => ({
         treatment: q.treatment,
         cycle: q.cycle,
-        statusLabel: QUOTE_STATUS_LABELS[q.status as QuoteStatus] ?? q.status,
+        statusLabel: pipeline.quoteStatusLabel(q.status),
         total: q.totalPayable,
       })),
 

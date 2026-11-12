@@ -4,6 +4,8 @@ import { requireCapability } from "@/lib/authz";
 import { getBoolSetting, ALLOW_UNINVOICED_CONVERSION } from "@/lib/settings";
 import { SettingToggle } from "@/components/SettingToggle";
 import { StagesSetup } from "@/components/StagesSetup";
+import { PipelineSetup } from "@/components/PipelineSetup";
+import { getPipeline } from "@/lib/pipeline";
 import { setAllowUninvoicedConversion } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   await requireCapability("settings.manage");
-  const [allowUninvoiced, types] = await Promise.all([
+  const [allowUninvoiced, types, pipeline, stageGroups, quoteGroups] = await Promise.all([
     getBoolSetting(ALLOW_UNINVOICED_CONVERSION),
     prisma.appointmentType.findMany({
       where: { active: true },
@@ -27,7 +29,13 @@ export default async function SettingsPage() {
         stages: { orderBy: [{ active: "desc" }, { order: "asc" }], select: { id: true, label: true, role: true, tone: true, active: true } },
       },
     }),
+    getPipeline(),
+    // Deleted (restorable) leads included: deleting a stage moves them too.
+    prisma.lead.groupBy({ by: ["stage"], _count: { _all: true } }),
+    prisma.quote.groupBy({ by: ["status"], _count: { _all: true } }),
   ]);
+  const stageCounts = Object.fromEntries(stageGroups.map((g) => [g.stage, g._count._all]));
+  const quoteCounts = Object.fromEntries(quoteGroups.map((g) => [g.status, g._count._all]));
 
   return (
     <div className="space-y-6">
@@ -66,6 +74,23 @@ export default async function SettingsPage() {
               meantime, which converts the quote properly.
             </>
           }
+        />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="cara-eyebrow">Pipeline</h2>
+        <p className="cara-note">
+          The stages a lead moves through and the statuses a quote can have. Add your own, rename
+          any of them, and delete the ones you added. <strong>Built-in</strong> ones can be renamed
+          but not deleted: calls, bookings, invoices and post-sales move leads and quotes into them
+          automatically. A custom lead stage sits after the built-in you choose, so reports and
+          automatic moves treat it as part of that phase.
+        </p>
+        <PipelineSetup
+          leadStages={pipeline.leadStages}
+          quoteStatuses={pipeline.quoteStatuses}
+          stageCounts={stageCounts}
+          quoteCounts={quoteCounts}
         />
       </section>
 

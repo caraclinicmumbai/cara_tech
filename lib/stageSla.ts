@@ -8,7 +8,8 @@
 // exactly once.
 import { prisma } from "@/lib/prisma";
 import { notifyCounsellor } from "@/lib/counsellor";
-import { stageLabel, STAGE_SLA_EXCLUDED } from "@/lib/leadStages";
+import { STAGE_SLA_EXCLUDED } from "@/lib/leadStages";
+import { getPipeline } from "@/lib/pipeline";
 import { WON_QUOTE_STATUSES } from "@/lib/quoteStages";
 import { logger } from "@/lib/logger";
 
@@ -51,7 +52,7 @@ export async function runStageSlaScan(limit = 200): Promise<number> {
       await notifyCounsellor({
         kind: "stage_sla",
         lead,
-        reason: `No movement in *${stageLabel(lead.stage)}* for ${daysStuck} days (SLA ${days}d).`,
+        reason: `No movement in *${(await getPipeline()).stageLabel(lead.stage)}* for ${daysStuck} days (SLA ${days}d).`,
       });
       // Stamp so we don't re-alert until the stage changes (which nulls this).
       await prisma.lead.update({

@@ -19,7 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { advanceStage } from "@/lib/leadStages";
-import { OPEN_QUOTE_STATUSES, WON_QUOTE_STATUSES } from "@/lib/quoteStages";
+import { LIVE_OR_WON_QUOTE_STATUS_FILTER } from "@/lib/quoteStages";
 import { RESCHEDULABLE } from "@/lib/scheduling/status";
 import type { Actor } from "@/lib/scheduling/booking";
 
@@ -129,7 +129,7 @@ export async function matchingQuoteId(leadId: string, typeId: string): Promise<s
   const q = await prisma.quote.findFirst({
     where: {
       leadId,
-      status: { in: [...OPEN_QUOTE_STATUSES, ...WON_QUOTE_STATUSES] },
+      status: LIVE_OR_WON_QUOTE_STATUS_FILTER,
       OR: [
         // By catalogue item first-class; by name for free-text quotes and older ones.
         ...(t.catalogItemId ? [{ catalogItemId: t.catalogItemId }] : []),

@@ -677,6 +677,25 @@ model AppSetting {
   updatedAt   DateTime @default(now()) @updatedAt
 }
 
+/// Admin-managed lead stages and quote statuses (Settings → Pipeline, lib/pipeline.ts).
+///   kind: lead_stage | quote_status
+///   A row for a BUILT-IN key (lib/leadStages.ts / lib/quoteStages.ts) only renames it.
+///   Any other row is a CUSTOM entry; its key carries where it belongs, so the rules
+///   stay pure functions: a lead stage "<built-in>__<slug>" sits just after that
+///   built-in; a quote status "open__<slug>" / "closed__<slug>" is open or closed-lost.
+/// NO ROW for a built-in = its default label.
+model PipelineStatus {
+  id          String   @id @default(cuid())
+  kind        String
+  key         String
+  label       String
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([kind, key])
+}
+
 /// Treatment catalog (§quote generation) — the clinic's Master Data List of bookable
 /// Services and Packages. A quote's treatment is picked from here, auto-filling the
 /// price and GST. Seeded/refreshed from the master spreadsheet via scripts/importCatalog.ts

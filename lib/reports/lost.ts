@@ -8,6 +8,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { within, type DateRange } from "@/lib/reports/range";
+import { OPEN_QUOTE_STATUS_FILTER } from "@/lib/quoteStages";
 import {
   pickTreatmentLabel,
   treatmentKey,
@@ -208,7 +209,8 @@ export async function lostQuoteAnalysis(
     // hasn't lapsed yet, and counting it would report a loss that hasn't happened.
     prisma.quote.findMany({
       where: {
-        status: { in: ["drafted", "sent", "viewed", "accepted", "awaiting_payment", "expired"] },
+        // Open (built-in or custom) or already marked expired.
+        OR: [{ status: OPEN_QUOTE_STATUS_FILTER }, { status: "expired" }],
         expiresAt: {
           gte: range.start,
           lt: new Date(Math.min(range.end.getTime(), now.getTime())),

@@ -5,7 +5,7 @@
 import type { Prisma, SalesRep } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
-import { OPEN_QUOTE_STATUSES } from "@/lib/quoteStages";
+import { OPEN_QUOTE_STATUS_FILTER } from "@/lib/quoteStages";
 import { DEFAULT_SALES_TEAM } from "@/lib/salesTeams";
 import { logger } from "@/lib/logger";
 
@@ -301,7 +301,7 @@ export async function removeRep(input: {
       data: { assignedRepId: toRep.id, assignedAt: new Date() },
     }),
     prisma.quote.updateMany({
-      where: { ownerRepId: rep.id, status: { in: [...OPEN_QUOTE_STATUSES] } },
+      where: { ownerRepId: rep.id, status: OPEN_QUOTE_STATUS_FILTER },
       data: { ownerRepId: toRep.id },
     }),
     prisma.leadFollowUpStep.updateMany({

@@ -1,21 +1,26 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { LEAD_STAGES, STAGE_LABELS, LOST_STAGE, LOST_PRESET_TAGS } from "@/lib/leadStages";
+import { LOST_STAGE, LOST_PRESET_TAGS, stageLabel } from "@/lib/leadStages";
 import { setLeadStage } from "@/app/(dashboard)/leads/actions";
 
 // Inline pipeline-stage dropdown. Saves on change via the setLeadStage action;
 // the page revalidates so the new value sticks across navigations. Marking a lead
-// Lost opens a modal to pick a preset tag and/or write a review.
+// Lost opens a modal to pick a preset tag and/or write a review. `options` is the
+// clinic's pipeline (lib/pipeline.ts — built-in and custom stages, in order).
 export function StageSelect({
   leadId,
   stage,
+  options,
   className = "",
 }: {
   leadId: string;
   stage: string;
+  options: { key: string; label: string }[];
   className?: string;
 }) {
+  // A stage that's no longer offered still shows as the current value.
+  const list = options.some((o) => o.key === stage) ? options : [{ key: stage, label: stageLabel(stage) }, ...options];
   const [pending, startTransition] = useTransition();
   const [lostOpen, setLostOpen] = useState(false);
   const [tag, setTag] = useState("");
@@ -61,9 +66,9 @@ export function StageSelect({
         }}
         className={`rounded border border-black/15 bg-cara-surface px-2 py-1 text-xs text-cara-ink disabled:opacity-50 dark:border-white/20 ${className}`}
       >
-        {LEAD_STAGES.map((s) => (
-          <option key={s} value={s} className="bg-cara-surface text-cara-ink">
-            {STAGE_LABELS[s]}
+        {list.map((s) => (
+          <option key={s.key} value={s.key} className="bg-cara-surface text-cara-ink">
+            {s.label}
           </option>
         ))}
       </select>

@@ -11,7 +11,8 @@ import { applyPatientFlag } from "@/lib/patientFlags";
 import { can, leadScope } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { isLeadStage, LOST_STAGE, isPreConsultation, stageLabel, isLostTag } from "@/lib/leadStages";
+import { LOST_STAGE, isPreConsultation, isLostTag } from "@/lib/leadStages";
+import { getPipeline, isActiveStage } from "@/lib/pipeline";
 import { notifyCounsellor } from "@/lib/counsellor";
 import { runStageChange } from "@/lib/chatbotRuntime";
 import { applyStageChangeToRoadmap } from "@/lib/followups";
@@ -40,7 +41,7 @@ export async function setLeadStage(
 ): Promise<void> {
   const isLostStage = stage === LOST_STAGE;
   const user = await requireCapability(isLostStage ? "leads.markLost" : "leads.editStage");
-  if (!isLeadStage(stage)) throw new Error("Invalid stage");
+  if (!(await isActiveStage(stage))) throw new Error("Invalid stage");
 
   // Moving to "Lost" needs a preset tag AND/OR a written review. A tag makes the
   // review optional; with neither we reject. Any other stage clears a prior loss.
@@ -113,7 +114,7 @@ export async function setLeadStage(
       kind: "premature_lost",
       lead: { id: leadId, name: lead.name, phone: lead.phone },
       reason: lostSummary || undefined,
-      extra: [`Marked lost at *${stageLabel(lead.stage)}* — never completed a consultation.`],
+      extra: [`Marked lost at *${(await getPipeline()).stageLabel(lead.stage)}* — never completed a consultation.`],
     });
   }
 
