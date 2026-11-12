@@ -15,7 +15,7 @@ import { BackToLeads } from "@/components/BackToLeads";
 import { currentUser, canSeeLead } from "@/lib/authz";
 import { can, leadScope } from "@/lib/rbac";
 import { summariseQuotes } from "@/lib/quotes";
-import { stageLabel } from "@/lib/leadStages";
+import { getPipeline } from "@/lib/pipeline";
 import { listCatalogGroups } from "@/lib/catalog";
 import { listInvoicesForQuotes } from "@/lib/invoices";
 import { resolveQuoteDocTemplate } from "@/lib/whatsappTemplates";
@@ -262,6 +262,7 @@ export default async function LeadDetailPage({
   // §3 (3.1/3.3) — the patient's visits, plans and intake forms.
   const scheduling = can(viewer!.role, "appointments.view") ? await leadSchedulingTimeline(lead.id, viewer!) : null;
   // Staff notes / comments (§notes). Author or a manager (all-leads scope) may delete.
+  const pipeline = await getPipeline();
   const canComment = can(viewer.role, "leads.comment");
   const comments = await prisma.leadComment.findMany({
     where: { leadId: lead.id },
@@ -312,7 +313,11 @@ export default async function LeadDetailPage({
             canEdit={canEditLead}
           />
           <Pill>{lead.status}</Pill>
-          <StageSelect leadId={lead.id} stage={lead.stage} />
+          <StageSelect
+            leadId={lead.id}
+            stage={lead.stage}
+            options={pipeline.leadStages.map((s) => ({ key: s.key, label: s.label }))}
+          />
           {canViewQuotes && lead.quotes.length > 0 && (
             <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs text-black/60 dark:bg-white/10 dark:text-white/60">
               {quoteSummary.label}
@@ -627,6 +632,7 @@ export default async function LeadDetailPage({
             templateConfigured={quoteDocTemplate}
             reps={quoteReps}
             catalog={catalog}
+            statuses={pipeline.quoteStatuses.map((s) => ({ key: s.key, label: s.label, system: s.system }))}
             quotes={lead.quotes.map((q) => ({
               id: q.id,
               treatment: q.treatment,
@@ -684,7 +690,7 @@ export default async function LeadDetailPage({
                     {d.name}
                   </Link>
                   <span className="ml-2 text-[12px] opacity-80">
-                    {stageLabel(d.stage)} · {d.assignedRep?.name ?? "unassigned"} · created{" "}
+                    {pipeline.stageLabel(d.stage)} · {d.assignedRep?.name ?? "unassigned"} · created{" "}
                     {formatIstDate(d.createdAt)}
                   </span>
                 </li>

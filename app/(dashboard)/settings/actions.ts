@@ -11,6 +11,16 @@ import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { isRole } from "@/lib/rbac";
 import { STAGE_TONES, stageRoleLabel } from "@/lib/scheduling/stages";
+import {
+  getPipeline,
+  invalidatePipeline,
+  quoteMoveTargets,
+  slugify,
+  stageMoveTargets,
+  type PipelineKind,
+} from "@/lib/pipeline";
+import { LOST_STAGE, customStageKey, isLeadStage } from "@/lib/leadStages";
+import { customQuoteStatusKey } from "@/lib/quoteStages";
 
 type Result = { ok: boolean; error?: string; info?: string };
 
@@ -151,5 +161,184 @@ export async function restoreStage(id: string): Promise<Result> {
   } catch (err) {
     logger.error(`restoreStage failed: ${String(err)}`);
     return { ok: false, error: "Could not restore the stage" };
+  }
+}
+
+// ── Pipeline: lead stages & quote statuses (lib/pipeline.ts) ─────────
+
+const PIPELINE_LABEL_MAX = 60;
+const kindName = (kind: PipelineKind) => (kind === "lead_stage" ? "stage" : "status");
+
+function pipelineAudit(
+  user: { id?: string | null; email?: string | null },
+  action: string,
+  kind: PipelineKind,
+  key: string,
+  oldValue: string | null,
+  newValue: string | null,
+  reason?: string,
+) {
+  return writeAudit({
+    actorId: user.id, actorEmail: user.email, action, entityType: "setting",
+    entityId: `${kind}:${key}`, field: "label", oldValue, newValue, reason,
+  });
+}
+
+function revalidatePipeline() {
+  revalidatePath("/settings");
+  revalidatePath("/leads");
+  revalidatePath("/quotes");
+  revalidatePath("/chatbot");
+}
+
+/// Add a custom stage (placed after a built-in) or a custom quote status (open / closed).
+export async function addPipelineStatus(input: {
+  kind: PipelineKind;
+  label: string;
+  /// lead_stage: the built-in it follows. quote_status: "open" | "closed".
+  placement: string;
+}): Promise<Result> {
+  const user = await requireCapability("settings.manage");
+  const label = input.label.trim().slice(0, PIPELINE_LABEL_MAX);
+  if (!label) return { ok: false, error: "Give it a name" };
+
+  const p = await getPipeline();
+  const existing = input.kind === "lead_stage" ? p.leadStages : p.quoteStatuses;
+  if (existing.some((s) => s.label.toLowerCase() === label.toLowerCase())) {
+    return { ok: false, error: `There's already a ${kindName(input.kind)} called "${label}"` };
+  }
+
+  let base: string;
+  if (input.kind === "lead_stage") {
+    if (!isLeadStage(input.placement) || input.placement === LOST_STAGE) {
+      return { ok: false, error: "Pick where the stage goes in the pipeline" };
+    }
+    base = customStageKey(input.placement, slugify(label));
+  } else {
+    if (input.placement !== "open" && input.placement !== "closed") {
+      return { ok: false, error: "Pick whether the status is open or closed" };
+    }
+    base = customQuoteStatusKey(input.placement, slugify(label));
+  }
+  // A slug can repeat ("Follow-up" vs "Follow up"); a deleted key is never reused, so
+  // old audit rows can't be mistaken for the new entry.
+  let key = base;
+  for (let n = 2; await prisma.pipelineStatus.findUnique({ where: { kind_key: { kind: input.kind, key } } }) ; n++) {
+    key = `${base}_${n}`;
+  }
+  const used = input.kind === "lead_stage"
+    ? await prisma.lead.count({ where: { stage: key } })
+    : await prisma.quote.count({ where: { status: key } });
+  if (used > 0) key = `${key}_${Date.now().toString(36)}`;
+
+  try {
+    await prisma.pipelineStatus.create({ data: { kind: input.kind, key, label, createdById: user.id ?? null } });
+    invalidatePipeline();
+    await pipelineAudit(user, "settings.pipeline.add", input.kind, key, null, label);
+    revalidatePipeline();
+    return { ok: true };
+  } catch (err) {
+    logger.error(`addPipelineStatus failed: ${String(err)}`);
+    return { ok: false, error: `Could not add the ${kindName(input.kind)}` };
+  }
+}
+
+/// Rename a built-in or custom entry. Stored keys don't change — only the name shown.
+export async function renamePipelineStatus(input: { kind: PipelineKind; key: string; label: string }): Promise<Result> {
+  const user = await requireCapability("settings.manage");
+  const label = input.label.trim().slice(0, PIPELINE_LABEL_MAX);
+  if (!label) return { ok: false, error: "The name can't be empty" };
+
+  const p = await getPipeline();
+  const list = input.kind === "lead_stage" ? p.leadStages : p.quoteStatuses;
+  const entry = list.find((s) => s.key === input.key);
+  if (!entry) return { ok: false, error: `That ${kindName(input.kind)} no longer exists` };
+  if (entry.label === label) return { ok: true };
+  if (list.some((s) => s.key !== input.key && s.label.toLowerCase() === label.toLowerCase())) {
+    return { ok: false, error: `There's already a ${kindName(input.kind)} called "${label}"` };
+  }
+
+  try {
+    await prisma.pipelineStatus.upsert({
+      where: { kind_key: { kind: input.kind, key: input.key } },
+      create: { kind: input.kind, key: input.key, label, createdById: user.id ?? null },
+      update: { label },
+    });
+    invalidatePipeline();
+    await pipelineAudit(user, "settings.pipeline.rename", input.kind, input.key, entry.label, label);
+    revalidatePipeline();
+    return { ok: true };
+  } catch (err) {
+    logger.error(`renamePipelineStatus failed: ${String(err)}`);
+    return { ok: false, error: "Could not rename it" };
+  }
+}
+
+/// Delete a CUSTOM entry. Leads (or quotes) in it move to `moveTo`, each move audited.
+/// A stage a chatbot flow is triggered by can't be deleted until the flow is changed.
+export async function deletePipelineStatus(input: { kind: PipelineKind; key: string; moveTo: string }): Promise<Result> {
+  const user = await requireCapability("settings.manage");
+  const p = await getPipeline();
+  const isStage = input.kind === "lead_stage";
+  const list = isStage ? p.leadStages : p.quoteStatuses;
+  const entry = list.find((s) => s.key === input.key);
+  if (!entry) return { ok: false, error: `That ${kindName(input.kind)} no longer exists` };
+  if (entry.system) return { ok: false, error: "Built-in stages can be renamed but not deleted — the automation depends on them" };
+
+  const targets = isStage ? stageMoveTargets(p, input.key) : quoteMoveTargets(p, input.key);
+  const target = targets.find((t) => t.key === input.moveTo);
+
+  try {
+    if (isStage) {
+      const flows = await prisma.chatbotFlow.findMany({
+        where: { triggerEvent: "stage_change", triggerConfig: { path: ["stage"], equals: input.key } },
+        select: { name: true },
+      });
+      if (flows.length) {
+        return {
+          ok: false,
+          error: `Chatbot ${flows.length === 1 ? "flow" : "flows"} ${flows.map((f) => `"${f.name}"`).join(", ")} ${flows.length === 1 ? "starts" : "start"} when a lead enters "${entry.label}". Change ${flows.length === 1 ? "its" : "their"} trigger first.`,
+        };
+      }
+      const leads = await prisma.lead.findMany({ where: { stage: input.key }, select: { id: true } });
+      if (leads.length && !target) return { ok: false, error: "Pick the stage its leads move to" };
+      const reason = `Stage "${entry.label}" deleted in Settings`;
+      for (const l of leads) {
+        await prisma.lead.update({
+          where: { id: l.id },
+          data: { stage: target!.key, stageChangedAt: new Date(), stageStuckNotifiedAt: null },
+        });
+        await writeAudit({
+          actorId: user.id, actorEmail: user.email, action: "lead.stage.move", entityType: "lead",
+          entityId: l.id, oldValue: input.key, newValue: target!.key, reason,
+        });
+      }
+      await prisma.pipelineStatus.delete({ where: { kind_key: { kind: input.kind, key: input.key } } });
+      invalidatePipeline();
+      await pipelineAudit(user, "settings.pipeline.delete", input.kind, input.key, entry.label, null,
+        leads.length ? `${leads.length} lead(s) moved to "${target!.label}"` : undefined);
+      revalidatePipeline();
+      return { ok: true, info: leads.length ? `${leads.length} lead${leads.length === 1 ? "" : "s"} moved to "${target!.label}".` : undefined };
+    }
+
+    const quotes = await prisma.quote.findMany({ where: { status: input.key }, select: { id: true, leadId: true } });
+    if (quotes.length && !target) return { ok: false, error: "Pick the status its quotes move to" };
+    const reason = `Status "${entry.label}" deleted in Settings`;
+    for (const q of quotes) {
+      await prisma.quote.update({ where: { id: q.id }, data: { status: target!.key } });
+      await writeAudit({
+        actorId: user.id, actorEmail: user.email, action: "lead.quote.status", entityType: "lead",
+        entityId: q.leadId, oldValue: input.key, newValue: target!.key, reason, meta: { quoteId: q.id },
+      });
+    }
+    await prisma.pipelineStatus.delete({ where: { kind_key: { kind: input.kind, key: input.key } } });
+    invalidatePipeline();
+    await pipelineAudit(user, "settings.pipeline.delete", input.kind, input.key, entry.label, null,
+      quotes.length ? `${quotes.length} quote(s) moved to "${target!.label}"` : undefined);
+    revalidatePipeline();
+    return { ok: true, info: quotes.length ? `${quotes.length} quote${quotes.length === 1 ? "" : "s"} moved to "${target!.label}".` : undefined };
+  } catch (err) {
+    logger.error(`deletePipelineStatus failed: ${String(err)}`);
+    return { ok: false, error: `Could not delete the ${kindName(input.kind)}` };
   }
 }

@@ -23,7 +23,6 @@ import {
   type TriggerEvent,
   type FlowPriority,
 } from "@/lib/chatbotFlows";
-import { LEAD_STAGES, STAGE_LABELS } from "@/lib/leadStages";
 
 type FlowRow = {
   id: string;
@@ -47,7 +46,14 @@ function priorityTone(p: string): string {
       : "bg-black/10 text-black/60 dark:bg-white/10 dark:text-white/60";
 }
 
-export function ChatbotList({ flows }: { flows: FlowRow[] }) {
+export function ChatbotList({
+  flows,
+  stageOptions,
+}: {
+  flows: FlowRow[];
+  /// The clinic's lead stages, in pipeline order (lib/pipeline.ts).
+  stageOptions: { key: string; label: string }[];
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [search, setSearch] = useState("");
@@ -166,8 +172,8 @@ export function ChatbotList({ flows }: { flows: FlowRow[] }) {
                         onChange={(e) => run(() => setFlowTriggerConfig(f.id, { stage: e.target.value, campaign: f.triggerCampaign }))}
                       >
                         <option value="">Any stage…</option>
-                        {LEAD_STAGES.map((sg) => (
-                          <option key={sg} value={sg}>{STAGE_LABELS[sg]}</option>
+                        {stageOptions.map((sg) => (
+                          <option key={sg.key} value={sg.key}>{sg.label}</option>
                         ))}
                       </select>
                       <input

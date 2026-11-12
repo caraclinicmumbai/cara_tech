@@ -16,6 +16,7 @@ import { sendAutomatedTemplate, firstName } from "@/lib/outreach";
 import { sendSlack, isSlackConfigured } from "@/lib/slack";
 import { counsellorChannel } from "@/lib/counsellor";
 import { isPreConsultation } from "@/lib/leadStages";
+import { OPEN_QUOTE_STATUS_FILTER } from "@/lib/quoteStages";
 import { CAMPAIGNS, campaignsEnabled, isCampaignType, type CampaignDef, type CampaignType } from "@/lib/campaigns/types";
 import { checkEligibility, hardExclusion, isBranchCampaignEnabled } from "@/lib/campaigns/eligibility";
 
@@ -38,17 +39,16 @@ const PAUSE_BUMP_MS = 60 * 60 * 1000; // 1h
 // leftovers are simply picked up on the next tick.
 const TICK_BATCH = 200;
 
-// Quote statuses that count as "open" for choosing the driving quote (§follow-up: when two
-// quotes are open, the higher-value/urgency one selects the campaign — but the campaign
-// still follows the PERSON). Closed/terminal statuses are excluded.
-const OPEN_QUOTE_STATUSES = ["drafted", "sent", "viewed", "accepted", "awaiting_payment"];
+// Open quotes choose the driving quote (§follow-up: when two quotes are open, the
+// higher-value/urgency one selects the campaign — but the campaign still follows the
+// PERSON). Closed/terminal statuses — built-in or custom — are excluded.
 
 /// When two+ quotes are open, pick the one that should "drive" the campaign: highest value
 /// (totalPayable, else base price), tie-broken by soonest expiry (more urgent). Returns the
 /// quote id, or null when the lead has no open quote. Context only — enrollment is per person.
 async function selectDrivingQuote(leadId: string): Promise<string | null> {
   const quotes = await prisma.quote.findMany({
-    where: { leadId, status: { in: OPEN_QUOTE_STATUSES } },
+    where: { leadId, status: OPEN_QUOTE_STATUS_FILTER },
     select: { id: true, totalPayable: true, price: true, expiresAt: true },
   });
   if (quotes.length === 0) return null;

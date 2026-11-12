@@ -28,6 +28,7 @@ import {
   QUOTE_MAX_QUANTITY,
   isQuoteLocked,
   isQuoteOpen,
+  customQuoteCategory,
   type QuoteStatus,
 } from "@/lib/quoteStages";
 import { formatIst } from "@/lib/datetime";
@@ -104,8 +105,8 @@ const NEXT_STATUSES: QuoteStatus[] = [
 ];
 
 // Acceptance means "Accepted — Awaiting Payment"; label the action accordingly.
-function actionLabel(s: QuoteStatus): string {
-  return s === "accepted" ? "Accepted — Awaiting Payment" : QUOTE_STATUS_LABELS[s];
+function actionLabel(s: string, label: (k: string) => string): string {
+  return s === "accepted" ? `${label("accepted")} — ${label("awaiting_payment")}` : label(s);
 }
 
 function inr(price: number | null, currency: string): string {
@@ -117,7 +118,7 @@ function inr(price: number | null, currency: string): string {
 function statusTone(status: string): string {
   if (["converted", "in_treatment", "completed"].includes(status))
     return "tag tag-aqua";
-  if (["rejected", "expired", "withdrawn", "replaced"].includes(status))
+  if (["rejected", "expired", "withdrawn", "replaced"].includes(status) || customQuoteCategory(status) === "closed")
     return "tag tag-tangerine";
   return "tag tag-citric";
 }
@@ -136,9 +137,13 @@ export function QuotesPanel({
   canDisputeCredit = false,
   canDecideDispute = false,
   credit = {},
+  statuses,
 }: {
   leadId: string;
   quotes: QuoteView[];
+  /// The clinic's quote statuses (lib/pipeline.ts): names, and the custom ones offered
+  /// in "Move to…" alongside the built-ins.
+  statuses: { key: string; label: string; system: boolean }[];
   reps: Rep[];
   catalog: CatalogGroups[];
   canManage: boolean;
@@ -158,6 +163,9 @@ export function QuotesPanel({
   // WhatsApp can send the PDF if the 24h window is open (plain document) OR an
   // approved document template is configured (proactive send outside the window).
   const canSendWhatsApp = windowOpen || templateConfigured;
+  const statusName = new Map(statuses.map((s) => [s.key, s.label]));
+  const label = (k: string) => statusName.get(k) ?? QUOTE_STATUS_LABELS[k as QuoteStatus] ?? k;
+  const moveTo = [...NEXT_STATUSES, ...statuses.filter((s) => !s.system).map((s) => s.key)];
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -235,7 +243,7 @@ export function QuotesPanel({
                     </span>
                   )}
                   <span className={`rounded-full px-2 py-0.5 text-xs ${statusTone(q.status)}`}>
-                    {QUOTE_STATUS_LABELS[q.status as QuoteStatus] ?? q.status}
+                    {label(q.status)}
                   </span>
                   {locked && (
                     <span title="Converted — read-only" className="text-xs text-black/40 dark:text-white/40">
@@ -535,8 +543,8 @@ export function QuotesPanel({
                       onChange={(e) => { chooseStatus(q.id, e.target.value); e.currentTarget.value = ""; }}
                     >
                       <option value="">Move to…</option>
-                      {NEXT_STATUSES.filter((s) => s !== q.status).map((s) => (
-                        <option key={s} value={s}>{actionLabel(s)}</option>
+                      {moveTo.filter((s) => s !== q.status).map((s) => (
+                        <option key={s} value={s}>{actionLabel(s, label)}</option>
                       ))}
                     </select>
 

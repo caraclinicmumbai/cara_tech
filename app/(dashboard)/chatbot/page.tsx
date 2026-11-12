@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/authz";
 import { ChatbotList } from "@/components/ChatbotList";
+import { getPipeline } from "@/lib/pipeline";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,7 @@ export default async function ChatbotPage() {
         </p>
       </div>
       <ChatbotList
+        stageOptions={(await getPipeline()).leadStages.map((s) => ({ key: s.key, label: s.label }))}
         flows={flows.map((f) => {
           const cfg = (f.triggerConfig && typeof f.triggerConfig === "object" ? f.triggerConfig : {}) as {
             stage?: string;

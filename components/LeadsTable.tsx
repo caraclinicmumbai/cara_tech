@@ -96,6 +96,8 @@ type Col = {
 /// What a cell renderer may need beyond the row itself.
 type CellContext = {
   sourceLabels: Record<string, string>;
+  /// The clinic's pipeline stages, in order (lib/pipeline.ts).
+  stageOptions: { key: string; label: string }[];
   canRemark: boolean;
   onOpenLead: () => void;
 };
@@ -299,7 +301,7 @@ export function LeadsTable({
         key: "stage",
         label: "Stage",
         filter: "enum",
-        cell: (l) => <StageSelect leadId={l.id} stage={l.stage} />,
+        cell: (l, ctx) => <StageSelect leadId={l.id} stage={l.stage} options={ctx.stageOptions} />,
       },
       {
         key: "tag",
@@ -560,13 +562,14 @@ export function LeadsTable({
   const cellContext: CellContext = useMemo(
     () => ({
       sourceLabels,
+      stageOptions: (options.stage ?? []).map((o) => ({ key: o.value, label: o.label })),
       canRemark,
       onOpenLead: () => {
         saveLeadQueue({ ids: rows.map((r) => r.id), label: filterLabel });
         saveLeadListHref();
       },
     }),
-    [sourceLabels, canRemark, rows, filterLabel],
+    [sourceLabels, options.stage, canRemark, rows, filterLabel],
   );
 
   return (

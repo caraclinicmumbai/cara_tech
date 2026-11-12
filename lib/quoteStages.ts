@@ -67,9 +67,42 @@ export function isQuoteStatus(v: string): v is QuoteStatus {
   return (QUOTE_STATUSES as readonly string[]).includes(v);
 }
 
-export function isQuoteOpen(status: string): boolean {
-  return (OPEN_QUOTE_STATUSES as readonly string[]).includes(status);
+// ── Custom statuses (Settings → Pipeline, lib/pipeline.ts) ───────────
+// A custom status's key is "open__<slug>" (still in play: counts as an open quote and
+// blocks a second quote for the same treatment) or "closed__<slug>" (closed, not won).
+// There are no custom WON statuses: winning locks the quote, needs an invoice and opens
+// the post-sales journey, which only the built-in "converted" path does.
+
+export type CustomQuoteCategory = "open" | "closed";
+const CUSTOM_SEP = "__";
+
+export function customQuoteCategory(v: string): CustomQuoteCategory | null {
+  const i = v.indexOf(CUSTOM_SEP);
+  if (i <= 0 || v.length <= i + CUSTOM_SEP.length) return null;
+  const c = v.slice(0, i);
+  return c === "open" || c === "closed" ? c : null;
 }
+
+export function customQuoteStatusKey(category: CustomQuoteCategory, slug: string): string {
+  return `${category}${CUSTOM_SEP}${slug}`;
+}
+
+export function isQuoteOpen(status: string): boolean {
+  return (OPEN_QUOTE_STATUSES as readonly string[]).includes(status) || customQuoteCategory(status) === "open";
+}
+
+/// Prisma filter for "an open quote" — every status that isn't closed, so custom open
+/// statuses count without a database read. Drop-in for `{ in: OPEN_QUOTE_STATUSES }`.
+export const OPEN_QUOTE_STATUS_FILTER = {
+  notIn: [...CLOSED_QUOTE_STATUSES] as string[],
+  not: { startsWith: `closed${CUSTOM_SEP}` },
+};
+
+/// Prisma filter for "open or won" — everything but a closed-lost status.
+export const LIVE_OR_WON_QUOTE_STATUS_FILTER = {
+  notIn: CLOSED_QUOTE_STATUSES.filter((s) => !WON_QUOTE_STATUSES.includes(s)) as string[],
+  not: { startsWith: `closed${CUSTOM_SEP}` },
+};
 
 /// Once a quote converts it LOCKS (read-only). Never locks the lead — the person may
 /// still be working other open quotes (§multi-quote: the single most likely bug).

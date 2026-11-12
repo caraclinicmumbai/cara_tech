@@ -5,13 +5,13 @@ import { PATIENT_FLAGS_ENABLED } from "@/lib/scheduling/toggles";
 import { prisma } from "@/lib/prisma";
 import { LeadForm } from "@/components/LeadForm";
 import { LeadsTable, type LeadRow, type FilterOption } from "@/components/LeadsTable";
-import { STAGE_LABELS } from "@/lib/leadStages";
+import { getPipeline } from "@/lib/pipeline";
 import { parseLeadListParams, leadListWhere, LEADS_PAGE_SIZE } from "@/lib/leadList";
 import { formatIst, formatIstDate, istDateKey } from "@/lib/datetime";
 import { currentUser, leadWhereForUser } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { visualStatus } from "@/lib/followups";
-import { OPEN_QUOTE_STATUSES, WON_QUOTE_STATUSES, type QuoteStatus } from "@/lib/quoteStages";
+import { WON_QUOTE_STATUSES, isQuoteOpen, type QuoteStatus } from "@/lib/quoteStages";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +46,7 @@ async function filterOptions(scope: Prisma.LeadWhereInput): Promise<Record<strin
       value: s.source ?? "none",
       label: s.source ? (SOURCE_LABELS[s.source] ?? s.source) : "Other",
     })),
-    stage: Object.entries(STAGE_LABELS).map(([value, label]) => ({ value, label })),
+    stage: (await getPipeline()).leadStages.map((s) => ({ value: s.key, label: s.label })),
     status: statuses.map((s) => ({ value: s.status, label: s.status })),
     owner: [
       ...reps.map((r) => ({ value: r.id, label: r.name })),
@@ -80,7 +80,7 @@ function dealAmount(quotes: QuoteMoney[]): { dealAmount: number | null; dealWon:
     return { dealAmount: won.reduce((sum, q) => sum + value(q), 0), dealWon: true };
   }
   const open = quotes
-    .filter((q) => OPEN_QUOTE_STATUSES.includes(q.status as QuoteStatus))
+    .filter((q) => isQuoteOpen(q.status))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
   return { dealAmount: open ? value(open) : null, dealWon: false };
 }

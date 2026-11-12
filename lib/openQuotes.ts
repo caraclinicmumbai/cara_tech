@@ -11,13 +11,8 @@
 // fetched by lead and regrouped by quote here rather than queried per quote.
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
-import {
-  OPEN_QUOTE_STATUSES,
-  WON_QUOTE_STATUSES,
-  QUOTE_STATUS_LABELS,
-  computeQuoteTotals,
-  type QuoteStatus,
-} from "@/lib/quoteStages";
+import { OPEN_QUOTE_STATUS_FILTER, WON_QUOTE_STATUSES, computeQuoteTotals } from "@/lib/quoteStages";
+import { getPipeline } from "@/lib/pipeline";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -114,7 +109,7 @@ export type OpenQuotesBoard = {
     stale: number;
     unassigned: number;
     /// Open quotes per status, in pipeline order.
-    byStatus: { status: QuoteStatus; label: string; count: number; value: number }[];
+    byStatus: { status: string; label: string; count: number; value: number }[];
   };
   owners: { id: string; name: string; count: number }[];
 };
@@ -139,15 +134,18 @@ export type OpenQuotesFilter = {
 
 /// One audit row's human-readable detail: a status move reads "sent → viewed"; a
 /// revision reads as its rupee change; anything with a reason shows the reason.
-function activityDetail(a: {
-  action: string;
-  oldValue: string | null;
-  newValue: string | null;
-  reason: string | null;
-}): string | null {
+function activityDetail(
+  a: {
+    action: string;
+    oldValue: string | null;
+    newValue: string | null;
+    reason: string | null;
+  },
+  statusLabel: (key: string) => string,
+): string | null {
   if (a.action === "lead.quote.status" && a.oldValue && a.newValue) {
-    const from = QUOTE_STATUS_LABELS[a.oldValue as QuoteStatus] ?? a.oldValue;
-    const to = QUOTE_STATUS_LABELS[a.newValue as QuoteStatus] ?? a.newValue;
+    const from = statusLabel(a.oldValue);
+    const to = statusLabel(a.newValue);
     return `${from} → ${to}${a.reason ? ` · ${a.reason}` : ""}`;
   }
   if (a.action === "lead.quote.revise") {
@@ -164,9 +162,10 @@ export async function getOpenQuotes(
   filter: OpenQuotesFilter = {},
   now: number = Date.now(),
 ): Promise<OpenQuotesBoard> {
+  const pipeline = await getPipeline();
   const quotes = await prisma.quote.findMany({
     where: {
-      status: { in: OPEN_QUOTE_STATUSES },
+      status: OPEN_QUOTE_STATUS_FILTER,
       // A quote on a trashed lead is not in play.
       lead: { deletedAt: null, ...(filter.leadWhere ?? {}) },
       ...(filter.quoteWhere ?? {}),
@@ -221,7 +220,7 @@ export async function getOpenQuotes(
       action: a.action,
       label: ACTION_LABELS[a.action] ?? a.action.replace("lead.quote.", ""),
       actor: a.actorEmail,
-      detail: activityDetail(a),
+      detail: activityDetail(a, pipeline.quoteStatusLabel),
     };
     if (list) list.push(entry);
     else trail.set(quoteId, [entry]);
@@ -251,7 +250,7 @@ export async function getOpenQuotes(
       treatment: q.treatment,
       cycle: q.cycle,
       status: q.status,
-      statusLabel: QUOTE_STATUS_LABELS[q.status as QuoteStatus] ?? q.status,
+      statusLabel: pipeline.quoteStatusLabel(q.status),
       ownerRepId: q.ownerRepId,
       ownerName: q.ownerRep?.name ?? null,
       branchName: q.branch?.name ?? null,
@@ -292,11 +291,11 @@ export async function getOpenQuotes(
     expired: rows.filter((r) => r.expired).length,
     stale: rows.filter((r) => r.stale).length,
     unassigned: rows.filter((r) => r.unassigned).length,
-    byStatus: OPEN_QUOTE_STATUSES.map((s) => {
+    byStatus: pipeline.quoteStatuses.filter((s) => s.category === "open").map(({ key: s, label }) => {
       const inStatus = rows.filter((r) => r.status === s);
       return {
         status: s,
-        label: QUOTE_STATUS_LABELS[s],
+        label,
         count: inStatus.length,
         value: inStatus.reduce((sum, r) => sum + r.total, 0),
       };
@@ -378,6 +377,7 @@ export async function getConvertedQuotes(
   limit = 50,
   now: number = Date.now(),
 ): Promise<ConvertedQuotesBoard> {
+  const pipeline = await getPipeline();
   const where: Prisma.QuoteWhereInput = {
     status: { in: WON_QUOTE_STATUSES },
     lead: { deletedAt: null, ...(filter.leadWhere ?? {}) },
@@ -432,7 +432,7 @@ export async function getConvertedQuotes(
       treatment: q.treatment,
       cycle: q.cycle,
       status: q.status,
-      statusLabel: QUOTE_STATUS_LABELS[q.status as QuoteStatus] ?? q.status,
+      statusLabel: pipeline.quoteStatusLabel(q.status),
       ownerName: q.ownerRep?.name ?? null,
       branchName: q.branch?.name ?? null,
       invoicedBranchName:

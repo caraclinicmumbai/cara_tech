@@ -9,6 +9,7 @@
 //   • No quote or version is ever deleted (withdraw instead).
 
 import { prisma } from "@/lib/prisma";
+import { isActiveQuoteStatus } from "@/lib/pipeline";
 import type { Prisma } from "@prisma/client";
 import {
   DEFAULT_GST_RATE,
@@ -206,7 +207,10 @@ export async function transitionQuote(input: {
   /// invoice exists for THIS quote (§billing), not that someone felt optimistic.
   invoiceBacked?: boolean;
 }): Promise<{ uninvoiced: boolean }> {
-  if (!isQuoteStatus(input.status)) throw new QuoteError("Invalid quote status");
+  // Built-in, or a custom status that still exists (Settings → Pipeline).
+  if (!isQuoteStatus(input.status) && !(await isActiveQuoteStatus(input.status))) {
+    throw new QuoteError("Invalid quote status");
+  }
 
   const quote = await prisma.quote.findUnique({
     where: { id: input.quoteId },

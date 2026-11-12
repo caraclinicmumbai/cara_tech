@@ -9,7 +9,7 @@ import {
   type OpenQuoteRow,
 } from "@/lib/openQuotes";
 import { QUOTE_SOURCE_LABELS, type QuoteSource } from "@/lib/quoteStages";
-import { stageLabel } from "@/lib/leadStages";
+import { getPipeline } from "@/lib/pipeline";
 import { formatIst, formatIstDate } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
@@ -104,6 +104,7 @@ export default async function OpenQuotesPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const user = await requireCapability("quotes.view");
+  const pipeline = await getPipeline();
   const sp = await searchParams;
   const str = (k: string) => (typeof sp[k] === "string" && sp[k] ? (sp[k] as string) : null);
   const status = str("status");
@@ -305,7 +306,7 @@ export default async function OpenQuotesPage({
                       {r.cycle > 1 && ` · session ${r.cycle}`}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-cara-faint">
-                      <span>{stageLabel(r.leadStage)}</span>
+                      <span>{pipeline.stageLabel(r.leadStage)}</span>
                       {r.source && (
                         <span>· {QUOTE_SOURCE_LABELS[r.source as QuoteSource] ?? r.source}</span>
                       )}

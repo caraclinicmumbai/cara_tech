@@ -76,6 +76,23 @@ Each belongs to a different thing, and they move independently:
 | `Quote.status` | the treatment | **commercial state** (`drafted` → … → `converted`). `converted` means a real invoice exists for that quote |
 | `PostSalesJourney.stage` | the treatment | **clinical state** (`converted` → … → `closed_successfully`) — owned by the post-sales team, not sales |
 
+**The clinic's own stages and statuses** (Settings → Pipeline, `lib/pipeline.ts`,
+`PipelineStatus`). The built-in lead stages and quote statuses live in code because the
+automation moves leads and quotes into them by key; an admin can **rename** them but not
+delete them. An admin can also **add custom ones** and rename or delete those. A custom
+key carries where it belongs, so every rule stays a pure function with no database read:
+
+- a custom lead stage `"<built-in>__<slug>"` ranks just after that built-in (`stageRank`),
+  so auto-advance never moves a lead backwards past it and reports count it with that phase;
+- a custom quote status is `"open__<slug>"` (counts as an open quote everywhere —
+  `isQuoteOpen`, `OPEN_QUOTE_STATUS_FILTER`) or `"closed__<slug>"` (closed, not won). There
+  are no custom won statuses: winning means an invoice, a lock and a post-sales journey.
+
+Nothing automatic moves a lead or quote INTO a custom entry. Deleting one moves its leads /
+quotes to a stage the admin picks (each move audited, no chatbot triggers fired), and is
+refused while a chatbot flow is triggered by that stage. Screens read names through
+`getPipeline()` (30 s cache, cleared on every change); logs fall back to `stageLabel()`.
+
 A lead never "converts": it summarises its quotes. A patient with two converted
 treatments has two `Quote` rows and two `PostSalesJourney` rows, at different points.
 
