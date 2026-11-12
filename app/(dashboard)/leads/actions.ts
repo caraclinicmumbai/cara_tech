@@ -16,7 +16,7 @@ import { notifyCounsellor } from "@/lib/counsellor";
 import { runStageChange } from "@/lib/chatbotRuntime";
 import { applyStageChangeToRoadmap } from "@/lib/followups";
 import { sendLeadText, sendLeadTemplate } from "@/lib/messages";
-import { listApprovedTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
+import { listUsableTemplates, buildTemplateComponents, type WhatsAppTemplate } from "@/lib/whatsappTemplates";
 import { startClickToCall, isCallingConfigured } from "@/lib/providers/calling";
 import { cancelUpcomingForLead } from "@/lib/scheduling/booking";
 import { deleteRecording } from "@/lib/providers/recordings";
@@ -198,7 +198,7 @@ export async function callLeadAndRecord(
 /// window is closed). Session-checked since it hits the WABA via our token.
 export async function listWhatsAppTemplates(): Promise<WhatsAppTemplate[]> {
   await requireCapability("leads.whatsapp");
-  return listApprovedTemplates();
+  return listUsableTemplates();
 }
 
 /// Send an approved template to re-open the chat (works outside the 24h window).

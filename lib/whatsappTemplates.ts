@@ -6,6 +6,7 @@
 // an empty list (never throws) when the WABA isn't configured yet.
 import axios from "axios";
 import { logger } from "@/lib/logger";
+import { getStringListSetting, setStringListSetting } from "@/lib/settings";
 
 const GRAPH = "https://graph.facebook.com";
 
@@ -33,6 +34,7 @@ export type WhatsAppTemplate = {
 
 type GraphComponent = { type?: string; text?: string; format?: string };
 type GraphTemplate = {
+  id?: string;
   name: string;
   language: string;
   status: string;
@@ -137,6 +139,44 @@ export async function listApprovedTemplatesCached(): Promise<WhatsAppTemplate[]>
   return items;
 }
 
+// ── Disabled templates (CRM-side) ────────────────────────────────────
+//
+// Meta has no "switch off" for a template — only delete, which is permanent and
+// locks the name for 30 days. So the CRM keeps its own list of template NAMES the
+// clinic has discontinued (every language of that name). A disabled template is
+// hidden from every picker and refused at send time (sendLeadTemplate), so neither
+// an agent nor an automation can send it. It stays in the WABA, and re-enabling it
+// is one click. History still renders it: renderTemplateBody reads the raw list.
+
+const DISABLED_TEMPLATES_KEY = "whatsapp.disabledTemplates";
+
+export async function getDisabledTemplateNames(): Promise<string[]> {
+  return getStringListSetting(DISABLED_TEMPLATES_KEY);
+}
+
+export async function isTemplateDisabled(name: string): Promise<boolean> {
+  return (await getDisabledTemplateNames()).includes(name);
+}
+
+/// Turn a template on or off in the CRM. The caller audits.
+export async function setTemplateDisabled(
+  name: string,
+  disabled: boolean,
+  updatedById?: string | null,
+): Promise<void> {
+  const current = new Set(await getDisabledTemplateNames());
+  if (disabled) current.add(name);
+  else current.delete(name);
+  await setStringListSetting(DISABLED_TEMPLATES_KEY, [...current].sort(), updatedById);
+}
+
+/// APPROVED templates the CRM may send: listApprovedTemplates() minus the disabled ones.
+/// Every picker and automated send uses this, not the raw list.
+export async function listUsableTemplates(): Promise<WhatsAppTemplate[]> {
+  const [all, disabled] = await Promise.all([listApprovedTemplates(), getDisabledTemplateNames()]);
+  return all.filter((t) => !disabled.includes(t.name));
+}
+
 /// Render the text a template send actually delivers: the approved BODY with its
 /// {{n}} placeholders filled in. Null when the template can't be resolved (WABA
 /// not configured, Graph error, template not approved) — callers fall back to
@@ -159,6 +199,8 @@ export async function renderTemplateBody(
 export type TemplateStatus = "APPROVED" | "PENDING" | "REJECTED" | "PAUSED" | "DISABLED";
 
 export type WhatsAppTemplateRow = {
+  /// Meta's template id (one per name + language) — needed to delete one language.
+  id: string;
   name: string;
   language: string;
   category: string;
@@ -173,12 +215,13 @@ export async function listAllTemplates(): Promise<WhatsAppTemplateRow[]> {
   if (!token || !wabaId) return [];
   try {
     const res = await axios.get(`${GRAPH}/${graphVersion()}/${wabaId}/message_templates`, {
-      params: { fields: "name,language,status,category,components", limit: 200 },
+      params: { fields: "id,name,language,status,category,components", limit: 200 },
       headers: { Authorization: `Bearer ${token}` },
       timeout: 15_000,
     });
     const data: GraphTemplate[] = res.data?.data ?? [];
     return data.map((t) => ({
+      id: t.id ?? "",
       name: t.name,
       language: t.language,
       category: t.category ?? "",
@@ -327,6 +370,35 @@ export async function createTemplate(input: CreateTemplateInput): Promise<Create
   }
 }
 
+/// Permanently delete ONE language version of a template from the WABA (name +
+/// hsm_id; Meta deletes every language when given the name alone). Irreversible,
+/// and Meta won't accept a new template with the same name for 30 days.
+export async function deleteTemplate(
+  name: string,
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const token = process.env.WHATSAPP_TOKEN;
+  const wabaId = process.env.WHATSAPP_WABA_ID;
+  if (!token || !wabaId) return { ok: false, error: "WhatsApp WABA not configured" };
+  if (!name || !id) return { ok: false, error: "Template name and id are required" };
+
+  try {
+    await axios.delete(`${GRAPH}/${graphVersion()}/${wabaId}/message_templates`, {
+      params: { name, hsm_id: id },
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15_000,
+    });
+    templateCache = null;
+    return { ok: true };
+  } catch (err) {
+    const detail = axios.isAxiosError(err)
+      ? (err.response?.data?.error?.error_user_msg ?? err.response?.data?.error?.message ?? JSON.stringify(err.response?.data ?? err.message))
+      : String(err);
+    logger.error(`WhatsApp deleteTemplate "${name}" failed: ${detail}`);
+    return { ok: false, error: String(detail) };
+  }
+}
+
 /// The approved template used to send a quote PDF proactively — i.e. when the 24h
 /// window is shut and the only way to reach the patient is a template with the
 /// document in its header (§quote lifecycle).
@@ -345,8 +417,9 @@ export async function resolveQuoteDocTemplate(): Promise<{ name: string; lang: s
     return { name: pinned, lang: process.env.QUOTE_DOC_TEMPLATE_LANG?.trim() || "en" };
   }
 
+  const disabled = await getDisabledTemplateNames();
   const docTemplates = (await listApprovedTemplatesCached()).filter(
-    (t) => t.headerFormat === "DOCUMENT",
+    (t) => t.headerFormat === "DOCUMENT" && !disabled.includes(t.name),
   );
   if (docTemplates.length === 0) return null;
   if (docTemplates.length > 1) {

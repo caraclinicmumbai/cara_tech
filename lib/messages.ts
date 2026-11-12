@@ -9,7 +9,7 @@ import type { Message, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { publishLeadMessageEvent } from "@/lib/realtime";
 import { pickOwnerRep, assignLeadToRep } from "@/lib/salesReps";
-import { extractBodyParams, renderTemplateBody } from "@/lib/whatsappTemplates";
+import { extractBodyParams, isTemplateDisabled, renderTemplateBody } from "@/lib/whatsappTemplates";
 import {
   sendWhatsAppText,
   sendWhatsAppTemplate,
@@ -431,6 +431,12 @@ export async function sendLeadTemplate(
   // never from clinical consent being withheld — see messageBlock.
   const blocked = await messageBlock(lead, opts);
   if (blocked) return { ok: false, error: blocked };
+  // Discontinued in the CRM (Templates screen) — the one gate every send path
+  // (agent, chatbot, reminders, series, outreach) goes through.
+  if (await isTemplateDisabled(templateName)) {
+    logger.warn(`WhatsApp template "${templateName}" is disabled — not sent to lead ${leadId}`);
+    return { ok: false, error: `Template "${templateName}" has been disabled` };
+  }
 
   const res = await sendWhatsAppTemplate(lead.phone, templateName, languageCode, components);
   // Log what the PATIENT actually received — the approved body with its {{n}}

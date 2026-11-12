@@ -76,6 +76,16 @@ does, rather than silently hiding replies.
   (window closed, variable count, unreachable number) and keeps the payload in the log.
 - **In-CRM template builder** (`/templates`): staff create/submit templates to Meta
   (`createTemplate`) and watch them move PENDING → APPROVED without leaving Cara.
+- **Disabling / deleting templates** (`/templates`, per row):
+  - **Disable** is CRM-side and reversible. Meta has no "off" switch, so the CRM keeps the
+    discontinued template **names** (every language) in `AppSetting`
+    `whatsapp.disabledTemplates`. A disabled template is left out of every picker
+    (`listUsableTemplates`), skipped by the quote-PDF auto-lookup, and **refused in
+    `sendLeadTemplate`** — the one gate every send path goes through (agent, chatbot,
+    reminders, series, outreach). Old messages still render its text. **Enable** undoes it.
+  - **Delete** removes that one language version from the WABA (`deleteTemplate`,
+    `name` + `hsm_id`). Permanent, and Meta won't accept the same name again for 30 days.
+  - Both are audited (`settings.template.disable|enable|delete`) and need `templates.manage`.
 
 ## The WhatsApp tab (inbox)
 
@@ -174,7 +184,7 @@ Fired from `recordCall` (flow 3), each off unless its template env is set:
 - `app/api/webhooks/whatsapp/route.ts` — inbound webhook
 - `app/api/leads/[id]/messages/stream/route.ts` — SSE live thread
 - `components/WhatsAppChat.tsx` — thread + composer + template picker
-- `app/(dashboard)/templates/page.tsx` — template builder
+- `app/(dashboard)/templates/page.tsx` — template builder + disable / delete (`components/TemplateRowActions.tsx`)
 - `scripts/backfillTemplateBodies.ts` — one-off repair of legacy `[template] <name>` rows
 
 ## Configuration
@@ -198,6 +208,10 @@ Fired from `recordCall` (flow 3), each off unless its template env is set:
   Meta has expired them.
 - **Automated triggers are off until each template is approved** and its name set in
   the env var.
+- **Disabling a template silently stops any automation that uses it** (chatbot node,
+  appointment reminder, series step, outreach trigger) — the send is refused and logged,
+  but the Templates screen doesn't list where a template is used. Swap the automation to a
+  new template before disabling the old one.
 - **Variable auto-fill is a best guess** from the words before each `{{n}}` — a slot with
   no clue in the wording (a date, an amount) is left blank for the agent to type.
 - **Templates sent before this change** were logged as `[template] <name>`;
