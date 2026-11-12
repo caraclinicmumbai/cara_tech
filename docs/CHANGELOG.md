@@ -7,6 +7,22 @@ Format: newest first.
 
 ---
 
+## 2026-11-12 — WhatsApp templates: disable and delete
+
+Merge `dac6692` (commit `ad4928e`). No migration. New setting key
+`whatsapp.disabledTemplates` (an `AppSetting` row, created on first use). Flow doc updated:
+**[06-whatsapp-messaging.md](flows/06-whatsapp-messaging.md)** (template management +
+a new limitation).
+
+- **Templates → Disable** takes a template out of service in the CRM: hidden from the chat
+  picker and the `/` menu, and refused at send time for every path (agent, chatbot,
+  reminders, series, outreach). Reversible with **Enable**; old messages still render.
+- **Templates → Delete** removes that language version from Meta for good (the name can't
+  be reused for 30 days).
+- Both need `templates.manage` and are audited.
+
+---
+
 ## 2026-11-12 — Dark mode: WhatsApp template dropdown readable
 
 Merge `1f3486a` (commit `269f138`). No migration, no new settings. No flow doc change.
