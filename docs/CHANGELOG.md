@@ -7,6 +7,18 @@ Format: newest first.
 
 ---
 
+## 2026-11-17 — Clinic line frees a phone on hang-up; any login linkable to a resource
+
+Merge `0afdc3b` (commits `d4b588f`, `e3b9a61`). **Migration:** `sales_rep_ringing_call`
+(`SalesRep.ringingCallId`, nullable, indexed). No settings keys. Doc updated:
+**[flows/11-inbound-call-routing.md](flows/11-inbound-call-routing.md)** (ring reservation).
+
+- Clinic line: a counsellor's ring reservation now records the call that holds it, and the
+  caller hanging up releases it. Callers who left during the greeting used to keep the phone
+  reserved for 30 s, so the next caller was told nobody was free.
+- Scheduling setup → Resources & Rosters: the staff-login dropdown lists every login (with
+  its role name), so a Sales Head or telecaller can be linked to their resource.
+
 ## 2026-11-17 — Chatbot: welcome flows only on patient-initiated chats
 
 Merge `0959ca1` (commit `023934a`). No migration, no settings keys. Doc updated:

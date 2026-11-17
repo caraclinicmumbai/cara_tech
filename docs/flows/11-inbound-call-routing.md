@@ -47,6 +47,11 @@ conditional update, released when that leg ends, and lapsing by itself after the
 plus 10 s). Two patients calling at the same moment therefore ring two different people.
 Before this, the second call went to the same handset a few seconds after the first, hit
 "busy", and the first live test with two callers lost one of them.
+The reservation also records the call holding it (`SalesRep.ringingCallId`), and the
+caller hanging up releases it (`releaseRingingForCall()`, from the hang-up webhook and a
+caller-gone dial hop). Many callers leave during the greeting, before the phone rings, so
+no dial callback ever came; the phone stayed reserved and the next caller (often the same
+patient redialling) heard "nobody free" while every handset was idle (seen 2026-11-17).
 
 **A pick-up that isn't a conversation is undone.** The whisper runs when a counsellor's leg
 answers, and marks them In-Consultation, the call handled by them, and a first-time caller's
