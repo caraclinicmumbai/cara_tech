@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { readSignedPlivoRequest } from "@/lib/providers/plivo";
 import { markInboundMissed, collectPlivoVoicemail } from "@/lib/inboundCallLog";
 import { endConsultation } from "@/lib/presence";
+import { releaseRingingForCall } from "@/lib/salesReps";
 import { logger } from "@/lib/logger";
 
 export async function POST(req: Request) {
@@ -21,6 +22,11 @@ export async function POST(req: Request) {
   }
 
   const callUuid = params.CallUUID ?? "";
+  // Whatever state the call was in, nobody's phone should stay reserved for a caller who
+  // has gone — most of all one who left during the greeting, before their counsellor's
+  // phone ever rang (no dial callback is coming to release it).
+  await releaseRingingForCall(callUuid);
+
   const call = callUuid
     ? await prisma.call.findUnique({
         where: { providerSid: callUuid },

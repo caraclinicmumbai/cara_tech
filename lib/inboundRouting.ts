@@ -199,15 +199,16 @@ async function leadForCaller(fromPhone: string): Promise<InboundLead> {
 /// speciality → round-robin) instead of ringing the same silent handset forever.
 ///
 /// Whoever is returned has had their phone reserved for `ringSeconds` (plus a margin) — the
-/// adapter dials them right away and releases the reservation when that leg ends.
+/// adapter dials them right away and releases the reservation when that leg ends. Pass
+/// `callId` (the provider's call id) so the caller hanging up can release it too.
 export async function routeInboundCall(
   fromPhone: string,
-  opts: { exclude?: string[]; ringSeconds?: number } = {},
+  opts: { exclude?: string[]; ringSeconds?: number; callId?: string } = {},
 ): Promise<InboundRoute> {
   const exclude = new Set(opts.exclude ?? []);
   const lead = await leadForCaller(fromPhone);
   const relaxOk = clinicHours();
-  const reserve = (repId: string) => reserveForRinging(repId, (opts.ringSeconds ?? 20) + 10);
+  const reserve = (repId: string) => reserveForRinging(repId, (opts.ringSeconds ?? 20) + 10, opts.callId);
 
   const connect = (
     rep: { id: string; name: string; phone: string | null; speciality: string | null },

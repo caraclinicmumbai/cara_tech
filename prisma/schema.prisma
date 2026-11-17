@@ -226,6 +226,10 @@ model SalesRep {
   // second patient calling at the same moment rings someone else instead of a handset that
   // is about to be busy. Expires by itself — a lost callback never parks a rep for long.
   ringingUntil   DateTime?
+  // The provider call (Plivo CallUUID) that holds the reservation above, so the caller
+  // hanging up frees the phone at once — even when it never started ringing because they
+  // left during the greeting, and no dial callback is ever coming.
+  ringingCallId  String?
   // Skill/speciality (§presence) — an offline counsellor's leads prefer a colleague
   // with the SAME speciality; null = generalist (eligible only as a fallback match).
   speciality     String?
@@ -255,6 +259,7 @@ model SalesRep {
   // Fast lookup for the round-robin (available reps) and the idle-sweep.
   @@index([availability, salesHead, active])
   @@index([lastActivityAt])
+  @@index([ringingCallId])
 }
 
 /// Per-lead follow-up roadmap step (§follow-up roadmap). An ordered, editable
