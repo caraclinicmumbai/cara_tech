@@ -7,6 +7,18 @@ Format: newest first.
 
 ---
 
+## 2026-11-17 — Chatbot: welcome flows only on patient-initiated chats
+
+Merge `0959ca1` (commit `023934a`). No migration, no settings keys. Doc updated:
+**[flows/06-whatsapp-messaging.md](flows/06-whatsapp-messaging.md)** (when each trigger fires).
+
+- A patient's reply to a template the team sent no longer starts the welcome flow. Before a
+  flow starts, the runtime decides whether the message is a reply (we spoke last, or
+  messaged them in the last 24 hours; failed sends excluded).
+- Welcome and inbound-message flows skip replies. Template-message flows (now labelled
+  "Reply to our template") fire only on replies to a template; they used to behave like
+  inbound-message. Keyword flows unchanged.
+
 ## 2026-11-17 — Handed-over leads leave the giver's list
 
 Merge `eb3f627` (commit `dbe8402`). No migration, no settings keys. Doc updated:

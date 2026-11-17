@@ -159,6 +159,13 @@ Flows are built on `/chatbot` (`components/flow/FlowBuilder.tsx`, block settings
 
 1. An inbound text, button tap or list pick (never media or voice notes) resumes the lead's
    active session, or starts the highest-priority flow whose trigger matches.
+   - A message is a **reply** when we spoke last, or when we messaged the patient in the
+     last 24 hours (failed sends excluded). Otherwise the patient started the conversation.
+   - **Welcome** fires on the patient's first message, only if they started the conversation.
+     **Inbound message** fires only when they started it. **Reply to our template** fires
+     only on a reply whose message from us was a template. **Keyword** fires on any message.
+   - So a template the team sends never leads into the welcome flow, and the bot never
+     starts inside a conversation the team is having.
 2. The runtime walks the graph, sending as it goes, and pauses at an **Ask**, **Buttons**
    or **List** block until the next reply.
 3. **Buttons** (max 3, ≤20 chars) and **List** items (max 10, ≤24 chars) each have their
