@@ -13,9 +13,9 @@ export const TRIGGER_EVENTS = [
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number];
 
 export const TRIGGER_EVENT_LABELS: Record<TriggerEvent, string> = {
-  inbound_message: "Inbound message",
-  template_message: "Template message",
-  welcome: "Welcome (first message)",
+  inbound_message: "Inbound message (patient starts the chat)",
+  template_message: "Reply to our template",
+  welcome: "Welcome (patient's first message)",
   keyword: "Keyword match",
   stage_change: "Lead stage change",
 };
