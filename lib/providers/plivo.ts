@@ -485,15 +485,50 @@ export async function fetchPlivoRecording(
   const id = process.env.PLIVO_AUTH_ID;
   const token = process.env.PLIVO_AUTH_TOKEN;
   if (!id || !token) return null;
-  try {
-    const res = await axios.get<ArrayBuffer>(recordingUrl, {
-      auth: { username: id, password: token },
-      responseType: "arraybuffer",
-      timeout: 20_000,
-    });
-    return { buffer: Buffer.from(res.data), mime: "audio/mpeg" };
-  } catch (err) {
-    logger.error(`Plivo recording fetch failed: ${String(err)}`);
-    return null;
+  return downloadRecording("Plivo", recordingUrl, { username: id, password: token });
+}
+
+/// GET a provider recording with Basic auth, over IPv4, retrying once if the connection
+/// itself fails.
+///
+/// Why IPv4: the media hosts publish IPv4 and IPv6 addresses, and Node tries them in turn
+/// giving each connection attempt only 250 ms. Production has no outbound IPv6, and its
+/// round trip to Plivo's Mumbai media host is often over 250 ms, so every attempt was cut
+/// off and the player showed "Recording unavailable" — for old recordings as much as new
+/// ones, and fine again a few minutes later. Pinning IPv4 gives the one real route the
+/// whole timeout. Exported for the Twilio fetch, which reads its old recordings the same way.
+export async function downloadRecording(
+  provider: string,
+  recordingUrl: string,
+  auth: { username: string; password: string },
+): Promise<{ buffer: Buffer; mime: string } | null> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await axios.get<ArrayBuffer>(recordingUrl, {
+        auth,
+        responseType: "arraybuffer",
+        timeout: 20_000,
+        family: 4,
+      });
+      return { buffer: Buffer.from(res.data), mime: "audio/mpeg" };
+    } catch (err) {
+      // An HTTP answer (404 after Plivo's 30-day expiry, 401) won't change on a retry.
+      const httpStatus = axios.isAxiosError(err) ? err.response?.status : undefined;
+      if (attempt === 1 && !httpStatus) continue;
+      logger.error(`${provider} recording fetch failed${httpStatus ? ` (HTTP ${httpStatus})` : ""}: ${describeNetError(err)}`);
+      return null;
+    }
   }
+  return null;
+}
+
+/// An error worth reading in the log. A failed connection to several addresses comes back
+/// as an AggregateError whose message is empty — the codes are on its `errors`.
+function describeNetError(err: unknown): string {
+  const inner = (err as { errors?: { code?: string; address?: string }[] })?.errors;
+  if (Array.isArray(inner) && inner.length) {
+    return `${String(err)} [${inner.map((e) => `${e.code ?? "?"} ${e.address ?? ""}`.trim()).join("; ")}]`;
+  }
+  const code = (err as { code?: string })?.code;
+  return code ? `${String(err)} (${code})` : String(err);
 }
