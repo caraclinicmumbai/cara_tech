@@ -7,6 +7,16 @@ Format: newest first.
 
 ---
 
+## 2026-11-17 — Recordings: fetch over IPv4 with a retry
+
+Merge `6255138` (commit `50388f1`). No migration, no settings keys. Doc updated:
+**[flows/04-handover-escalation-and-sla.md](flows/04-handover-escalation-and-sla.md)**
+(how the player fetches audio).
+
+- The call-log player intermittently showed "Recording unavailable" (103 connection
+  failures in four days, old recordings included). Recording downloads (Plivo and Twilio)
+  now use IPv4 only, retry once on a connection error, and log the real error codes.
+
 ## 2026-11-17 — Clinic line frees a phone on hang-up; any login linkable to a resource
 
 Merge `0afdc3b` (commits `d4b588f`, `e3b9a61`). **Migration:** `sales_rep_ringing_call`

@@ -54,7 +54,10 @@ thresholds.
    record": Twilio rings **their own** phone, then dials the lead, bridges, and records
    dual-channel. The recording webhook stores it as a `Call` (`human_handover`) and an
    in-app player streams it (session-gated proxy). The recording is then transcribed +
-   scored (flow 3).
+   scored (flow 3). The proxy downloads the audio over IPv4 only, retrying once on a
+   connection error (`downloadRecording()` in `lib/providers/plivo.ts`): production has no
+   outbound IPv6, and Node's 250 ms per-address attempts to Plivo's Mumbai media host kept
+   failing, so the player showed "Recording unavailable" until a later try (fixed 2026-11-17).
    - **Whose phone rings is decided by who clicked**, not by who owns the lead
      (`User.salesRepId` → that rep's number). Click-to-call means "put me on the phone
      with this patient", so a colleague covering an absent owner, or a manager stepping
