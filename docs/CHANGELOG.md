@@ -7,6 +7,16 @@ Format: newest first.
 
 ---
 
+## 2026-11-17 — Handed-over leads leave the giver's list
+
+Merge `eb3f627` (commit `dbe8402`). No migration, no settings keys. Doc updated:
+**[deferred-todo.md](deferred-todo.md)** (the creator-access decision is closed).
+
+- Lead visibility (`leadWhereForUser` / `canSeeLead`) no longer shows a lead to its creator
+  forever. A creator with a counsellor seat sees it only while nobody owns it, so after a
+  handover it is on the new owner's list only. Users with no seat (front desk) still see
+  the walk-ins they registered. Managers, owners and access grants are unchanged.
+
 ## 2026-11-12 — Settings → Pipeline: lead stages and quote statuses
 
 Merge `7178698` (commit `0f68657`). **Migration:** `pipeline_status` (new `PipelineStatus`

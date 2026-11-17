@@ -399,10 +399,9 @@ _Added 2026-08-18._
   price, `fa68861`); invoices still carry one amount against one quote. The clinic wants
   the two linked — sessions billed against sessions quoted. Needs a quantity (or line
   items) on `Invoice` and on the billing webhook payload, then a "sessions remaining" view.
-- **Should a lead's creator keep access after handing it over? (S, decision).** The creator
-  now owns the lead (`adcd565`), and `leadWhereForUser` still lets a creator see a lead
-  forever, even once it has moved to a colleague. Left as it was; drop the `createdById`
-  clause for telecallers if the clinic wants handovers to remove access.
+- ~~**Should a lead's creator keep access after handing it over? (S, decision).**~~ **Done
+  2026-11-17** (`dbe8402`): the clinic asked for handovers to remove access. A creator with a
+  counsellor seat now sees the lead only while it is unowned; front desk keeps its walk-ins.
 - **Field-test reps with no login (ops, not code).** Kamal Asif and Mini Sharma still own
   the leads round-robin gave them before the fix. Either link each to a login, or Remove
   them under Users → Sales reps, which hands their work to a colleague.
