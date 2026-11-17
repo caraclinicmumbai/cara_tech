@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/authz";
+import { ROLE_LABELS, type Role } from "@/lib/rbac";
 import { getBoolSetting, getNumberSetting } from "@/lib/settings";
 import { SCHEDULING_TOGGLES, DEFAULT_TRAVEL_MINUTES } from "@/lib/scheduling/toggles";
 import { branchWeek } from "@/lib/scheduling/hours";
@@ -177,8 +178,9 @@ async function ResourcesTab({ branches }: { branches: BranchOpt[] }) {
         user: { select: { email: true, name: true } },
       },
     }),
+    // Every login: anyone on staff can be a bookable person (a sales head who takes
+    // consultations, a telecaller who runs follow-up calls), so no role is left out.
     prisma.user.findMany({
-      where: { role: { in: ["doctor", "ot_team", "post_sales_consultant", "front_desk", "branch_manager", "crm_admin"] } },
       select: { id: true, name: true, email: true, role: true },
       orderBy: { name: "asc" },
     }),
@@ -186,7 +188,7 @@ async function ResourcesTab({ branches }: { branches: BranchOpt[] }) {
   return (
     <ResourcesSetup
       branches={branches}
-      users={users.map((u) => ({ id: u.id, label: `${u.name ?? u.email} (${u.role.replace(/_/g, " ")})` }))}
+      users={users.map((u) => ({ id: u.id, label: `${u.name ?? u.email} (${ROLE_LABELS[u.role as Role] ?? u.role.replace(/_/g, " ")})` }))}
       resources={resources.map((r) => ({
         id: r.id,
         kind: r.kind,
