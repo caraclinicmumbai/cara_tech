@@ -144,11 +144,10 @@ async function start(
   });
   if (flows.length === 0) return;
 
-  const inboundCount = await prisma.message.count({ where: { leadId: lead.id, direction: "inbound" } });
-  const isFirstInbound = inboundCount <= 1; // this inbound already stored
+  const context = await conversationContext(lead.id);
 
   const matched = flows
-    .filter((f) => matchTrigger(f.triggerEvent, f.triggerConfig, input.text, isFirstInbound))
+    .filter((f) => matchTrigger(f.triggerEvent, f.triggerConfig, input.text, context))
     .sort((a, b) => priorityRank(b.priority) - priorityRank(a.priority) || +b.updatedAt - +a.updatedAt);
   const flow = matched[0];
   if (!flow) return;
@@ -412,18 +411,70 @@ function withinBusinessHours(open: string, close: string): boolean {
   return o <= c ? mins >= o && mins < c : mins >= o || mins < c;
 }
 
-/// Does this flow's trigger fire for the inbound text?
-function matchTrigger(triggerEvent: string, triggerConfig: unknown, text: string, isFirstInbound: boolean): boolean {
+/// Where this inbound sits in the thread. `isReply`: the patient is answering us rather
+/// than opening a conversation — either we spoke last (a message from the team, or an
+/// automated one, is newer than their previous message), or we have messaged them in the
+/// last 24 hours (WhatsApp's conversation window), so a second "and the price?" after
+/// their "hi" is still part of our conversation. A send that failed never reached them
+/// and doesn't count. `replyToTemplate`: the message of ours they're answering — the
+/// first we sent in the window, else the last we sent — is a template.
+type ConversationContext = { isFirstInbound: boolean; isReply: boolean; replyToTemplate: boolean };
+
+const CONVERSATION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+async function conversationContext(leadId: string): Promise<ConversationContext> {
+  const delivered: Prisma.MessageWhereInput = { OR: [{ status: null }, { status: { not: "failed" } }] };
+  // The newest inbound is the one being handled (already stored); the one before it is
+  // the patient's previous message.
+  const [inbound, lastOutbound, firstInWindow] = await Promise.all([
+    prisma.message.findMany({
+      where: { leadId, direction: "inbound" },
+      orderBy: { createdAt: "desc" },
+      take: 2,
+      select: { createdAt: true },
+    }),
+    prisma.message.findFirst({
+      where: { leadId, direction: "outbound", ...delivered },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true, type: true },
+    }),
+    prisma.message.findFirst({
+      where: {
+        leadId,
+        direction: "outbound",
+        createdAt: { gte: new Date(Date.now() - CONVERSATION_WINDOW_MS) },
+        ...delivered,
+      },
+      orderBy: { createdAt: "asc" },
+      select: { type: true },
+    }),
+  ]);
+  const previousInbound = inbound[1];
+  const weSpokeLast = !!lastOutbound && (!previousInbound || lastOutbound.createdAt > previousInbound.createdAt);
+  const answering = firstInWindow ?? (weSpokeLast ? lastOutbound : null);
+  return {
+    isFirstInbound: inbound.length <= 1,
+    isReply: !!answering,
+    replyToTemplate: answering?.type === "template",
+  };
+}
+
+/// Does this flow's trigger fire for the inbound text? Welcome and inbound-message flows
+/// are for conversations the PATIENT starts: answering a message the team sent is the
+/// team's conversation, and the bot must not cut into it. Template-message flows are the
+/// opposite — they handle the reply to our template. Keywords fire either way.
+function matchTrigger(triggerEvent: string, triggerConfig: unknown, text: string, context: ConversationContext): boolean {
   const cfg = (triggerConfig && typeof triggerConfig === "object" ? triggerConfig : {}) as Record<string, unknown>;
   switch (triggerEvent) {
     case "welcome":
-      return isFirstInbound;
+      return context.isFirstInbound && !context.isReply;
     case "keyword": {
       const kw = str(cfg.value ?? cfg.keyword);
       return kw ? text.toLowerCase().includes(kw.toLowerCase()) : false;
     }
     case "inbound_message":
     case "template_message":
+      if (triggerEvent === "inbound_message" ? context.isReply : !context.replyToTemplate) return false;
       if (cfg.field && cfg.op) {
         return evaluate(text, str(cfg.op), str(cfg.value));
       }
