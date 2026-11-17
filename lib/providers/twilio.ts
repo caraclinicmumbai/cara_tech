@@ -10,6 +10,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { dialablePhone } from "@/lib/phone";
 import { logger } from "@/lib/logger";
 import { callbackQuery, patientRingSeconds } from "@/lib/clickToCallLog";
+import { downloadRecording } from "@/lib/providers/plivo";
 
 const API = "https://api.twilio.com/2010-04-01";
 
@@ -263,17 +264,7 @@ export async function fetchTwilioRecording(
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   if (!sid || !token) return null;
-  try {
-    const res = await axios.get<ArrayBuffer>(recordingUrl, {
-      auth: { username: sid, password: token },
-      responseType: "arraybuffer",
-      timeout: 20_000,
-    });
-    return { buffer: Buffer.from(res.data), mime: "audio/mpeg" };
-  } catch (err) {
-    logger.error(`Twilio recording fetch failed: ${String(err)}`);
-    return null;
-  }
+  return downloadRecording("Twilio", recordingUrl, { username: sid, password: token });
 }
 
 // ── Inbound calls to the published clinic number (§presence) ──────────────────
