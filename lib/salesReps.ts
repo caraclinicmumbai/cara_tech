@@ -60,11 +60,12 @@ export function notRinging(now = new Date()): Prisma.SalesRepWhereInput {
 /// Claim `repId`'s phone for one inbound ring. One conditional update, so when two patients
 /// call at the same moment only one of them gets this rep — the other is routed to the next
 /// person instead of dialling a handset that's about to be busy. False when it's taken.
-export async function reserveForRinging(repId: string, seconds: number): Promise<boolean> {
+/// `callId` (the provider's call id) records whose ring it is, for releaseRingingForCall.
+export async function reserveForRinging(repId: string, seconds: number, callId?: string): Promise<boolean> {
   const now = new Date();
   const { count } = await prisma.salesRep.updateMany({
     where: { id: repId, ...notRinging(now) },
-    data: { ringingUntil: new Date(now.getTime() + seconds * 1000) },
+    data: { ringingUntil: new Date(now.getTime() + seconds * 1000), ringingCallId: callId || null },
   });
   return count > 0;
 }
@@ -72,8 +73,20 @@ export async function reserveForRinging(repId: string, seconds: number): Promise
 /// The ring is over — answered, declined, or rang out.
 export async function releaseRinging(repId: string): Promise<void> {
   await prisma.salesRep
-    .updateMany({ where: { id: repId }, data: { ringingUntil: null } })
+    .updateMany({ where: { id: repId }, data: { ringingUntil: null, ringingCallId: null } })
     .catch((err) => logger.error(`Could not release the ring on rep ${repId}: ${String(err)}`));
+}
+
+/// The caller has hung up: free every phone reserved for their call. A caller who leaves
+/// during the greeting does so before the counsellor's phone starts ringing, so no dial
+/// callback ever arrives — without this the phone stayed "ringing" for the whole
+/// reservation, and the next patient (often the same one, redialling) was told nobody
+/// was free while every handset sat idle.
+export async function releaseRingingForCall(callId: string): Promise<void> {
+  if (!callId) return;
+  await prisma.salesRep
+    .updateMany({ where: { ringingCallId: callId }, data: { ringingUntil: null, ringingCallId: null } })
+    .catch((err) => logger.error(`Could not release the rings held by call ${callId}: ${String(err)}`));
 }
 
 /// The next telecaller to ring for a first-time caller: free (not on a call, not already

@@ -28,7 +28,7 @@ import {
 } from "@/lib/providers/plivo";
 import { callbackQuery } from "@/lib/clickToCallLog";
 import { endConsultation } from "@/lib/presence";
-import { claimUnownedLead, releaseRinging } from "@/lib/salesReps";
+import { claimUnownedLead, releaseRinging, releaseRingingForCall } from "@/lib/salesReps";
 import { logger } from "@/lib/logger";
 
 /// How long one counsellor's phone rings before we move down the ladder.
@@ -96,11 +96,14 @@ export async function POST(req: Request) {
     }
   }
   // The caller hung up while a counsellor's phone rang — the hang-up callback logs the miss.
-  if (params.CallStatus && CALLER_GONE.has(params.CallStatus)) return xml(hangupPlivoXML());
+  if (params.CallStatus && CALLER_GONE.has(params.CallStatus)) {
+    await releaseRingingForCall(callUuid);
+    return xml(hangupPlivoXML());
+  }
 
   if (!from) return xml(hangupPlivoXML("Sorry, we could not identify your number. Please call again."));
 
-  const route = await routeInboundCall(from, { exclude: tried, ringSeconds: RING_SECONDS });
+  const route = await routeInboundCall(from, { exclude: tried, ringSeconds: RING_SECONDS, callId: callUuid });
   const call = await startInboundCall({ leadId: route.lead.id, providerSid: callUuid, provider: "plivo" });
   if (!call) logger.warn(`Plivo inbound ${from}: no CallUUID — this call will not appear in the call log`);
 
