@@ -37,13 +37,14 @@ export async function requireCapability(cap: Capability): Promise<SessionUser> {
 }
 
 /// A Prisma `where` fragment restricting leads to what this user may see. "all"
-/// scope → no restriction; "own" → leads assigned to their rep OR created by them.
+/// scope → no restriction; "own" → leads assigned to their rep OR created by them
+/// (see `creatorStillSees` for when creating a lead keeps it visible).
 /// Spread into a query's where: `{ deletedAt: null, ...leadWhereForUser(user) }`.
 export function leadWhereForUser(user: SessionUser): Prisma.LeadWhereInput {
   if (leadScope(user.role) === "all") return {};
   const or: Prisma.LeadWhereInput[] = [];
   if (user.salesRepId) or.push({ assignedRepId: user.salesRepId });
-  if (user.id) or.push({ createdById: user.id });
+  if (user.id) or.push(user.salesRepId ? { createdById: user.id, assignedRepId: null } : { createdById: user.id });
   // Leads they hold an active temporary access grant on (§handover — covering a
   // colleague). Widens the "own" scope for the duration of the grant.
   if (user.id) or.push({ accessGrants: { some: activeGrantWhere(user.id) } });
@@ -91,6 +92,16 @@ export function activeGrantWhere(userId: string): Prisma.LeadAccessGrantWhereInp
   };
 }
 
+/// Whether having CREATED a lead still shows it to this user. Someone with a counsellor
+/// seat (a sales rep) follows ownership: their own leads are assigned to them at creation,
+/// and once they hand one over it belongs on the new owner's list, not theirs as well
+/// (§handover). Creating it only keeps it visible while nobody owns it. Someone with no
+/// seat (front desk registering a walk-in) never owns leads, so creating one is their
+/// only link to it and it stays visible.
+function creatorStillSees(user: SessionUser, lead: { assignedRepId: string | null }): boolean {
+  return !user.salesRepId || lead.assignedRepId === null;
+}
+
 /// True if this user may see the given lead (owner scope check for one record). Pass
 /// the lead's `accessGrants` to also honour an active temporary grant.
 export function canSeeLead(
@@ -103,7 +114,7 @@ export function canSeeLead(
 ): boolean {
   if (leadScope(user.role) === "all") return true;
   if (!!user.salesRepId && lead.assignedRepId === user.salesRepId) return true;
-  if (!!user.id && lead.createdById === user.id) return true;
+  if (!!user.id && lead.createdById === user.id && creatorStillSees(user, lead)) return true;
   const now = Date.now();
   return (
     !!user.id &&
