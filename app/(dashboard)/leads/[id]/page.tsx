@@ -316,7 +316,7 @@ export default async function LeadDetailPage({
           <StageSelect
             leadId={lead.id}
             stage={lead.stage}
-            options={pipeline.leadStages.map((s) => ({ key: s.key, label: s.label }))}
+            options={pipeline.leadStages.map((s) => ({ key: s.key, label: s.label, color: s.color }))}
           />
           {canViewQuotes && lead.quotes.length > 0 && (
             <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs text-black/60 dark:bg-white/10 dark:text-white/60">
@@ -632,7 +632,7 @@ export default async function LeadDetailPage({
             templateConfigured={quoteDocTemplate}
             reps={quoteReps}
             catalog={catalog}
-            statuses={pipeline.quoteStatuses.map((s) => ({ key: s.key, label: s.label, system: s.system }))}
+            statuses={pipeline.quoteStatuses.map((s) => ({ key: s.key, label: s.label, system: s.system, color: s.color }))}
             quotes={lead.quotes.map((q) => ({
               id: q.id,
               treatment: q.treatment,

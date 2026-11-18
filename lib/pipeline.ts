@@ -28,6 +28,7 @@ import {
   isQuoteStatus,
   type QuoteStatus,
 } from "@/lib/quoteStages";
+import { isHexColor, leadStageColor, quoteStatusColor as defaultQuoteColor } from "@/lib/stageColors";
 
 export type PipelineKind = "lead_stage" | "quote_status";
 
@@ -40,6 +41,9 @@ export type StageOption = {
   after?: LeadStage;
   /// Built-ins: what the system does with it, shown in Settings.
   note?: string;
+  /// Its colour: the clinic's choice (Settings → Colours), else `defaultColor`.
+  color: string;
+  defaultColor: string;
 };
 
 export type QuoteStatusOption = {
@@ -48,6 +52,9 @@ export type QuoteStatusOption = {
   system: boolean;
   category: "open" | "won" | "closed";
   note?: string;
+  /// Its pill colour: the clinic's choice (Settings → Colours), else `defaultColor`.
+  color: string;
+  defaultColor: string;
 };
 
 export type Pipeline = {
@@ -57,6 +64,10 @@ export type Pipeline = {
   quoteStatuses: QuoteStatusOption[];
   stageLabel: (key: string) => string;
   quoteStatusLabel: (key: string) => string;
+  /// A lead stage's / quote status's colour, for any key (one no longer in the pipeline
+  /// gets its default).
+  stageColor: (key: string) => string;
+  quoteStatusColor: (key: string) => string;
 };
 
 /// What each built-in drives, so an admin sees why it can't be deleted.
@@ -98,11 +109,11 @@ export function invalidatePipeline(): void {
 export async function getPipeline(): Promise<Pipeline> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.value;
 
-  let rows: { kind: string; key: string; label: string; createdAt: Date }[] = [];
+  let rows: { kind: string; key: string; label: string; color: string | null; createdAt: Date }[] = [];
   try {
     rows = await prisma.pipelineStatus.findMany({
       orderBy: { createdAt: "asc" },
-      select: { kind: true, key: true, label: true, createdAt: true },
+      select: { kind: true, key: true, label: true, color: true, createdAt: true },
     });
   } catch (err) {
     // Names must never take a page down: fall back to the built-in defaults.
@@ -113,7 +124,7 @@ export async function getPipeline(): Promise<Pipeline> {
   const quoteNames = named("quote_status");
 
   const customStages = rows.filter((r) => r.kind === "lead_stage" && customStageAnchor(r.key));
-  const leadStages: StageOption[] = [];
+  const leadStages: Omit<StageOption, "color" | "defaultColor">[] = [];
   for (const s of LEAD_STAGES) {
     leadStages.push({ key: s, label: stageNames.get(s) ?? STAGE_LABELS[s], system: true, note: STAGE_NOTES[s] });
     for (const c of customStages) {
@@ -133,7 +144,7 @@ export async function getPipeline(): Promise<Pipeline> {
     customStatuses
       .filter((r) => customQuoteCategory(r.key) === cat)
       .map((r) => ({ key: r.key, label: r.label, system: false, category: cat }));
-  const quoteStatuses: QuoteStatusOption[] = [
+  const quoteStatuses: Omit<QuoteStatusOption, "color" | "defaultColor">[] = [
     ...builtIn.filter((s) => s.category === "open"),
     ...custom("open"),
     ...builtIn.filter((s) => s.category === "won"),
@@ -141,15 +152,31 @@ export async function getPipeline(): Promise<Pipeline> {
     ...custom("closed"),
   ];
 
+  // Colours: the clinic's own where set, else the defaults (lib/stageColors.ts).
+  const chosen = (kind: PipelineKind) =>
+    new Map(rows.filter((r) => r.kind === kind && isHexColor(r.color)).map((r) => [r.key, r.color!.toUpperCase()]));
+  const stageColors = chosen("lead_stage");
+  const quoteColors = chosen("quote_status");
+  const leadStagesColored: StageOption[] = leadStages.map((s) => {
+    const defaultColor = leadStageColor(s.key);
+    return { ...s, defaultColor, color: stageColors.get(s.key) ?? defaultColor };
+  });
+  const quoteStatusesColored: QuoteStatusOption[] = quoteStatuses.map((s) => {
+    const defaultColor = defaultQuoteColor(s.key);
+    return { ...s, defaultColor, color: quoteColors.get(s.key) ?? defaultColor };
+  });
+
   const stageMap = new Map(leadStages.map((s) => [s.key, s.label]));
   const quoteMap = new Map(quoteStatuses.map((s) => [s.key, s.label]));
   const value: Pipeline = {
-    leadStages,
-    quoteStatuses,
+    leadStages: leadStagesColored,
+    quoteStatuses: quoteStatusesColored,
     // A key no longer in the pipeline (a deleted custom stage on an old audit row) still
     // reads as something sensible.
     stageLabel: (k) => stageMap.get(k) ?? fallbackStageLabel(k),
     quoteStatusLabel: (k) => quoteMap.get(k) ?? (isQuoteStatus(k) ? QUOTE_STATUS_LABELS[k] : k),
+    stageColor: (k) => stageColors.get(k) ?? leadStageColor(k),
+    quoteStatusColor: (k) => quoteColors.get(k) ?? defaultQuoteColor(k),
   };
   cache = { at: Date.now(), value };
   return value;

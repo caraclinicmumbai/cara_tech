@@ -1,7 +1,8 @@
 // Stage colours for leads and quotations — the clinic's colour rules (2026-11-18). One base
-// colour per stage; the row tint, left bar and pill shades are derived from it in CSS
-// (`.stage-row`, `.stage-pill` in app/globals.css), so these hex values are the only place a
-// colour is decided. Custom stages (Settings → Pipeline) take the colour of their anchor.
+// colour per stage; the row tint, left bar and pill shades are derived from it (`stageVars`
+// and `.stage-row` / `.stage-pill` in app/globals.css). The clinic can change any of them
+// under Settings → Colours (saved on PipelineStatus.color, served by lib/pipeline.ts); the
+// values here are the defaults. Custom stages default to the colour of their anchor.
 import { customStageAnchor } from "@/lib/leadStages";
 import { customQuoteCategory } from "@/lib/quoteStages";
 
@@ -18,17 +19,60 @@ export const LEAD_STAGE_COLORS: Record<string, string> = {
   lost: "#D92D2D",
 };
 
-/// A lead stage's base colour. A custom stage ("<built-in>__<slug>") wears its anchor's.
+/// A lead stage's DEFAULT base colour. A custom stage ("<built-in>__<slug>") wears its anchor's.
 export function leadStageColor(stage: string): string {
   const key = customStageAnchor(stage) ?? stage;
   return LEAD_STAGE_COLORS[key] ?? LEAD_STAGE_COLORS.ai_contacted;
 }
 
-/// The CSS variables `.stage-row` / `.stage-pill` read (app/globals.css), for a lead stage:
-/// the base colour, its 8 / 14 / 18 / 35% translucent tints, and the pill's text colour —
+/// Quotation statuses: the pill background, at the rules' default "soft pastel" intensity
+/// (30) worked out to hex; the text is black or white, whichever reads better (`pillInk`).
+/// The rules name seven stages; the CRM has twelve, so:
+///   - Accepted and Awaiting Payment are the rules' one "Accepted — Awaiting Payment" stage;
+///   - In Treatment and Completed come after Converted and share its dark green;
+///   - Replaced is a withdrawn-in-favour-of-another quote, so it shares Withdrawn;
+///   - Drafted (not yet sent) is a neutral grey.
+export const QUOTE_STATUS_COLORS: Record<string, string> = {
+  drafted: "#E4E7EC",
+  sent: "#9FC5F1",
+  viewed: "#B9A2EE",
+  accepted: "#C7F0C5",
+  awaiting_payment: "#C7F0C5",
+  converted: "#1F7B50",
+  in_treatment: "#1F7B50",
+  completed: "#1F7B50",
+  rejected: "#F07A82",
+  expired: "#F3AFA5",
+  replaced: "#E3C9CC",
+  withdrawn: "#E3C9CC",
+};
+
+/// A quotation status's DEFAULT pill colour. A custom status takes Drafted's grey while
+/// open and Withdrawn's dusty red once closed.
+export function quoteStatusColor(status: string): string {
+  const custom = customQuoteCategory(status);
+  if (custom) return custom === "closed" ? QUOTE_STATUS_COLORS.withdrawn : QUOTE_STATUS_COLORS.drafted;
+  return QUOTE_STATUS_COLORS[status] ?? QUOTE_STATUS_COLORS.drafted;
+}
+
+/// A #RRGGBB colour, as the Settings colour picker sends it.
+export function isHexColor(v: unknown): v is string {
+  return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v);
+}
+
+/// Black or white text on `bg`, whichever has the higher contrast (WCAG luminance).
+export function pillInk(bg: string): "#000000" | "#FFFFFF" {
+  const lin = (v: number) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  const [r, g, b] = [0, 1, 2].map((i) => lin(channel(bg, i) / 255));
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return (lum + 0.05) / 0.05 >= 1.05 / (lum + 0.05) ? "#000000" : "#FFFFFF";
+}
+
+/// The CSS variables `.stage-row` / `.stage-pill` read (app/globals.css), for a lead stage's
+/// base colour: the colour, its 8 / 14 / 18 / 35% translucent tints, and the pill's text —
 /// 70% of the colour mixed with black (light themes), 55% with white (dark).
-export function stageVars(stage: string): Record<string, string> {
-  const hex = leadStageColor(stage);
+export function stageVars(color: string): Record<string, string> {
+  const hex = isHexColor(color) ? color.toUpperCase() : LEAD_STAGE_COLORS.ai_contacted;
   const alpha = (pct: number) => hex + Math.round((pct / 100) * 255).toString(16).padStart(2, "0").toUpperCase();
   return {
     "--stage": hex,
@@ -41,44 +85,17 @@ export function stageVars(stage: string): Record<string, string> {
   };
 }
 
+function channel(hex: string, i: number): number {
+  return parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+}
+
 /// `weight` of colour `a` mixed with the rest of `b`, as #RRGGBB.
 function mix(a: string, b: string, weight: number): string {
-  const ch = (h: string, i: number) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
   return (
     "#" +
     [0, 1, 2]
-      .map((i) => Math.round(ch(a, i) * weight + ch(b, i) * (1 - weight)).toString(16).padStart(2, "0"))
+      .map((i) => Math.round(channel(a, i) * weight + channel(b, i) * (1 - weight)).toString(16).padStart(2, "0"))
       .join("")
       .toUpperCase()
   );
-}
-
-/// Quotation statuses: a solid pill each, with black or white text — whichever reads better
-/// on it. These are the rules' default "soft pastel" intensity (30) worked out to hex.
-/// The rules name seven stages; the CRM has twelve, so:
-///   - Accepted and Awaiting Payment are the rules' one "Accepted — Awaiting Payment" stage;
-///   - In Treatment and Completed come after Converted and share its dark green;
-///   - Replaced is a withdrawn-in-favour-of-another quote, so it shares Withdrawn;
-///   - Drafted (not yet sent) is a neutral grey.
-export const QUOTE_STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  drafted: { bg: "#E4E7EC", fg: "#000000" },
-  sent: { bg: "#9FC5F1", fg: "#000000" },
-  viewed: { bg: "#B9A2EE", fg: "#000000" },
-  accepted: { bg: "#C7F0C5", fg: "#000000" },
-  awaiting_payment: { bg: "#C7F0C5", fg: "#000000" },
-  converted: { bg: "#1F7B50", fg: "#FFFFFF" },
-  in_treatment: { bg: "#1F7B50", fg: "#FFFFFF" },
-  completed: { bg: "#1F7B50", fg: "#FFFFFF" },
-  rejected: { bg: "#F07A82", fg: "#000000" },
-  expired: { bg: "#F3AFA5", fg: "#000000" },
-  replaced: { bg: "#E3C9CC", fg: "#000000" },
-  withdrawn: { bg: "#E3C9CC", fg: "#000000" },
-};
-
-/// A quotation status's pill colours. A custom status takes Drafted's grey while open and
-/// Withdrawn's dusty red once closed.
-export function quoteStatusColor(status: string): { bg: string; fg: string } {
-  const custom = customQuoteCategory(status);
-  if (custom) return custom === "closed" ? QUOTE_STATUS_COLORS.withdrawn : QUOTE_STATUS_COLORS.drafted;
-  return QUOTE_STATUS_COLORS[status] ?? QUOTE_STATUS_COLORS.drafted;
 }

@@ -694,6 +694,9 @@ model PipelineStatus {
   kind        String
   key         String
   label       String
+  // The clinic's own colour for it (#RRGGBB, Settings → Colours); null = the default from
+  // lib/stageColors.ts. A lead stage's base colour; a quote status's pill background.
+  color       String?
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

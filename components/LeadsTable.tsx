@@ -7,7 +7,7 @@ import { BulkAccessBar } from "@/components/BulkAccessBar";
 import { leadListFiltered, leadListQuery, type LeadListFilters } from "@/lib/leadList";
 import { useCallback, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { StageSelect } from "@/components/StageSelect";
-import { stageVars } from "@/lib/stageColors";
+import { leadStageColor, stageVars } from "@/lib/stageColors";
 import { TagField } from "@/components/TagField";
 import { LeadDeleteButton } from "@/components/LeadDeleteButton";
 import { RemarkField } from "@/components/RemarkField";
@@ -73,7 +73,8 @@ type FilterKind = "none" | "enum" | "text" | "date";
 type DateShortcut = "today" | "tomorrow" | "yesterday" | "overdue";
 
 /// One choice in a multi-select column filter — supplied by the server (lib/leadList.ts).
-export type FilterOption = { value: string; label: string };
+/// `color`: a lead stage's colour (Settings → Colours), on the stage options only.
+export type FilterOption = { value: string; label: string; color?: string };
 
 type Col = {
   /// For a filterable column, its key in the URL (lib/leadList.ts).
@@ -98,7 +99,7 @@ type Col = {
 type CellContext = {
   sourceLabels: Record<string, string>;
   /// The clinic's pipeline stages, in order (lib/pipeline.ts).
-  stageOptions: { key: string; label: string }[];
+  stageOptions: { key: string; label: string; color?: string }[];
   canRemark: boolean;
   onOpenLead: () => void;
 };
@@ -563,7 +564,7 @@ export function LeadsTable({
   const cellContext: CellContext = useMemo(
     () => ({
       sourceLabels,
-      stageOptions: (options.stage ?? []).map((o) => ({ key: o.value, label: o.label })),
+      stageOptions: (options.stage ?? []).map((o) => ({ key: o.value, label: o.label, color: o.color })),
       canRemark,
       onOpenLead: () => {
         saveLeadQueue({ ids: rows.map((r) => r.id), label: filterLabel });
@@ -572,6 +573,13 @@ export function LeadsTable({
     }),
     [sourceLabels, options.stage, canRemark, rows, filterLabel],
   );
+
+  /// A row's stage colour: the clinic's (Settings → Colours), else the default.
+  const stageColors = useMemo(
+    () => new Map((options.stage ?? []).filter((o) => o.color).map((o) => [o.value, o.color!])),
+    [options.stage],
+  );
+  const stageColor = (stage: string) => stageColors.get(stage) ?? leadStageColor(stage);
 
   return (
     <div className="space-y-3">
@@ -738,7 +746,7 @@ export function LeadsTable({
               <tr
                 key={lead.id}
                 className="stage-row border-t border-black/5 dark:border-white/10"
-                style={stageVars(lead.stage) as CSSProperties}
+                style={stageVars(stageColor(lead.stage)) as CSSProperties}
               >
                 {/* Cells come from the same `columns` list as the headers above, so a
                     column can be reordered in one place without data sliding under the

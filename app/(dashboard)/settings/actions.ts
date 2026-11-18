@@ -21,6 +21,7 @@ import {
 } from "@/lib/pipeline";
 import { LOST_STAGE, customStageKey, isLeadStage } from "@/lib/leadStages";
 import { customQuoteStatusKey } from "@/lib/quoteStages";
+import { isHexColor } from "@/lib/stageColors";
 
 type Result = { ok: boolean; error?: string; info?: string };
 
@@ -271,6 +272,37 @@ export async function renamePipelineStatus(input: { kind: PipelineKind; key: str
   } catch (err) {
     logger.error(`renamePipelineStatus failed: ${String(err)}`);
     return { ok: false, error: "Could not rename it" };
+  }
+}
+
+/// Set a lead stage's or quote status's colour (Settings → Colours); `color: null` puts the
+/// default back. Kept on the same row as its name, so a built-in's row is created on first
+/// change with its current name.
+export async function setPipelineColor(input: { kind: PipelineKind; key: string; color: string | null }): Promise<Result> {
+  const user = await requireCapability("settings.manage");
+  if (input.color !== null && !isHexColor(input.color)) return { ok: false, error: "Pick a colour" };
+  const color = input.color?.toUpperCase() ?? null;
+
+  const p = await getPipeline();
+  const list = input.kind === "lead_stage" ? p.leadStages : p.quoteStatuses;
+  const entry = list.find((s) => s.key === input.key);
+  if (!entry) return { ok: false, error: `That ${kindName(input.kind)} no longer exists` };
+  const stored = color === entry.defaultColor ? null : color;
+  if ((stored ?? entry.defaultColor) === entry.color) return { ok: true };
+
+  try {
+    await prisma.pipelineStatus.upsert({
+      where: { kind_key: { kind: input.kind, key: input.key } },
+      create: { kind: input.kind, key: input.key, label: entry.label, color: stored, createdById: user.id ?? null },
+      update: { color: stored },
+    });
+    invalidatePipeline();
+    await pipelineAudit(user, "settings.pipeline.color", input.kind, input.key, entry.color, stored ?? entry.defaultColor);
+    revalidatePipeline();
+    return { ok: true };
+  } catch (err) {
+    logger.error(`setPipelineColor failed: ${String(err)}`);
+    return { ok: false, error: "Could not save the colour" };
   }
 }
 

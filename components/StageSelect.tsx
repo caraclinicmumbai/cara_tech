@@ -2,13 +2,14 @@
 
 import { useState, useTransition, type CSSProperties } from "react";
 import { LOST_STAGE, LOST_PRESET_TAGS, stageLabel } from "@/lib/leadStages";
-import { stageVars } from "@/lib/stageColors";
+import { leadStageColor, stageVars } from "@/lib/stageColors";
 import { setLeadStage } from "@/app/(dashboard)/leads/actions";
 
 // Inline pipeline-stage dropdown. Saves on change via the setLeadStage action;
 // the page revalidates so the new value sticks across navigations. Marking a lead
 // Lost opens a modal to pick a preset tag and/or write a review. `options` is the
-// clinic's pipeline (lib/pipeline.ts — built-in and custom stages, in order).
+// clinic's pipeline (lib/pipeline.ts — built-in and custom stages, in order, each with its
+// colour from Settings → Colours).
 export function StageSelect({
   leadId,
   stage,
@@ -17,7 +18,7 @@ export function StageSelect({
 }: {
   leadId: string;
   stage: string;
-  options: { key: string; label: string }[];
+  options: { key: string; label: string; color?: string }[];
   className?: string;
 }) {
   // A stage that's no longer offered still shows as the current value.
@@ -66,7 +67,7 @@ export function StageSelect({
           submitStage(next);
         }}
         className={`stage-pill rounded-full border px-2 py-1 text-xs disabled:opacity-50 ${className}`}
-        style={stageVars(stage) as CSSProperties}
+        style={stageVars(options.find((o) => o.key === stage)?.color ?? leadStageColor(stage)) as CSSProperties}
       >
         {list.map((s) => (
           <option key={s.key} value={s.key} className="bg-cara-surface text-cara-ink">

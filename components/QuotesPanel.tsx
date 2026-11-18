@@ -34,6 +34,7 @@ import { formatIst } from "@/lib/datetime";
 import type { CatalogGroups } from "@/lib/catalog";
 import { TreatmentCombobox } from "@/components/TreatmentCombobox";
 import { QuoteStatusPill } from "@/components/QuoteStatusPill";
+import { quoteStatusColor } from "@/lib/stageColors";
 
 export type QuoteView = {
   id: string;
@@ -135,7 +136,7 @@ export function QuotesPanel({
   quotes: QuoteView[];
   /// The clinic's quote statuses (lib/pipeline.ts): names, and the custom ones offered
   /// in "Move to…" alongside the built-ins.
-  statuses: { key: string; label: string; system: boolean }[];
+  statuses: { key: string; label: string; system: boolean; color: string }[];
   reps: Rep[];
   catalog: CatalogGroups[];
   canManage: boolean;
@@ -156,6 +157,7 @@ export function QuotesPanel({
   // approved document template is configured (proactive send outside the window).
   const canSendWhatsApp = windowOpen || templateConfigured;
   const statusName = new Map(statuses.map((s) => [s.key, s.label]));
+  const statusColor = new Map(statuses.map((s) => [s.key, s.color]));
   const label = (k: string) => statusName.get(k) ?? QUOTE_STATUS_LABELS[k as QuoteStatus] ?? k;
   const moveTo = [...NEXT_STATUSES, ...statuses.filter((s) => !s.system).map((s) => s.key)];
   const router = useRouter();
@@ -234,7 +236,7 @@ export function QuotesPanel({
                       cycle {q.cycle}
                     </span>
                   )}
-                  <QuoteStatusPill status={q.status} label={label(q.status)} />
+                  <QuoteStatusPill label={label(q.status)} color={statusColor.get(q.status) ?? quoteStatusColor(q.status)} />
                   {locked && (
                     <span title="Converted — read-only" className="text-xs text-black/40 dark:text-white/40">
                       locked
