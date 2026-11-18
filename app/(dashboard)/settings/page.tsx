@@ -5,6 +5,7 @@ import { getBoolSetting, ALLOW_UNINVOICED_CONVERSION } from "@/lib/settings";
 import { SettingToggle } from "@/components/SettingToggle";
 import { StagesSetup } from "@/components/StagesSetup";
 import { PipelineSetup } from "@/components/PipelineSetup";
+import { ColourSetup } from "@/components/ColourSetup";
 import { getPipeline } from "@/lib/pipeline";
 import { setAllowUninvoicedConversion } from "./actions";
 
@@ -92,6 +93,18 @@ export default async function SettingsPage() {
           stageCounts={stageCounts}
           quoteCounts={quoteCounts}
         />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="cara-eyebrow">Colours</h2>
+        <p className="cara-note">
+          The colour of each lead stage and quote status. A lead stage&apos;s colour tints its row
+          in the leads table and colours its stage pill; a quote status&apos;s colour fills its pill
+          on the lead page and the Open Quotes board, with black or white text, whichever reads
+          better. Stages you add above get a colour too: they start with the colour of the stage
+          they sit after. <strong>Reset</strong> puts a colour back to the clinic&apos;s default.
+        </p>
+        <ColourSetup leadStages={pipeline.leadStages} quoteStatuses={pipeline.quoteStatuses} />
       </section>
 
       <section className="space-y-3">

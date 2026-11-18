@@ -28,12 +28,13 @@ import {
   QUOTE_MAX_QUANTITY,
   isQuoteLocked,
   isQuoteOpen,
-  customQuoteCategory,
   type QuoteStatus,
 } from "@/lib/quoteStages";
 import { formatIst } from "@/lib/datetime";
 import type { CatalogGroups } from "@/lib/catalog";
 import { TreatmentCombobox } from "@/components/TreatmentCombobox";
+import { QuoteStatusPill } from "@/components/QuoteStatusPill";
+import { quoteStatusColor } from "@/lib/stageColors";
 
 export type QuoteView = {
   id: string;
@@ -115,14 +116,6 @@ function inr(price: number | null, currency: string): string {
   return `${sym}${price.toLocaleString("en-IN")}`;
 }
 
-function statusTone(status: string): string {
-  if (["converted", "in_treatment", "completed"].includes(status))
-    return "tag tag-aqua";
-  if (["rejected", "expired", "withdrawn", "replaced"].includes(status) || customQuoteCategory(status) === "closed")
-    return "tag tag-tangerine";
-  return "tag tag-citric";
-}
-
 export function QuotesPanel({
   leadId,
   quotes,
@@ -143,7 +136,7 @@ export function QuotesPanel({
   quotes: QuoteView[];
   /// The clinic's quote statuses (lib/pipeline.ts): names, and the custom ones offered
   /// in "Move to…" alongside the built-ins.
-  statuses: { key: string; label: string; system: boolean }[];
+  statuses: { key: string; label: string; system: boolean; color: string }[];
   reps: Rep[];
   catalog: CatalogGroups[];
   canManage: boolean;
@@ -164,6 +157,7 @@ export function QuotesPanel({
   // approved document template is configured (proactive send outside the window).
   const canSendWhatsApp = windowOpen || templateConfigured;
   const statusName = new Map(statuses.map((s) => [s.key, s.label]));
+  const statusColor = new Map(statuses.map((s) => [s.key, s.color]));
   const label = (k: string) => statusName.get(k) ?? QUOTE_STATUS_LABELS[k as QuoteStatus] ?? k;
   const moveTo = [...NEXT_STATUSES, ...statuses.filter((s) => !s.system).map((s) => s.key)];
   const router = useRouter();
@@ -242,9 +236,7 @@ export function QuotesPanel({
                       cycle {q.cycle}
                     </span>
                   )}
-                  <span className={`rounded-full px-2 py-0.5 text-xs ${statusTone(q.status)}`}>
-                    {label(q.status)}
-                  </span>
+                  <QuoteStatusPill label={label(q.status)} color={statusColor.get(q.status) ?? quoteStatusColor(q.status)} />
                   {locked && (
                     <span title="Converted — read-only" className="text-xs text-black/40 dark:text-white/40">
                       locked

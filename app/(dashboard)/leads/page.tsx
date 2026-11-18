@@ -46,7 +46,7 @@ async function filterOptions(scope: Prisma.LeadWhereInput): Promise<Record<strin
       value: s.source ?? "none",
       label: s.source ? (SOURCE_LABELS[s.source] ?? s.source) : "Other",
     })),
-    stage: (await getPipeline()).leadStages.map((s) => ({ value: s.key, label: s.label })),
+    stage: (await getPipeline()).leadStages.map((s) => ({ value: s.key, label: s.label, color: s.color })),
     status: statuses.map((s) => ({ value: s.status, label: s.status })),
     owner: [
       ...reps.map((r) => ({ value: r.id, label: r.name })),
