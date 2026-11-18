@@ -93,6 +93,16 @@ quotes to a stage the admin picks (each move audited, no chatbot triggers fired)
 refused while a chatbot flow is triggered by that stage. Screens read names through
 `getPipeline()` (30 s cache, cleared on every change); logs fall back to `stageLabel()`.
 
+**Stage colours** (Settings → Colours, `lib/stageColors.ts`, `PipelineStatus.color`). Every
+lead stage and quote status has a colour: the clinic's choice if set, else the default
+from the colour rules (2026-11-18). `getPipeline()` hands each entry its `color` and
+`defaultColor`. A lead stage's colour tints its leads-table row (8%, 14% on hover) with a
+3px bar, and colours its stage pill (18% tint, text at 70% of the colour). A quote status's
+colour fills its pill, with black or white text by contrast (`pillInk`). Custom entries
+default to their anchor's colour (quote statuses: Drafted's grey open, Withdrawn's closed).
+Tints are translucent hex over the page background (`stageVars`), not `color-mix()`: the
+build compiles `color-mix()` into a fallback that paints the full colour.
+
 A lead never "converts": it summarises its quotes. A patient with two converted
 treatments has two `Quote` rows and two `PostSalesJourney` rows, at different points.
 

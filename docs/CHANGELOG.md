@@ -7,6 +7,22 @@ Format: newest first.
 
 ---
 
+## 2026-11-18 — Stage colours; Settings → Colours
+
+Merge `40232f1` (commits `2d4b820`, `59935c8`). **Migration:** `pipeline_status_color`
+(`PipelineStatus.color`, nullable). No settings keys. Doc updated:
+**[architecture.md](architecture.md)** (stage colours).
+
+- Lead stages and quote statuses are coloured per the clinic's colour rules: leads-table
+  rows tint in their stage colour with a left bar, the stage dropdown is a coloured pill, and
+  quote statuses are solid pills on the lead page and the Open Quotes board.
+- The rules cover 7 of the 12 quote statuses: Accepted and Awaiting Payment share
+  "Accepted — Awaiting Payment"; In Treatment and Completed share Converted; Replaced shares
+  Withdrawn; Drafted is grey.
+- Settings → Colours lists every lead stage and quote status (custom ones included) with a
+  live preview, colour picker and hex field; Save applies it everywhere, Reset restores the
+  default. Changes are audited (`settings.pipeline.color`).
+
 ## 2026-11-17 — Recordings: fetch over IPv4 with a retry
 
 Merge `6255138` (commit `50388f1`). No migration, no settings keys. Doc updated:
