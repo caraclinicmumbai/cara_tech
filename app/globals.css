@@ -1085,3 +1085,37 @@ h3 { font-size: 14px; }
 }
 .cara-bubble-out { background: var(--cara-accent-bg); }
 .dark .cara-bubble-out { background: var(--cara-accent-bg); }
+
+/* Stage colours (lib/stageColors.ts) — the clinic's colour rules. `stageVars()` sets the
+   base colour, its translucent tints (--stage-a8 …) and the pill text colours on each row
+   or pill. A tint is laid over the page background as an image, so it follows the theme
+   and stays opaque (the leads table's sticky first column covers what scrolls beneath).
+   No color-mix() here: the build turns it into a fallback that paints the FULL colour. */
+.stage-row > td {
+  background-color: var(--background);
+  background-image: linear-gradient(var(--stage-a8), var(--stage-a8));
+}
+.stage-row:hover > td { background-image: linear-gradient(var(--stage-a14), var(--stage-a14)); }
+.stage-row > td:first-child { box-shadow: inset 3px 0 0 var(--stage); }
+.stage-pill {
+  background-color: var(--background);
+  background-image: linear-gradient(var(--stage-a18), var(--stage-a18));
+  border-color: var(--stage-a35);
+  color: var(--stage-ink);
+  font-weight: 600;
+}
+.dark .stage-pill { color: var(--stage-ink-dark); }
+.stage-pill option { background: var(--cara-surface); color: var(--cara-text); font-weight: 400; }
+/* Quotation statuses: a solid pill, black or white text chosen per status. */
+.quote-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background-color: var(--pill-bg);
+  color: var(--pill-fg);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 17px;
+  white-space: nowrap;
+}

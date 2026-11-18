@@ -10,6 +10,7 @@ import {
 } from "@/lib/openQuotes";
 import { QUOTE_SOURCE_LABELS, type QuoteSource } from "@/lib/quoteStages";
 import { getPipeline } from "@/lib/pipeline";
+import { QuoteStatusPill } from "@/components/QuoteStatusPill";
 import { formatIst, formatIstDate } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
@@ -322,7 +323,7 @@ export default async function OpenQuotesPage({
                     </div>
                   </td>
                   <td>
-                    <span className="cara-badge">{r.statusLabel}</span>
+                    <QuoteStatusPill status={r.status} label={r.statusLabel} />
                     {r.revisions > 0 && (
                       <div
                         className="mt-1 text-[11px] text-cara-faint"
@@ -462,7 +463,7 @@ export default async function OpenQuotesPage({
                         {r.cycle > 1 && <span className="text-cara-muted"> · cycle {r.cycle}</span>}
                       </td>
                       <td className="px-4 py-2">
-                        <span className="cara-badge">{r.statusLabel}</span>
+                        <QuoteStatusPill status={r.status} label={r.statusLabel} />
                       </td>
                       <td className="px-4 py-2 text-right font-medium">{inr(r.total)}</td>
                       <td suppressHydrationWarning className="whitespace-nowrap px-4 py-2">

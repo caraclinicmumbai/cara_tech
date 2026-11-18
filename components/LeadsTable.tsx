@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { saveLeadListHref, saveLeadQueue } from "@/lib/leadQueue";
 import { BulkAccessBar } from "@/components/BulkAccessBar";
 import { leadListFiltered, leadListQuery, type LeadListFilters } from "@/lib/leadList";
-import { useCallback, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { StageSelect } from "@/components/StageSelect";
+import { stageVars } from "@/lib/stageColors";
 import { TagField } from "@/components/TagField";
 import { LeadDeleteButton } from "@/components/LeadDeleteButton";
 import { RemarkField } from "@/components/RemarkField";
@@ -734,7 +735,11 @@ export function LeadsTable({
           </thead>
           <tbody>
             {rows.map((lead) => (
-              <tr key={lead.id} className="border-t border-black/5 dark:border-white/10">
+              <tr
+                key={lead.id}
+                className="stage-row border-t border-black/5 dark:border-white/10"
+                style={stageVars(lead.stage) as CSSProperties}
+              >
                 {/* Cells come from the same `columns` list as the headers above, so a
                     column can be reordered in one place without data sliding under the
                     wrong heading. */}
@@ -745,7 +750,7 @@ export function LeadsTable({
                       c.align === "right" ? "text-right tabular-nums" : ""
                     } ${
                       i === 0
-                        ? "sticky left-0 z-10 border-r border-black/5 bg-background dark:border-white/10"
+                        ? "sticky left-0 z-10 border-r border-black/5 dark:border-white/10"
                         : ""
                     }`}
                   >

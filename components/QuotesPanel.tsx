@@ -28,12 +28,12 @@ import {
   QUOTE_MAX_QUANTITY,
   isQuoteLocked,
   isQuoteOpen,
-  customQuoteCategory,
   type QuoteStatus,
 } from "@/lib/quoteStages";
 import { formatIst } from "@/lib/datetime";
 import type { CatalogGroups } from "@/lib/catalog";
 import { TreatmentCombobox } from "@/components/TreatmentCombobox";
+import { QuoteStatusPill } from "@/components/QuoteStatusPill";
 
 export type QuoteView = {
   id: string;
@@ -113,14 +113,6 @@ function inr(price: number | null, currency: string): string {
   if (price == null) return "—";
   const sym = currency === "INR" ? "₹" : `${currency} `;
   return `${sym}${price.toLocaleString("en-IN")}`;
-}
-
-function statusTone(status: string): string {
-  if (["converted", "in_treatment", "completed"].includes(status))
-    return "tag tag-aqua";
-  if (["rejected", "expired", "withdrawn", "replaced"].includes(status) || customQuoteCategory(status) === "closed")
-    return "tag tag-tangerine";
-  return "tag tag-citric";
 }
 
 export function QuotesPanel({
@@ -242,9 +234,7 @@ export function QuotesPanel({
                       cycle {q.cycle}
                     </span>
                   )}
-                  <span className={`rounded-full px-2 py-0.5 text-xs ${statusTone(q.status)}`}>
-                    {label(q.status)}
-                  </span>
+                  <QuoteStatusPill status={q.status} label={label(q.status)} />
                   {locked && (
                     <span title="Converted — read-only" className="text-xs text-black/40 dark:text-white/40">
                       locked

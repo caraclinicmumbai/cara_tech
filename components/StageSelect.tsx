@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type CSSProperties } from "react";
 import { LOST_STAGE, LOST_PRESET_TAGS, stageLabel } from "@/lib/leadStages";
+import { stageVars } from "@/lib/stageColors";
 import { setLeadStage } from "@/app/(dashboard)/leads/actions";
 
 // Inline pipeline-stage dropdown. Saves on change via the setLeadStage action;
@@ -64,7 +65,8 @@ export function StageSelect({
           }
           submitStage(next);
         }}
-        className={`rounded border border-black/15 bg-cara-surface px-2 py-1 text-xs text-cara-ink disabled:opacity-50 dark:border-white/20 ${className}`}
+        className={`stage-pill rounded-full border px-2 py-1 text-xs disabled:opacity-50 ${className}`}
+        style={stageVars(stage) as CSSProperties}
       >
         {list.map((s) => (
           <option key={s.key} value={s.key} className="bg-cara-surface text-cara-ink">
