@@ -7,6 +7,27 @@ Format: newest first.
 
 ---
 
+## 2026-11-20 — My calendar
+
+Merge `707bd6b` (commits `ff0a78e`, `7b611b6`). **Migration:** `personal_calendar` (new
+tables `Task`, `TaskDone`, `TimeBlock`; adds `calendar.viewOthers` to customised manager
+roles). No settings keys. Docs: new
+**[flows/16-personal-calendar.md](flows/16-personal-calendar.md)**; README index;
+**[flows/15-appointments-scheduling.md](flows/15-appointments-scheduling.md)** (the clinic's
+restated appointment-stages requirement, recorded under the placeholder).
+
+- Sidebar → **My calendar** for every login: their appointments (doctors / staff), lead
+  follow-ups (counsellors), tasks, and blocked time. List, day, week and timeline views.
+- Tasks: set for yourself or any colleague (bell notification), one-time or repeating
+  daily / weekly / monthly, ticked per occurrence. Only whoever set a task deletes it.
+- Drag across empty time to block it (training, break, unavailable, other; up to 7 days).
+  For a doctor or staff member the block is approved time off: bookings skip it and
+  anything already booked goes to Needs rebooking.
+- New capability `calendar.viewOthers` (Telecalling Head, Branch Manager, Sales Head):
+  open a colleague's calendar.
+
+---
+
 ## 2026-11-20 — A Slack channel per rep
 
 Merge `e8ab6c4` (commit `bfa2503`). **Migration:** `sales_rep_slack_channel`
