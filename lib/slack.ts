@@ -61,6 +61,15 @@ export function isAddressableSlackTarget(target: string | null | undefined): boo
   return !!target && ADDRESSABLE.test(target.trim());
 }
 
+/// Where a rep's own alerts go: their Slack channel (e.g. #sales_mandira) when one is set,
+/// so the colleagues in it see them too, else a DM to the rep. Undefined = neither, and
+/// `sendSlack` uses the default channel.
+export function repSlackTarget(
+  rep: { slackChannelId?: string | null; slackUserId?: string | null } | null | undefined,
+): string | undefined {
+  return rep?.slackChannelId?.trim() || rep?.slackUserId?.trim() || undefined;
+}
+
 /// Post a message to Slack. Returns true on success, false (logged) otherwise.
 /// Never throws.
 ///

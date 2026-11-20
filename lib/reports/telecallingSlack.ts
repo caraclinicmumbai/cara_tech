@@ -11,7 +11,7 @@
 // Slack or database error is logged, never thrown.
 import { Queue } from "bullmq";
 import { bullConnection } from "@/lib/queue";
-import { sendSlack, isSlackConfigured } from "@/lib/slack";
+import { sendSlack, isSlackConfigured, isAddressableSlackTarget, repSlackTarget } from "@/lib/slack";
 import { branchManagerChannel } from "@/lib/digest";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
@@ -226,16 +226,17 @@ export async function sendTelecallingReport(period: ReportPeriod, now: Date = ne
     const message = teamMessage(period, current.label, numbers, analysis);
     const sent = await sendSlack({ ...message, channel });
 
-    // A DM only to a real member id: sendSlack sends anything it can't address to the shared
-    // channel, which is no place for one person's numbers.
+    // To their own channel or a DM, and only to an address that works: sendSlack sends
+    // anything it can't address to the shared channel, which is no place for one person's numbers.
     const reps = await prisma.salesRep.findMany({
-      where: { active: true, deletedAt: null, salesHead: false, slackUserId: { not: null } },
-      select: { id: true, slackUserId: true },
+      where: { active: true, deletedAt: null, salesHead: false, OR: [{ slackUserId: { not: null } }, { slackChannelId: { not: null } }] },
+      select: { id: true, slackUserId: true, slackChannelId: true },
     });
     for (const rep of reps) {
-      if (!/^[UW][A-Z0-9]+$/.test(rep.slackUserId!.trim())) continue;
+      const target = repSlackTarget(rep);
+      if (!target || !isAddressableSlackTarget(target)) continue;
       const text = personalMessage(period, current.label, rep.id, numbers);
-      if (text) await sendSlack({ text, channel: rep.slackUserId! }).catch(() => {});
+      if (text) await sendSlack({ text, channel: target }).catch(() => {});
     }
     logger.info(`Telecalling report (${period}) sent for ${current.label}`);
     return sent;

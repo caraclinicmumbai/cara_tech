@@ -13,7 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { sendAutomatedTemplate, firstName } from "@/lib/outreach";
-import { sendSlack, isSlackConfigured } from "@/lib/slack";
+import { sendSlack, isSlackConfigured, repSlackTarget } from "@/lib/slack";
 import { counsellorChannel } from "@/lib/counsellor";
 import { isPreConsultation } from "@/lib/leadStages";
 import { OPEN_QUOTE_STATUS_FILTER } from "@/lib/quoteStages";
@@ -167,7 +167,7 @@ export async function stopEnrollmentForLead(
 async function reactivateLostLead(leadId: string): Promise<void> {
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
-    select: { id: true, name: true, stage: true, assignedRep: { select: { slackUserId: true } } },
+    select: { id: true, name: true, stage: true, assignedRep: { select: { slackUserId: true, slackChannelId: true } } },
   });
   if (!lead || lead.stage !== "lost") return;
 
@@ -193,7 +193,7 @@ async function reactivateLostLead(leadId: string): Promise<void> {
     const base = process.env.NEXTAUTH_URL;
     const link = base ? ` <${base}/leads/${leadId}|Open lead>` : "";
     const text = `🔄 *${lead.name}* replied to a win-back — back in the pipeline (Human Callback Pending).${link}`;
-    const target = lead.assignedRep?.slackUserId ?? counsellorChannel();
+    const target = repSlackTarget(lead.assignedRep) ?? counsellorChannel();
     await sendSlack({ text, channel: target }).catch(() => {});
   }
 }

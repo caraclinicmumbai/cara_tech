@@ -4,6 +4,21 @@ Three oversight feeds: a real-time **counsellor** feed for events that need atte
 a **sales-head** feed reserved for CQS extremes, and a once-a-day **branch manager**
 digest.
 
+## Each rep's own Slack channel (`repSlackTarget`, `lib/slack.ts`)
+
+Alerts meant for one person — handover and hot-lead pings, cover requests, follow-up
+reminders, ownership hand-offs and access grants, win-back replies, the sales head's CQS
+extremes, a branch manager's presence alerts, and the daily/weekly personal numbers — go
+to that rep's **own channel** (`SalesRep.slackChannelId`, e.g. `#sales_mandira`) when one
+is set, else a DM to `slackUserId`, else the shared channel. `slackUserId` still
+@-mentions them in the message. Set both under **Users → Sales reps → Slack** (audited
+`rep.slack`).
+
+Who sees a channel is decided in **Slack**, by its members: the rep plus whoever reviews
+them (the sales head, a backup). The bot has only `chat:write` + `chat:write.public`, so
+it can post to any public channel by itself; a private channel needs the Cara app added,
+or `sendSlack` falls back to the shared channel (`not_in_channel`).
+
 ## Counsellor oversight feed (`lib/counsellor.ts`)
 
 A single Slack feed (`notifyCounsellor`) to the counsellor/supervisor for five event

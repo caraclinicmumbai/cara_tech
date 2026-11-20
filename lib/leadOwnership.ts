@@ -11,7 +11,7 @@
 //    action layer).
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
-import { sendSlack, isSlackConfigured } from "@/lib/slack";
+import { sendSlack, isSlackConfigured, repSlackTarget } from "@/lib/slack";
 import { notifyRep, notifyUser } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
 import { ASSIGNABLE_REP } from "@/lib/salesReps";
@@ -20,10 +20,11 @@ export class OwnershipError extends Error {}
 
 type Actor = { id?: string; email?: string | null; salesRepId?: string | null; isManager: boolean };
 
-/// Best-effort Slack DM to a counsellor (by their rep's Slack id). Never throws.
-async function dm(slackUserId: string | null | undefined, text: string): Promise<void> {
-  if (!slackUserId || !isSlackConfigured()) return;
-  await sendSlack({ text, channel: slackUserId }).catch(() => {});
+/// Best-effort Slack message to a counsellor — their own channel if they have one, else a
+/// DM (`repSlackTarget`). Never throws.
+async function dm(target: string | undefined, text: string): Promise<void> {
+  if (!target || !isSlackConfigured()) return;
+  await sendSlack({ text, channel: target }).catch(() => {});
 }
 
 /// Transfer a lead's owner to another counsellor (rep). Enforces the owner/manager +
@@ -42,7 +43,7 @@ export async function handoverLead(input: {
 
   const toRep = await prisma.salesRep.findFirst({
     where: { ...ASSIGNABLE_REP, id: input.toRepId },
-    select: { id: true, name: true, active: true, branchId: true, slackUserId: true },
+    select: { id: true, name: true, active: true, branchId: true, slackUserId: true, slackChannelId: true },
   });
   // Same rule as the rota: the picker only offers these, but the action is reachable directly.
   if (!toRep) throw new OwnershipError("That counsellor can't take leads (inactive, or no login)");
@@ -108,7 +109,7 @@ export async function handoverLead(input: {
       leadId: lead.id,
     });
   }
-  await dm(toRep.slackUserId, `🔁 You've been handed lead *${lead.name}* (${lead.phone})${reason ? ` — ${reason}` : ""}.`);
+  await dm(repSlackTarget(toRep), `🔁 You've been handed lead *${lead.name}* (${lead.phone})${reason ? ` — ${reason}` : ""}.`);
   logger.info(`Lead ${lead.id} handed to rep ${toRep.id} by ${input.actor.email ?? "?"}${crossBranch ? " (cross-branch)" : ""}`);
   return { crossBranch, toRepName: toRep.name };
 }
@@ -126,7 +127,7 @@ export async function grantLeadAccess(input: {
   if (!lead) throw new OwnershipError("Lead not found");
   const grantee = await prisma.user.findUnique({
     where: { id: input.granteeUserId },
-    select: { id: true, name: true, email: true, salesRep: { select: { slackUserId: true } } },
+    select: { id: true, name: true, email: true, salesRep: { select: { slackUserId: true, slackChannelId: true } } },
   });
   if (!grantee) throw new OwnershipError("User not found");
 
@@ -162,7 +163,7 @@ export async function grantLeadAccess(input: {
     leadId: lead.id,
   });
   await dm(
-    grantee.salesRep?.slackUserId,
+    repSlackTarget(grantee.salesRep),
     `🔓 You've been granted temporary access to lead *${lead.name}* (${lead.phone})${expiresAt ? ` until ${expiresAt.toDateString()}` : ""}${reason ? ` — ${reason}` : ""}.`,
   );
   logger.info(`Access to lead ${lead.id} granted to user ${grantee.id} by ${input.actor.email ?? "?"}`);
@@ -189,7 +190,7 @@ export async function grantBulkLeadAccess(input: {
 }): Promise<{ granted: number; skipped: number }> {
   const grantee = await prisma.user.findUnique({
     where: { id: input.granteeUserId },
-    select: { id: true, name: true, email: true, salesRep: { select: { slackUserId: true } } },
+    select: { id: true, name: true, email: true, salesRep: { select: { slackUserId: true, slackChannelId: true } } },
   });
   if (!grantee) throw new OwnershipError("User not found");
 
@@ -248,7 +249,7 @@ export async function grantBulkLeadAccess(input: {
         .join(" · "),
     });
     await dm(
-      grantee.salesRep?.slackUserId,
+      repSlackTarget(grantee.salesRep),
       `🔓 You've been granted access to ${toGrant.length} lead(s) (${input.scopeLabel})${expiresAt ? ` until ${expiresAt.toDateString()}` : ""}${reason ? ` — ${reason}` : ""}.`,
     );
   }
@@ -328,7 +329,7 @@ export async function grantCoverAccess(input: {
 }): Promise<boolean> {
   const user = await prisma.user.findFirst({
     where: { salesRepId: input.coverRepId },
-    select: { id: true, name: true, email: true, salesRep: { select: { slackUserId: true } } },
+    select: { id: true, name: true, email: true, salesRep: { select: { slackUserId: true, slackChannelId: true } } },
   });
   if (!user) {
     logger.warn(`Cover access for lead ${input.leadId}: rep ${input.coverRepId} has no linked login`);

@@ -13,7 +13,7 @@
 // auto/sweep helpers log and swallow their own errors.
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
-import { sendSlack, isSlackConfigured } from "@/lib/slack";
+import { sendSlack, isSlackConfigured, repSlackTarget } from "@/lib/slack";
 import { counsellorChannel } from "@/lib/counsellor";
 import { isWithinDnd } from "@/lib/callWindow";
 import { staleConsultationCutoff } from "@/lib/salesReps";
@@ -164,16 +164,16 @@ export async function endConsultation(repId: string): Promise<void> {
   }
 }
 
-/// Where a rep's oversight alert goes: their branch manager's Slack DM if we can
-/// resolve it (the manager login → linked rep → slackUserId), else the counsellor
+/// Where a rep's oversight alert goes: their branch manager's own Slack channel or DM if we
+/// can resolve it (the manager login → linked rep → repSlackTarget), else the counsellor
 /// channel. (§presence "tell the manager")
 export async function managerSlackTarget(rep: { branchId: string | null }): Promise<string | undefined> {
   if (rep.branchId) {
     const branch = await prisma.branch.findUnique({
       where: { id: rep.branchId },
-      select: { manager: { select: { salesRep: { select: { slackUserId: true } } } } },
+      select: { manager: { select: { salesRep: { select: { slackUserId: true, slackChannelId: true } } } } },
     });
-    const sid = branch?.manager?.salesRep?.slackUserId;
+    const sid = repSlackTarget(branch?.manager?.salesRep);
     if (sid) return sid;
   }
   return counsellorChannel();

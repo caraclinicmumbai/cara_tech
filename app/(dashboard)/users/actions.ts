@@ -14,6 +14,7 @@ import { SALES_TEAMS, SALES_TEAM_LABELS, DEFAULT_SALES_TEAM, isSalesTeam } from 
 import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { removeRep as removeRepFromRoster } from "@/lib/salesReps";
+import { isAddressableSlackTarget } from "@/lib/slack";
 
 type Result = { ok: boolean; error?: string };
 
@@ -141,6 +142,7 @@ export async function createRep(input: {
   name: string;
   phone: string;
   slackUserId?: string;
+  slackChannelId?: string;
   salesHead?: boolean;
   speciality?: string;
   team?: string;
@@ -156,11 +158,13 @@ export async function createRep(input: {
   }
   const team = input.team?.trim() || DEFAULT_SALES_TEAM;
   if (!isSalesTeam(team)) return { ok: false, error: teamError };
+  const slack = checkSlack(input.slackUserId, input.slackChannelId);
+  if ("error" in slack) return { ok: false, error: slack.error };
   await prisma.salesRep.create({
     data: {
       name,
       phone,
-      slackUserId: input.slackUserId?.trim() || null,
+      ...slack,
       salesHead: !!input.salesHead,
       speciality: speciality || null,
       team,
@@ -227,6 +231,55 @@ export async function setRepTeam(repId: string, team: string): Promise<Result> {
     newValue: SALES_TEAM_LABELS[team],
   });
   logger.info(`Sales rep ${before.name} moved to the ${team} team by ${me.email ?? "?"}`);
+  revalidatePath("/users");
+  return { ok: true };
+}
+
+/// A rep's Slack member id (U…, for the DM and @-mentions) and own channel (C…/G… or
+/// #name, where their alerts go when set), trimmed, blank = none — or why they won't work.
+function checkSlack(
+  userId: string | undefined,
+  channelId: string | undefined,
+): { slackUserId: string | null; slackChannelId: string | null } | { error: string } {
+  const slackUserId = userId?.trim() || null;
+  const slackChannelId = channelId?.trim() || null;
+  if (slackUserId && !/^[UW][A-Z0-9]{6,}$/.test(slackUserId)) {
+    return { error: "Slack member ID looks like U0123ABCD (Slack profile → ⋮ → Copy member ID)" };
+  }
+  if (slackChannelId && (!isAddressableSlackTarget(slackChannelId) || /^[UWD]/.test(slackChannelId))) {
+    return { error: "Slack channel looks like C0123ABCD (channel details → bottom of the About tab) or #channel-name" };
+  }
+  return { slackUserId, slackChannelId };
+}
+
+/// Set where a rep's Slack alerts go: their member id (DM + @-mention) and, optionally,
+/// their own channel (e.g. #sales_mandira) so the colleagues in it see the alerts too.
+/// Audited, since it decides who sees a counsellor's leads in Slack.
+export async function setRepSlack(
+  repId: string,
+  input: { slackUserId?: string; slackChannelId?: string },
+): Promise<Result> {
+  const me = await requireCapability("reps.manage");
+  const slack = checkSlack(input.slackUserId, input.slackChannelId);
+  if ("error" in slack) return { ok: false, error: slack.error };
+  const before = await prisma.salesRep.findUnique({
+    where: { id: repId },
+    select: { name: true, slackUserId: true, slackChannelId: true },
+  });
+  if (!before) return { ok: false, error: "Rep not found" };
+  if (before.slackUserId === slack.slackUserId && before.slackChannelId === slack.slackChannelId) return { ok: true };
+  await prisma.salesRep.update({ where: { id: repId }, data: slack });
+  await writeAudit({
+    actorId: me.id,
+    actorEmail: me.email,
+    action: "rep.slack",
+    entityType: "rep",
+    entityId: repId,
+    field: "slack",
+    oldValue: `${before.slackUserId ?? "—"} / ${before.slackChannelId ?? "—"}`,
+    newValue: `${slack.slackUserId ?? "—"} / ${slack.slackChannelId ?? "—"}`,
+  });
+  logger.info(`Slack for rep ${before.name} set to ${slack.slackUserId ?? "—"} / ${slack.slackChannelId ?? "—"} by ${me.email ?? "?"}`);
   revalidatePath("/users");
   return { ok: true };
 }

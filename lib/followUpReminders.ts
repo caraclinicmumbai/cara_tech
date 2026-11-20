@@ -15,7 +15,7 @@
 // (see setNextFollowUp), so a rescheduled follow-up reminds again at its new time.
 import { prisma } from "@/lib/prisma";
 import { notifyRep, notifyUser } from "@/lib/notifications";
-import { sendSlack, isSlackConfigured } from "@/lib/slack";
+import { sendSlack, isSlackConfigured, repSlackTarget } from "@/lib/slack";
 import { formatIst } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 
@@ -149,15 +149,15 @@ async function notifySlack(
   try {
     const rep = await prisma.salesRep.findUnique({
       where: { id: repId },
-      select: { name: true, slackUserId: true },
+      select: { name: true, slackUserId: true, slackChannelId: true },
     });
     const base = process.env.NEXTAUTH_URL;
     const link = base ? ` <${base}/leads/${step.leadId}|Open lead>` : "";
     const who = rep?.slackUserId ? `<@${rep.slackUserId}>` : (rep?.name ?? "counsellor");
     await sendSlack({
       text: `⏰ *Follow-up due* — ${step.lead.name} (${step.lead.phone})\n${step.title} · due ${when} · ${who}${link}`,
-      // A DM when we can address them, the shared channel otherwise.
-      channel: rep?.slackUserId ?? undefined,
+      // Their own channel or a DM when we can address them, the shared channel otherwise.
+      channel: repSlackTarget(rep),
     });
   } catch (err) {
     // Slack is the optional half. Log and move on — the bell already fired.
