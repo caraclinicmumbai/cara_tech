@@ -7,6 +7,24 @@ Format: newest first.
 
 ---
 
+## 2026-11-20 — A Slack channel per rep
+
+Merge `e8ab6c4` (commit `bfa2503`). **Migration:** `sales_rep_slack_channel`
+(`SalesRep.slackChannelId`, nullable). No settings keys. Doc updated:
+**[flows/05-counsellor-and-manager-alerts.md](flows/05-counsellor-and-manager-alerts.md)**.
+
+- A rep can have their own Slack channel (e.g. #sales_mandira). Alerts meant for them —
+  handovers, hot leads, cover requests, follow-up reminders, ownership hand-offs, win-back
+  replies, CQS extremes (sales head), presence alerts (branch manager), personal report
+  numbers — go there instead of a DM, so everyone in the channel sees them. The rep is
+  still @-mentioned. No channel set = DM as before.
+- Who reviews a channel is its membership in Slack. A private channel needs the Cara app
+  added, or alerts fall back to the shared channel.
+- Users → Sales reps: Slack member ID and channel are editable per row (audited
+  `rep.slack`); both are checked to be real Slack ids.
+
+---
+
 ## 2026-11-18 — Stage colours; Settings → Colours
 
 Merge `40232f1` (commits `2d4b820`, `59935c8`). **Migration:** `pipeline_status_color`
