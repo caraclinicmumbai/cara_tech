@@ -22,6 +22,7 @@ import { logger } from "@/lib/logger";
 ///   appointment_rebooking — appointments need rebooking (§3.2 2.9: leave, roster change)
 ///   leave_request  — a doctor's leave is waiting for your approval (§3.2 2.9)
 ///   intake_red_flag — a patient's intake answers include a red flag (§3.2 2.7)
+///   task           — a colleague put a task on your calendar (/calendar)
 export type NotificationKind =
   | "handover"
   | "handover_cover"
@@ -31,7 +32,8 @@ export type NotificationKind =
   | "followup_due"
   | "appointment_rebooking"
   | "leave_request"
-  | "intake_red_flag";
+  | "intake_red_flag"
+  | "task";
 
 export type NotifyInput = {
   /// Recipient login (User.id).
