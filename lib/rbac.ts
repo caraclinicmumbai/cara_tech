@@ -115,6 +115,9 @@ export const CAPABILITIES = [
   // §3, decision 3.c — refund a patient's credit (a deposit kept from a missed visit).
   // Applying credit to a booking needs only `book`; giving money back is a manager's call.
   "appointments.refund",
+  // Personal calendar (/calendar): everyone has their own without a capability. This one
+  // opens a COLLEAGUE's — their appointments, tasks and blocked time. Managers by default.
+  "calendar.viewOthers",
   "calls.view",
   "analytics.view",
   // Reports (§reports) — the management read-outs, split in two because they answer to
@@ -220,6 +223,11 @@ export const CAPABILITY_GROUPS: {
       { key: "appointments.verifyIntake", label: "Verify intake answers (clinical)" },
       { key: "appointments.refund", label: "Refund a patient's credit" },
     ],
+  },
+  {
+    key: "calendar",
+    label: "Calendar",
+    capabilities: [{ key: "calendar.viewOthers", label: "Open a colleague's calendar" }],
   },
   {
     key: "calls",
@@ -330,6 +338,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "analytics.view",
     "audit.view",
     "reps.manage",
+    "calendar.viewOthers",
     // Runs the telecalling floor, so the floor's read-outs — but not the money reports:
     // per-treatment pricing is the Sales Head's and the Branch Manager's call.
     "reports.view",
@@ -372,6 +381,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "templates.manage",
     "chatbot.manage",
     "reps.manage",
+    "calendar.viewOthers",
     "campaigns.manage",
     // Runs the clinic floor end to end — including the post-sales pipeline and the
     // per-treatment stage limits.
@@ -419,6 +429,7 @@ const CAPS: Record<Exclude<Role, "crm_admin">, Capability[]> = {
     "reports.revenue",
     "audit.view",
     "reps.manage",
+    "calendar.viewOthers",
     "campaigns.winback",
     "campaigns.manage",
     // Oversight of the clinical pipeline, but not editing it — the post-sales team owns

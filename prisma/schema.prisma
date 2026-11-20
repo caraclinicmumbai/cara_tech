@@ -470,6 +470,12 @@ model User {
   schedulingResource Resource?
   appointmentsBooked Appointment[] @relation("AppointmentBookedBy")
   flagsSet           LeadFlag[]    @relation("LeadFlagSetBy")
+
+  // ── Personal calendar (/calendar) — tasks on this person, tasks they set others, and
+  //    the time they've blocked. ──
+  tasksAssigned Task[]      @relation("TaskAssignee")
+  tasksCreated  Task[]      @relation("TaskCreator")
+  timeBlocks    TimeBlock[]
 }
 
 /// A temporary grant of access to a lead (§handover) — lets a counsellor act on a
@@ -2275,4 +2281,73 @@ model ConsumableReservation {
 
   @@unique([appointmentId, sku])
   @@index([status, createdAt])
+}
+
+// ── Personal calendar (/calendar, lib/calendar/) ─────────────────────────────────────
+// Every login has one: their appointments (as a doctor / staff resource), their lead
+// follow-ups, their tasks, and the time they've blocked.
+
+/// A task on one person's calendar — set by themselves or by a colleague. Due at a time
+/// (`dueAt`), or any time that day (`allDay`, `dueAt` = IST midnight). It can repeat
+/// daily, weekly (same weekday) or monthly (same date, the month's last day when shorter),
+/// from `dueAt` until `repeatUntil` (inclusive IST day; null = no end). A one-time task is
+/// closed on the row; each occurrence of a repeating one is ticked in TaskDone.
+model Task {
+  id          String    @id @default(cuid())
+  title       String
+  notes       String?
+  assigneeId  String
+  assignee    User      @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?     @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  dueAt       DateTime
+  allDay      Boolean   @default(false)
+  /// none | daily | weekly | monthly
+  repeat      String    @default("none")
+  repeatUntil DateTime? @db.Date
+  /// One-time tasks: open | done. Repeating tasks stay open; see TaskDone.
+  status      String    @default("open")
+  doneAt      DateTime?
+  doneById    String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  done TaskDone[]
+
+  @@index([assigneeId, dueAt])
+  @@index([createdById])
+}
+
+/// One occurrence of a repeating task ticked off. `occurrence` is its IST date key.
+model TaskDone {
+  id         String   @id @default(cuid())
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  occurrence String
+  doneAt     DateTime @default(now())
+  doneById   String?
+
+  @@unique([taskId, occurrence])
+}
+
+/// Time a person has blocked on their own calendar (training, a meal break, unavailable).
+/// For a doctor or staff member — a login linked to a scheduling Resource — the block is
+/// mirrored as approved ResourceTimeOff (`timeOffId`, source "calendar"), so no patient is
+/// booked with them then and anything already booked goes to Needs rebooking, as leave does.
+model TimeBlock {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startAt     DateTime
+  endAt       DateTime
+  /// training | break | unavailable | other
+  kind        String
+  note        String?
+  timeOffId   String?   @unique
+  createdById String?
+  createdAt   DateTime  @default(now())
+  removedAt   DateTime?
+
+  @@index([userId, startAt])
 }

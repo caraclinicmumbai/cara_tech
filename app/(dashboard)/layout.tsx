@@ -48,6 +48,7 @@ export default async function DashboardLayout({
         can(role, "quotes.view") && { href: "/quotes", label: "Open Quotes" },
         can(role, "postsales.view") && { href: "/post-sales", label: "Post-Sales" },
         can(role, "appointments.view") && schedulingOn && { href: "/appointments", label: "Appointments" },
+        !!viewer?.id && { href: "/calendar", label: "My calendar" },
       ].filter(Boolean) as NavItem[],
     },
     {

@@ -59,6 +59,8 @@ const NEW_CAPABILITIES: Capability[] = [
   "appointments.verifyIntake",
   // Appointments §3 (credit refunds), 2026-10-17.
   "appointments.refund",
+  // Personal calendar, 2026-11-20 (also granted by migration personal_calendar).
+  "calendar.viewOthers",
 ];
 
 /// Every capability that now gates a top-level route. A customised role missing one of

@@ -670,6 +670,20 @@ Dr. Asif, so none ship.**
 - **Not built yet (waiting on the clinic):** stage-based reports, a stage shown on the calendar
   block itself, alerts when a stage is late, and assigning a stage to a named person rather
   than a role.
+- **Restated by the clinic 2026-11-20** (section and project phase still undecided). A visit
+  involves three people — front desk (receives the patient, intake form, hands over), doctor
+  (reviews the form, sometimes after sales; consults; recommends treatments, products or
+  services) and salesperson (explains the recommendation, closes, ideally with a sale). Asked
+  for, beyond what is built:
+  - **three states per stage with fixed colours** — Red *not started*, Yellow/Orange *in
+    progress*, Green *finished* — instead of today's ticked / not ticked with a per-stage colour;
+  - **each stage assigned to the named person** in that role on this visit, set when the
+    appointment is booked;
+  - **each person's own documentation and inputs** for their stage (today a stage is only a
+    tick; the intake form is the only per-visit form);
+  - **the same for treatments** (already possible: a treatment is an appointment type with its
+    own stages);
+  - **reports** on all of it.
 
 ## Setup screen: `/appointments/setup`
 
