@@ -15,6 +15,7 @@ import {
   setRepSalesHead,
   setRepSpeciality,
   setRepTeam,
+  setRepSlack,
   removeRep,
 } from "@/app/(dashboard)/users/actions";
 import { availabilityMeta } from "@/lib/presenceStatus";
@@ -34,6 +35,7 @@ type RepRow = {
   name: string;
   phone: string;
   slackUserId: string | null;
+  slackChannelId: string | null;
   active: boolean;
   salesHead: boolean;
   branchId: string | null;
@@ -80,7 +82,7 @@ export function UsersAdmin({
   const receivers = (excludeId: string) =>
     reps.filter((r) => r.id !== excludeId && r.active && !r.salesHead && r.userEmail);
   // New-rep form state
-  const emptyRep = { name: "", phone: "", slackUserId: "", speciality: "", team: DEFAULT_SALES_TEAM as string, salesHead: false };
+  const emptyRep = { name: "", phone: "", slackUserId: "", slackChannelId: "", speciality: "", team: DEFAULT_SALES_TEAM as string, salesHead: false };
   const [nr, setNr] = useState(emptyRep);
 
   const repLabel = (r: RepRow) =>
@@ -189,6 +191,14 @@ export function UsersAdmin({
           offline counsellor&apos;s leads to a colleague with the same skill.
         </p>
         <p className="text-sm text-black/60 dark:text-white/60">
+          <strong>Slack:</strong> the member ID is who gets @-mentioned. Give a rep their own{" "}
+          <em>channel</em> (e.g. #sales_mandira) and their alerts — handovers, hot leads,
+          follow-ups, their daily numbers — go there instead of a direct message, so everyone
+          in that channel sees them. Who can see it is up to the channel&apos;s members in Slack:
+          add the rep and whoever reviews them (e.g. the sales head). For a private channel,
+          also add the Cara app, or the alerts fall back to the shared channel.
+        </p>
+        <p className="text-sm text-black/60 dark:text-white/60">
           <strong>Team:</strong> new leads, website and ad enquiries, WhatsApp and first-time
           callers go round-robin to the <em>Pre-consultation</em> team only. The{" "}
           <em>Post-consultation</em> team gets a lead only when it&apos;s handed over to them
@@ -202,6 +212,8 @@ export function UsersAdmin({
             onChange={(e) => setNr({ ...nr, phone: e.target.value })} />
           <input className={inputCls} placeholder="Slack member ID (U…)" value={nr.slackUserId}
             onChange={(e) => setNr({ ...nr, slackUserId: e.target.value })} />
+          <input className={inputCls} placeholder="Slack channel (C… or #name)" value={nr.slackChannelId}
+            onChange={(e) => setNr({ ...nr, slackChannelId: e.target.value })} />
           <select className={inputCls} value={nr.speciality} aria-label="Speciality"
             onChange={(e) => setNr({ ...nr, speciality: e.target.value })}>
             <option value="">Speciality — Generalist</option>
@@ -246,7 +258,9 @@ export function UsersAdmin({
                 <tr key={r.id} className="border-t border-black/5 dark:border-white/10">
                   <td className="px-3 py-2">{r.name}</td>
                   <td className="px-3 py-2">{r.phone || "—"}</td>
-                  <td className="px-3 py-2">{r.slackUserId ?? "—"}</td>
+                  <td className="px-3 py-2">
+                    <SlackCell rep={r} pending={pending} onSave={(v) => run(() => setRepSlack(r.id, v))} />
+                  </td>
                   <td className="whitespace-nowrap px-3 py-2">
                     <span className="inline-flex items-center gap-1.5">
                       <span className={`h-2 w-2 rounded-full ${availabilityMeta(r.availability).dot}`} aria-hidden />
@@ -345,6 +359,32 @@ export function UsersAdmin({
           </table>
         </div>
       </section>
+    </div>
+  );
+}
+
+/// A rep's Slack member id and own channel, each saved when the field loses focus.
+function SlackCell({
+  rep,
+  pending,
+  onSave,
+}: {
+  rep: RepRow;
+  pending: boolean;
+  onSave: (v: { slackUserId: string; slackChannelId: string }) => void;
+}) {
+  const [userId, setUserId] = useState(rep.slackUserId ?? "");
+  const [channel, setChannel] = useState(rep.slackChannelId ?? "");
+  const save = () => {
+    if (userId.trim() === (rep.slackUserId ?? "") && channel.trim() === (rep.slackChannelId ?? "")) return;
+    onSave({ slackUserId: userId, slackChannelId: channel });
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      <input className={`${inputCls} w-36`} placeholder="Member ID (U…)" aria-label={`Slack member ID for ${rep.name}`}
+        value={userId} disabled={pending} onChange={(e) => setUserId(e.target.value)} onBlur={save} />
+      <input className={`${inputCls} w-36`} placeholder="Channel (C… / #name)" aria-label={`Slack channel for ${rep.name}`}
+        value={channel} disabled={pending} onChange={(e) => setChannel(e.target.value)} onBlur={save} />
     </div>
   );
 }

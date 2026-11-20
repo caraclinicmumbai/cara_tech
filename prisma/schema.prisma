@@ -200,6 +200,10 @@ model SalesRep {
   id             String    @id @default(cuid())
   name           String
   slackUserId    String? // Slack member id (e.g. U0123ABCD) for the individual DM
+  // The rep's own Slack channel (e.g. #sales_mandira, id C0123ABCD). When set, their alerts
+  // go there instead of a DM, so everyone in the channel (a manager, a backup) sees them too.
+  // `slackUserId` still @-mentions them in it. Who can read it is managed in Slack.
+  slackChannelId String?
   phone          String // E.164, for click-to-call
   active         Boolean   @default(true)
   // Sales head (§3.1): a manager, NOT a line telecaller. Excluded from the

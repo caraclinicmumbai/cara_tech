@@ -10,7 +10,7 @@
 //  • thresholds we own here — CQS ≥ 75 (fast-track) and unsupported language.
 import type { Lead, SalesRep } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { sendSlack, isSlackConfigured } from "@/lib/slack";
+import { sendSlack, isSlackConfigured, repSlackTarget } from "@/lib/slack";
 import { pickOwnerRep, pickReplacementFor, assignLeadToRep, getLeadOwner } from "@/lib/salesReps";
 import { grantCoverAccess, COVER_GRANT_DAYS } from "@/lib/leadOwnership";
 import { notifyRep } from "@/lib/notifications";
@@ -272,8 +272,8 @@ export async function notifyHandover(
   const coveringFor = cover && rep ? { coverName: cover.name, ownerName: rep.name, ownerState: rep.availability } : undefined;
   const { text, blocks } = buildEscalationMessage({ lead, fired, assignee, transcript, cqs, hot, coveringFor });
 
-  // DM the rep we're asking to act if we have their Slack id; otherwise the default channel.
-  await sendSlack({ text, blocks, channel: target?.slackUserId ?? undefined });
+  // The rep we're asking to act — their own channel or a DM; otherwise the default channel.
+  await sendSlack({ text, blocks, channel: repSlackTarget(target) });
   logger.info(
     `${hot ? "Hot-lead escalation" : "Handover alert"} for lead ${lead.id} → ${target?.name ?? "channel"}${cover ? ` (covering for ${rep?.name})` : ""}: ${fired.map((f) => f.key).join(",")}`,
   );
@@ -332,6 +332,6 @@ export async function escalateHotCall(
   const fired: FiredTrigger[] = [{ key: "high_cqs", label: HANDOVER_TRIGGERS.high_cqs }];
   const { text, blocks } = buildEscalationMessage({ lead, fired, assignee, transcript, cqs, hot: true });
 
-  await sendSlack({ text, blocks, channel: rep?.slackUserId ?? undefined });
+  await sendSlack({ text, blocks, channel: repSlackTarget(rep) });
   logger.info(`Hot-call escalation for lead ${lead.id} (CQS ${cqs}) → ${rep?.name ?? "channel"}`);
 }

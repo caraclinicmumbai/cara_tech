@@ -5,7 +5,7 @@
 // missing config or Slack error is logged and swallowed, never thrown.
 import type { Lead } from "@prisma/client";
 import { getSalesHead } from "@/lib/salesReps";
-import { isSlackConfigured, sendSlack } from "@/lib/slack";
+import { isSlackConfigured, repSlackTarget, sendSlack } from "@/lib/slack";
 import { logger } from "@/lib/logger";
 
 /// CQS at/above this is "exceptional" → ping the sales head. Default 90.
@@ -32,7 +32,8 @@ export async function notifySalesHead(
   if (!isSalesHeadScore(cqs)) return;
 
   const head = await getSalesHead();
-  if (!head?.slackUserId) {
+  const target = repSlackTarget(head);
+  if (!head || !target) {
     logger.info(`Sales-head CQS alert for lead ${lead.id} (CQS ${cqs}) skipped — no sales head with a Slack id`);
     return;
   }
@@ -60,6 +61,6 @@ export async function notifySalesHead(
     },
   ];
 
-  await sendSlack({ text, blocks, channel: head.slackUserId });
+  await sendSlack({ text, blocks, channel: target });
   logger.info(`Sales-head CQS alert for lead ${lead.id} (CQS ${score}) → ${head.name}`);
 }
