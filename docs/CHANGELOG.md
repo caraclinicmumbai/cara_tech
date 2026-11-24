@@ -7,6 +7,17 @@ Format: newest first.
 
 ---
 
+## 2026-11-24 — Call history shows the patient's phone number
+
+Merge `536c0ae` (commit `711b922`). No migration, no settings keys. No flow doc changed
+(none describes the `/calls` columns).
+
+- `/calls` → **Call history** has a **Phone** column after the lead's name: the lead's number
+  as stored (E.164), unmasked, the same as the Leads table. Rows stay scoped to the viewer's
+  leads; search already matched on phone.
+
+---
+
 ## 2026-11-20 — My calendar
 
 Merge `707bd6b` (commits `ff0a78e`, `7b611b6`). **Migration:** `personal_calendar` (new
