@@ -48,7 +48,7 @@ export default async function CallsPage({
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * CALLS_PAGE_SIZE,
       take: CALLS_PAGE_SIZE,
-      include: { lead: { select: { name: true } }, handledBy: { select: { name: true } } },
+      include: { lead: { select: { name: true, phone: true } }, handledBy: { select: { name: true } } },
     }),
     // Removed reps stay: their past calls are still in the history.
     prisma.salesRep.findMany({ select: { id: true, name: true, team: true, deletedAt: true }, orderBy: { name: "asc" } }),
@@ -83,6 +83,7 @@ export default async function CallsPage({
           <thead>
             <tr>
               <th>Lead</th>
+              <th>Phone</th>
               <th>Type</th>
               <th>Handled by</th>
               <th>Outcome</th>
@@ -99,6 +100,7 @@ export default async function CallsPage({
                     {call.lead.name}
                   </Link>
                 </td>
+                <td className="whitespace-nowrap tabular-nums text-cara-muted">{call.lead.phone}</td>
                 <td>
                   {isInboundCallType(call.callType) ? (
                     <span
@@ -136,7 +138,7 @@ export default async function CallsPage({
             ))}
             {calls.length === 0 && (
               <tr>
-                <td className="text-center text-cara-faint" colSpan={7}>
+                <td className="text-center text-cara-faint" colSpan={8}>
                   {callListFiltered(filters) ? "No calls match these filters." : "No calls yet."}
                 </td>
               </tr>
