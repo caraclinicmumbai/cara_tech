@@ -112,6 +112,13 @@ found by opening leads one at a time.
   number, but two counsellors working side by side each need their own sense of what's
   new — one opening a chat must not clear the other's badge. Opening a conversation
   marks it read up to that instant; a reply arriving in an already-open chat re-marks it.
+- **A person's reply answers it for everyone.** Any manual outbound message (from this
+  tab or the lead page; `automated: false`) clears the unread before it for the whole
+  team — otherwise a chat a telecaller answered from the lead page stayed "unread" for
+  them and for every manager, scattered hundreds of rows down. Bot and campaign sends
+  don't count.
+- **All / Unread filter** above the list; a chat opened under Unread stays listed until
+  another is picked.
 - **Scope is the usual one**: a telecaller sees conversations for leads they own or
   cover, a manager sees all (`leadWhereForUser`). The lead id in `?lead=` is re-checked
   server-side, never trusted from the list.
@@ -121,7 +128,8 @@ found by opening leads one at a time.
 - **The list polls** every 15s (paused while the tab is hidden, refreshed on focus)
   while the open thread streams; a new reply bumps its chat to the top and raises the
   badge without a reload. The sidebar tab carries the same unread total, server-rendered
-  so it's right on first paint.
+  so it's right on first paint, and refreshed when a chat is read (`readConversation`
+  revalidates the layout).
 
 ## "/" quick replies in the composer
 

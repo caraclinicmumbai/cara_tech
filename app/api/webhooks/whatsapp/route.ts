@@ -14,7 +14,7 @@ import { handleAppointmentReply, onWhatsAppStatus } from "@/lib/scheduling/remin
 import { findLeadByPhone, findOrCreateLeadByPhone, recordInbound, updateMessageStatus } from "@/lib/messages";
 import { stopEnrollmentForLead } from "@/lib/campaigns/engine";
 import { runChatbot } from "@/lib/chatbotRuntime";
-import { sendSlack, isSlackConfigured } from "@/lib/slack";
+import { sendSlack, isSlackConfigured, repSlackTarget } from "@/lib/slack";
 import { logger } from "@/lib/logger";
 
 const OPT_OUT_KEYWORDS = ["stop", "stop messages", "unsubscribe"];
@@ -91,12 +91,19 @@ function contactName(value: WaValue, waId: string): string | undefined {
   return c?.profile?.name;
 }
 
-// Best-effort Slack ping when a patient replies, so an agent can pick it up.
+// Best-effort Slack ping when a patient replies, so an agent can pick it up — in the
+// lead's rep's channel (or DM) when they have one, else the default channel.
 async function notifyInbound(leadId: string, leadName: string, snippet: string) {
   if (!isSlackConfigured()) return;
   const base = process.env.NEXTAUTH_URL;
   const link = base ? ` <${base}/leads/${leadId}|Open chat>` : "";
-  await sendSlack({ text: `💬 WhatsApp from *${leadName}*: "${snippet.slice(0, 140)}"${link}` });
+  const owner = await prisma.lead
+    .findUnique({ where: { id: leadId }, select: { assignedRep: { select: { slackChannelId: true, slackUserId: true } } } })
+    .catch(() => null);
+  await sendSlack({
+    text: `💬 WhatsApp from *${leadName}*: "${snippet.slice(0, 140)}"${link}`,
+    channel: repSlackTarget(owner?.assignedRep),
+  });
 }
 
 export function GET(req: Request) {

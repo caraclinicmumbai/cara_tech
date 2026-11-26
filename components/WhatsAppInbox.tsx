@@ -55,6 +55,7 @@ export function WhatsAppInbox({
   const router = useRouter();
   const [rows, setRows] = useState<ConversationRow[]>(initial);
   const [query, setQuery] = useState("");
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [, startTransition] = useTransition();
   // Locally cleared badges: the server list is polled, so without this the badge
   // would flicker back for one cycle after opening a chat.
@@ -115,16 +116,20 @@ export function WhatsAppInbox({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
+    // A chat opened under the Unread filter stays listed until another is picked, so
+    // it doesn't vanish from under the cursor the moment its badge clears.
+    const pool = unreadOnly ? rows.filter((r) => r.unread > 0 || r.leadId === selectedLeadId) : rows;
+    if (!q) return pool;
+    return pool.filter(
       (r) =>
         r.name.toLowerCase().includes(q) ||
         r.phone.replace(/\s/g, "").includes(q.replace(/\s/g, "")) ||
         r.lastMessage.toLowerCase().includes(q),
     );
-  }, [rows, query]);
+  }, [rows, query, unreadOnly, selectedLeadId]);
 
   const totalUnread = rows.reduce((n, r) => n + r.unread, 0);
+  const unreadChats = rows.filter((r) => r.unread > 0).length;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -143,12 +148,32 @@ export function WhatsAppInbox({
           placeholder="Search name, number or message…"
           className="w-full rounded-lg border border-black/10 bg-transparent px-3 py-1.5 text-sm dark:border-white/15"
         />
+        <div className="mt-2 flex gap-1.5">
+          {([
+            [false, "All"],
+            [true, totalUnread > 0 ? `Unread (${unreadChats})` : "Unread"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setUnreadOnly(value)}
+              aria-pressed={unreadOnly === value}
+              className="cara-chip"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-cara-muted">
-            {rows.length === 0 ? "No WhatsApp conversations yet." : "No chat matches that search."}
+            {rows.length === 0
+              ? "No WhatsApp conversations yet."
+              : unreadOnly && !query.trim()
+                ? "All caught up — no unread chats."
+                : "No chat matches that search."}
           </p>
         ) : (
           filtered.map((r) => {

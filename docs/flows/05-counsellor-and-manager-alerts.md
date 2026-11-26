@@ -7,7 +7,8 @@ digest.
 ## Each rep's own Slack channel (`repSlackTarget`, `lib/slack.ts`)
 
 Alerts meant for one person — handover and hot-lead pings, cover requests, follow-up
-reminders, ownership hand-offs and access grants, win-back replies, the sales head's CQS
+reminders, ownership hand-offs and access grants, win-back replies, patient WhatsApp
+replies, the rep's copy of missed-call / premature-lost / stuck-in-stage alerts, the sales head's CQS
 extremes, a branch manager's presence alerts, and the daily/weekly personal numbers — go
 to that rep's **own channel** (`SalesRep.slackChannelId`, e.g. `#sales_mandira`) when one
 is set, else a DM to `slackUserId`, else the shared channel. `slackUserId` still
@@ -19,11 +20,19 @@ them (the sales head, a backup). The bot has only `chat:write` + `chat:write.pub
 it can post to any public channel by itself; a private channel needs the Cara app added,
 or `sendSlack` falls back to the shared channel (`not_in_channel`).
 
+Saving a new channel or member ID posts a hello there first (`probeSlackTarget`); if
+Slack refuses (`channel_not_found` — usually a private channel without `@cara_crm`
+invited, or an ID from another workspace) the save is refused with the fix, so a rep's
+alerts can't quietly land in the shared channel. The bot is `@cara_crm` in the
+**Cara CRM** workspace (caracrm.slack.com).
+
 ## Counsellor oversight feed (`lib/counsellor.ts`)
 
 A single Slack feed (`notifyCounsellor`) to the counsellor/supervisor for five event
 kinds. Target = `COUNSELLOR_CHANNEL` → `HANDOVER_ESCALATION_CHANNEL` →
-`SLACK_DEFAULT_CHANNEL`.
+`SLACK_DEFAULT_CHANNEL`. For `missed_inbound`, `premature_lost` and `stage_sla` the
+lead's rep also gets a copy in their own channel (`REP_COPY_KINDS`); the handover kinds
+don't, since `notifyHandover` already told the rep.
 
 | Kind | Fires when | Where |
 |------|------------|-------|
