@@ -7,6 +7,21 @@ Format: newest first.
 
 ---
 
+## 2026-11-26 — Rep Slack channels get every lead alert; WhatsApp unread fix + filter
+
+Merge `45c8b08` (commits `1668056`, `0f11e58`). No migration, no settings keys. Docs:
+**[flows/05-counsellor-and-manager-alerts.md](flows/05-counsellor-and-manager-alerts.md)**,
+**[flows/06-whatsapp-messaging.md](flows/06-whatsapp-messaging.md)**.
+
+- Missed-call, premature-lost and stuck-in-stage alerts now also go to the lead's rep
+  channel (or DM), and patient WhatsApp replies go there instead of the default channel.
+- Saving a rep's Slack channel / member ID posts a hello first and refuses the save when
+  Slack can't deliver (e.g. a private channel without `@cara_crm` invited).
+- WhatsApp inbox: a person's reply (tab or lead page) clears unread for the whole team;
+  **All / Unread** filter above the chat list; the sidebar badge refreshes as chats are read.
+
+---
+
 ## 2026-11-24 — Call history shows the patient's phone number
 
 Merge `536c0ae` (commit `711b922`). No migration, no settings keys. No flow doc changed
