@@ -7,10 +7,13 @@
 //   • stage_sla       — a lead has been stuck in a stage past the SLA
 //
 // Distinct from the per-rep handover DM (lib/handover.ts) — that's the actionable
-// "go call them"; this is the counsellor's oversight copy. Best-effort: a missing
+// "go call them"; this is the counsellor's oversight copy. The lead's own rep gets a copy
+// too, in their Slack channel (REP_COPY_KINDS) — the handover kinds are skipped there
+// because notifyHandover already told them. Best-effort: a missing
 // channel or Slack error is logged and swallowed, never thrown.
 import type { Lead } from "@prisma/client";
-import { sendSlack, isSlackConfigured } from "@/lib/slack";
+import { sendSlack, isSlackConfigured, repSlackTarget } from "@/lib/slack";
+import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
 export type CounsellorAlertKind =
@@ -29,6 +32,9 @@ const HEADERS: Record<CounsellorAlertKind, string> = {
   stage_sla: "⏰ Lead stuck in stage",
   missed_inbound: "📞 Missed inbound call",
 };
+
+/// The alerts the lead's rep (and whoever reviews their channel) should see as well.
+const REP_COPY_KINDS: ReadonlySet<CounsellorAlertKind> = new Set(["premature_lost", "stage_sla", "missed_inbound"]);
 
 /// Where counsellor notifications go — a counsellor/supervisor channel or Slack
 /// user id. Unifies with the handover-SLA escalation target; falls back to the
@@ -82,5 +88,14 @@ export async function notifyCounsellor(opts: {
 
   const text = `${HEADERS[kind]} — ${lead.name} (${lead.phone})${reason ? `: ${reason}` : ""}`;
   await sendSlack({ text, blocks, channel });
-  logger.info(`Counsellor alert (${kind}) for lead ${lead.id}`);
+
+  let repTarget: string | undefined;
+  if (REP_COPY_KINDS.has(kind)) {
+    const owner = await prisma.lead
+      .findUnique({ where: { id: lead.id }, select: { assignedRep: { select: { slackChannelId: true, slackUserId: true } } } })
+      .catch(() => null);
+    repTarget = repSlackTarget(owner?.assignedRep);
+    if (repTarget && repTarget !== channel) await sendSlack({ text, blocks, channel: repTarget });
+  }
+  logger.info(`Counsellor alert (${kind}) for lead ${lead.id}${repTarget ? ` (+ rep ${repTarget})` : ""}`);
 }

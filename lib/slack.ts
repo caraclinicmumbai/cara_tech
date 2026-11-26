@@ -70,6 +70,29 @@ export function repSlackTarget(
   return rep?.slackChannelId?.trim() || rep?.slackUserId?.trim() || undefined;
 }
 
+/// Post straight to `target` with no fallback — to prove an address works before it is
+/// saved. `skipped` when Slack isn't configured here (nothing to prove against).
+export async function probeSlackTarget(
+  target: string,
+  text: string,
+): Promise<{ ok: true; skipped?: boolean } | { ok: false; error: string }> {
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) return { ok: true, skipped: true };
+  try {
+    const res = await axios.post(
+      POST_MESSAGE_URL,
+      { channel: target, text },
+      {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json; charset=utf-8" },
+        timeout: 10_000,
+      },
+    );
+    return res.data?.ok ? { ok: true } : { ok: false, error: String(res.data?.error ?? "unknown_error") };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 /// Post a message to Slack. Returns true on success, false (logged) otherwise.
 /// Never throws.
 ///

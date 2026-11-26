@@ -14,7 +14,7 @@ import { SALES_TEAMS, SALES_TEAM_LABELS, DEFAULT_SALES_TEAM, isSalesTeam } from 
 import { writeAudit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { removeRep as removeRepFromRoster } from "@/lib/salesReps";
-import { isAddressableSlackTarget } from "@/lib/slack";
+import { isAddressableSlackTarget, probeSlackTarget } from "@/lib/slack";
 
 type Result = { ok: boolean; error?: string };
 
@@ -160,6 +160,8 @@ export async function createRep(input: {
   if (!isSalesTeam(team)) return { ok: false, error: teamError };
   const slack = checkSlack(input.slackUserId, input.slackChannelId);
   if ("error" in slack) return { ok: false, error: slack.error };
+  const unreachable = await proveSlack(name, slack);
+  if (unreachable) return { ok: false, error: unreachable };
   await prisma.salesRep.create({
     data: {
       name,
@@ -252,6 +254,31 @@ function checkSlack(
   return { slackUserId, slackChannelId };
 }
 
+/// Post a hello to a newly entered member id / channel, so a wrong id or a private channel
+/// the bot isn't in is caught here — not weeks later as alerts quietly landing elsewhere.
+async function proveSlack(
+  repName: string,
+  slack: { slackUserId: string | null; slackChannelId: string | null },
+  before?: { slackUserId: string | null; slackChannelId: string | null },
+): Promise<string | null> {
+  if (slack.slackChannelId && slack.slackChannelId !== before?.slackChannelId) {
+    const r = await probeSlackTarget(
+      slack.slackChannelId,
+      `✅ Cara CRM will post ${repName}'s lead alerts in this channel. Everyone in it will see them.`,
+    );
+    if (!r.ok) {
+      return r.error === "channel_not_found" || r.error === "not_in_channel"
+        ? `Cara can't post in ${slack.slackChannelId} (${r.error}). If it's a private channel, open it in Slack and type /invite @cara_crm, then save again. Check the ID is from the Cara CRM workspace.`
+        : `Cara can't post in ${slack.slackChannelId} (${r.error})`;
+    }
+  }
+  if (slack.slackUserId && slack.slackUserId !== before?.slackUserId) {
+    const r = await probeSlackTarget(slack.slackUserId, `✅ Cara CRM has linked your Slack to ${repName}'s sales profile.`);
+    if (!r.ok) return `Cara can't message ${slack.slackUserId} (${r.error}). Check the member ID is from the Cara CRM workspace.`;
+  }
+  return null;
+}
+
 /// Set where a rep's Slack alerts go: their member id (DM + @-mention) and, optionally,
 /// their own channel (e.g. #sales_mandira) so the colleagues in it see the alerts too.
 /// Audited, since it decides who sees a counsellor's leads in Slack.
@@ -268,6 +295,8 @@ export async function setRepSlack(
   });
   if (!before) return { ok: false, error: "Rep not found" };
   if (before.slackUserId === slack.slackUserId && before.slackChannelId === slack.slackChannelId) return { ok: true };
+  const unreachable = await proveSlack(before.name, slack, before);
+  if (unreachable) return { ok: false, error: unreachable };
   await prisma.salesRep.update({ where: { id: repId }, data: slack });
   await writeAudit({
     actorId: me.id,
